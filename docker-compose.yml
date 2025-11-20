@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    container_name: mqtt-broker
+    ports:
+      - "1883:1883" # MQTT
+      - "8883:8883" # MQTT over SSL
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+      - ./certs:/mosquitto/certs
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: mqtt-manager-backend
+    environment:
+      - PORT=4000
+      - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./certs:/app/certs
+    depends_on:
+      - mqtt-broker
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: mqtt-manager-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:4000
+    depends_on:
+      - backend
+    restart: unless-stopped
