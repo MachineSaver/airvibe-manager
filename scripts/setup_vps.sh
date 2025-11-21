@@ -82,6 +82,6 @@ sudo docker compose up -d --build
 echo "=========================================="
 echo "   Setup Complete!"
 echo "=========================================="
-echo "Web Dashboard: http://$DOMAIN_INPUT:3000"
+echo "Web Dashboard: https://$DOMAIN_INPUT"
 echo "MQTT Broker:   $DOMAIN_INPUT:1883"
 echo "=========================================="
