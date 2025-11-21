@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SocketProvider, useSocket } from './SocketContext';
 
 function AppContent() {
@@ -16,7 +16,6 @@ function AppContent() {
   const [payloadHex, setPayloadHex] = useState('');
   const [host, setHost] = useState('');
 
-  const [host, setHost] = useState('');
 
   // Initialize host on mount
   useEffect(() => {
