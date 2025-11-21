@@ -40,6 +40,7 @@ A portable, Docker-based MQTT Broker and Management Dashboard. Designed to be ea
 ## Usage
 
 ### Certificate Management
+![Certificate Management](assets/certificate-management.png)
 1.  Go to the **Certificate Management** tab in the sidebar (Key icon).
 2.  Enter a **Client ID** (e.g., `device-001`).
 3.  Click **Generate & Sign**.
@@ -63,6 +64,7 @@ When creating a generic MQTT connector in Actility ThingPark, map the generated 
 | **Private Key** | `[client-id].key` | The Client Private Key. |
 
 ### MQTT Monitoring
+![MQTT Monitor](assets/mqtt-monitor.png)
 1.  Go to the **MQTT Monitor** tab (Network icon).
 2.  The dashboard subscribes to `#` (all topics) and displays messages in real-time.
 3.  **What to expect:** When Actility sends an uplink message, you will see a new card appear with:
