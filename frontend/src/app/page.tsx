@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { SocketProvider, useSocket } from './SocketContext';
+import MQTTMessageCard from '../components/MQTTMessageCard';
 
 function AppContent() {
   const { connected, messages, socket } = useSocket();
@@ -108,13 +109,12 @@ function AppContent() {
               <div className="overflow-auto p-4 space-y-2">
                 {messages.length === 0 && <div className="text-gray-500 text-center mt-10">No messages received yet.</div>}
                 {messages.map((msg, idx) => (
-                  <div key={idx} className="bg-[#2d2d2d] p-3 rounded border border-[#3e3e42] font-mono text-xs">
-                    <div className="flex justify-between text-gray-500 mb-1">
-                      <span className="text-green-400">{msg.topic}</span>
-                      <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>
-                    </div>
-                    <div className="text-gray-300 break-all">{msg.payload}</div>
-                  </div>
+                  <MQTTMessageCard
+                    key={idx}
+                    topic={msg.topic}
+                    payload={msg.payload}
+                    timestamp={msg.timestamp}
+                  />
                 ))}
               </div>
 
