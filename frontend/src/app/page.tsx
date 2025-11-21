@@ -16,12 +16,14 @@ function AppContent() {
   const [payloadHex, setPayloadHex] = useState('');
   const [host, setHost] = useState('');
 
+  const [host, setHost] = useState('');
+
   // Initialize host on mount
-  useState(() => {
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       setHost(window.location.hostname);
     }
-  });
+  }, []);
 
   const generateCerts = async () => {
     try {
