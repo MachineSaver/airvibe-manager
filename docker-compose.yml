@@ -12,6 +12,8 @@ services:
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
       - ./certs:/mosquitto/certs
+      - ./mosquitto/watcher.sh:/mosquitto/watcher.sh
+    entrypoint: [ "/mosquitto/watcher.sh" ]
     restart: unless-stopped
 
   backend:
