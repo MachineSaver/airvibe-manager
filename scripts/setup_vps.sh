@@ -59,6 +59,7 @@ EOF
     echo ".env file created."
 else
     echo ".env file already exists. Skipping configuration."
+    DOMAIN_INPUT=$(grep ^DOMAIN= .env | cut -d '=' -f2)
 fi
 
 # 5. Firewall & Startup
