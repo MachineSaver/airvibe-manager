@@ -61,12 +61,19 @@ A portable, Docker-based MQTT Broker and Management Dashboard. Designed to be ea
 
 To deploy this project on a fresh Ubuntu VPS (e.g., Linode, DigitalOcean):
 
-1.  **SSH into your VPS**:
+### 1. DNS Configuration (Prerequisite)
+Before starting, log in to your Domain Registrar (GoDaddy, Namecheap, Cloudflare, etc.) and create a **DNS Record** for your domain:
+*   **Type**: `A` Record
+*   **Name/Host**: `@` (for root domain like `example.com`) OR `mqtt` (for subdomain like `mqtt.example.com`)
+*   **Value/Target**: Your VPS Public IP Address (e.g., `192.0.2.123`)
+*   **TTL**: Automatic or 3600
+
+### 2. SSH into your VPS
     ```bash
     ssh root@your-vps-ip
     ```
 
-2.  **Download and Run the Setup Script**:
+### 3. Download and Run the Setup Script
     You can copy the `scripts/setup_vps.sh` file content to your VPS, or run the following commands (assuming you have pushed this repo to GitHub):
 
     ```bash
