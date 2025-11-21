@@ -51,11 +51,24 @@ A portable, Docker-based MQTT Broker and Management Dashboard. Designed to be ea
     - After generating the first set of certificates, open `mosquitto/config/mosquitto.conf`.
     - Uncomment the SSL listener section (lines 8-12).
     - Restart the broker: `docker compose restart mqtt-broker`.
-6.  These files are stored in the `./certs` directory on your host machine. You can use them to configure your IoT devices or Actility ThingPark.
+6.  These files are stored in the `./certs` directory on your host machine.
+
+### Actility ThingPark Configuration
+When creating a generic MQTT connector in Actility ThingPark, map the generated files as follows:
+
+| Actility Field | File from `./certs` | Description |
+| :--- | :--- | :--- |
+| **CA Certificate** | `ca.crt` | The Root CA that trusts your broker. |
+| **Certificate** | `[client-id].crt` | The Client Certificate (Public Key). |
+| **Private Key** | `[client-id].key` | The Client Private Key. |
 
 ### MQTT Monitoring
 1.  Go to the **MQTT Monitor** tab (Network icon).
 2.  The dashboard subscribes to `#` (all topics) and displays messages in real-time.
+3.  **What to expect:** When Actility sends an uplink message, you will see a new card appear with:
+    - **Topic:** e.g., `mqtt/things/[DevEUI]/uplink`
+    - **Timestamp:** Time of arrival.
+    - **Payload:** The JSON data sent by your device.
 
 ## Deployment (VPS/Linode)
 
