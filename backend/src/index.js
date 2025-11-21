@@ -26,6 +26,19 @@ const io = new Server(server, {
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
 mqttClient.connect(MQTT_BROKER_URL, io);
 
+// Auto-initialize PKI on startup
+(async () => {
+    const domain = process.env.DOMAIN || 'localhost';
+    try {
+        console.log(`Checking/Initializing PKI for domain: ${domain}`);
+        await pki.generateCA(domain);
+        await pki.generateServerCert(domain);
+        console.log('PKI Initialized');
+    } catch (e) {
+        console.error('Failed to initialize PKI:', e);
+    }
+})();
+
 app.get('/', (req, res) => {
     res.send('MQTT Manager Backend is running');
 });

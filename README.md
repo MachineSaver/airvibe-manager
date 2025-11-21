@@ -47,11 +47,47 @@ A portable, Docker-based MQTT Broker and Management Dashboard. Designed to be ea
     - `ca.crt` (if not already present)
     - `server.crt` / `server.key` (if not already present)
     - `[client-id].crt` / `[client-id].key`
-5.  These files are stored in the `./certs` directory on your host machine. You can use them to configure your IoT devices or Actility ThingPark.
+5.  **Enable SSL**:
+    - After generating the first set of certificates, open `mosquitto/config/mosquitto.conf`.
+    - Uncomment the SSL listener section (lines 8-12).
+    - Restart the broker: `docker compose restart mqtt-broker`.
+6.  These files are stored in the `./certs` directory on your host machine. You can use them to configure your IoT devices or Actility ThingPark.
 
 ### MQTT Monitoring
 1.  Go to the **MQTT Monitor** tab (Network icon).
 2.  The dashboard subscribes to `#` (all topics) and displays messages in real-time.
+
+## Deployment (VPS/Linode)
+
+To deploy this project on a fresh Ubuntu VPS (e.g., Linode, DigitalOcean):
+
+1.  **SSH into your VPS**:
+    ```bash
+    ssh root@your-vps-ip
+    ```
+
+2.  **Download and Run the Setup Script**:
+    You can copy the `scripts/setup_vps.sh` file content to your VPS, or run the following commands (assuming you have pushed this repo to GitHub):
+
+    ```bash
+    # Install git if missing
+    apt-get update && apt-get install -y git
+
+    # Clone the repo
+    git clone https://github.com/MachineSaver/mqtt-manager.git
+    cd mqtt-manager
+
+    # Run the setup script
+    chmod +x scripts/setup_vps.sh
+    ./scripts/setup_vps.sh
+    ```
+
+3.  **Follow the Prompts**:
+    - The script will install Docker, configure the firewall, and ask for your **Domain/IP**.
+    - It will generate the `.env` file and start the services.
+
+4.  **Access the App**:
+    - Open `http://<your-vps-ip>:3000` in your browser.
 
 ## Project Structure
 
