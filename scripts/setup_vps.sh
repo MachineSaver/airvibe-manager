@@ -66,13 +66,12 @@ echo "[5/5] Configuring Firewall and Starting Services..."
 
 # Allow necessary ports
 # 22: SSH
-# 3000: Frontend
-# 4000: Backend API
+# 80/443: Web (Caddy handles HTTPS)
 # 1883: MQTT
 # 8883: MQTT SSL
 sudo ufw allow 22/tcp
-sudo ufw allow 3000/tcp
-sudo ufw allow 4000/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
 sudo ufw allow 1883/tcp
 sudo ufw allow 8883/tcp
 sudo ufw --force enable

@@ -11,7 +11,8 @@ function AppContent() {
 
   const generateCerts = async () => {
     try {
-      const res = await fetch('http://localhost:4000/api/certs/client', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const res = await fetch(`${apiUrl}/api/certs/client`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId })

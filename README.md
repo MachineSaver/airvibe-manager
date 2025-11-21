@@ -94,11 +94,13 @@ Before starting, log in to your Domain Registrar (GoDaddy, Namecheap, Cloudflare
     - It will generate the `.env` file and start the services.
 
 4.  **Access the App**:
-    - Open `http://<your-vps-ip>:3000` in your browser.
+    - Open `https://<your-domain>` in your browser.
+    - **Note**: It may take a minute for the SSL certificate to be provisioned on the first run.
 
 ## Project Structure
 
-- `docker-compose.yml`: Defines the services (Broker, Backend, Frontend).
+- `Caddyfile`: Configuration for the Caddy web server (Reverse Proxy & Auto-SSL).
+- `docker-compose.yml`: Defines the services (Broker, Backend, Frontend, Caddy).
 - `mosquitto/`: Mosquitto configuration and data.
 - `backend/`: Node.js Express API & MQTT Client.
 - `frontend/`: Next.js Web Application.
