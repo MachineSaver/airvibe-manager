@@ -16,14 +16,22 @@ if (!fs.existsSync(CERTS_DIR)) {
 }
 
 async function generateCA(domain) {
+    const caKeyPath = path.join(CERTS_DIR, 'ca.key');
+    const caCrtPath = path.join(CERTS_DIR, 'ca.crt');
+
+    if (fs.existsSync(caKeyPath) && fs.existsSync(caCrtPath)) {
+        console.log('CA Certificate already exists. Skipping generation.');
+        return { success: true, message: 'CA already exists' };
+    }
+
     const subject = `/C=US/ST=State/L=City/O=MyOrg/OU=IoT/CN=${domain}`;
 
     try {
         // Generate CA Key
-        await execPromise(`openssl genrsa -out ${path.join(CERTS_DIR, 'ca.key')} 2048`);
+        await execPromise(`openssl genrsa -out ${caKeyPath} 2048`);
 
         // Generate CA Certificate
-        await execPromise(`openssl req -x509 -new -nodes -key ${path.join(CERTS_DIR, 'ca.key')} -sha256 -days 3650 -out ${path.join(CERTS_DIR, 'ca.crt')} -subj "${subject}"`);
+        await execPromise(`openssl req -x509 -new -nodes -key ${caKeyPath} -sha256 -days 3650 -out ${caCrtPath} -subj "${subject}"`);
 
         return { success: true, message: 'CA Generated' };
     } catch (error) {
@@ -33,17 +41,25 @@ async function generateCA(domain) {
 }
 
 async function generateServerCert(domain) {
+    const serverKeyPath = path.join(CERTS_DIR, 'server.key');
+    const serverCrtPath = path.join(CERTS_DIR, 'server.crt');
+
+    if (fs.existsSync(serverKeyPath) && fs.existsSync(serverCrtPath)) {
+        console.log('Server Certificate already exists. Skipping generation.');
+        return { success: true, message: 'Server Cert already exists' };
+    }
+
     const subject = `/C=US/ST=State/L=City/O=MyOrg/OU=IoT/CN=${domain}`;
 
     try {
         // Generate Server Key
-        await execPromise(`openssl genrsa -out ${path.join(CERTS_DIR, 'server.key')} 2048`);
+        await execPromise(`openssl genrsa -out ${serverKeyPath} 2048`);
 
         // Generate Server CSR
-        await execPromise(`openssl req -new -key ${path.join(CERTS_DIR, 'server.key')} -out ${path.join(CERTS_DIR, 'server.csr')} -subj "${subject}"`);
+        await execPromise(`openssl req -new -key ${serverKeyPath} -out ${path.join(CERTS_DIR, 'server.csr')} -subj "${subject}"`);
 
         // Sign Server Cert with CA
-        await execPromise(`openssl x509 -req -in ${path.join(CERTS_DIR, 'server.csr')} -CA ${path.join(CERTS_DIR, 'ca.crt')} -CAkey ${path.join(CERTS_DIR, 'ca.key')} -CAcreateserial -out ${path.join(CERTS_DIR, 'server.crt')} -days 365 -sha256`);
+        await execPromise(`openssl x509 -req -in ${path.join(CERTS_DIR, 'server.csr')} -CA ${path.join(CERTS_DIR, 'ca.crt')} -CAkey ${path.join(CERTS_DIR, 'ca.key')} -CAcreateserial -out ${serverCrtPath} -days 365 -sha256`);
 
         return { success: true, message: 'Server Cert Generated' };
     } catch (error) {
