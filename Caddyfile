@@ -1,7 +1,3 @@
-{
-    email internal
-}
-
 {$DOMAIN} {
     reverse_proxy /api/* backend:4000
     reverse_proxy /socket.io/* backend:4000
