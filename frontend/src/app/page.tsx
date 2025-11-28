@@ -1,8 +1,178 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { SocketProvider, useSocket } from './SocketContext';
 import MQTTMessageCard from '../components/MQTTMessageCard';
+
+// --- Types & Constants ---
+
+type CommandPresetType = 'simple' | 'waveform_ack' | 'missed_segments';
+
+interface CommandPreset {
+  name: string;
+  fPort: number;
+  type: CommandPresetType;
+  staticPayload?: string;
+  notes?: string;
+  params?: {
+    label: string;
+    key: string;
+    type: 'text' | 'number' | 'hex';
+    placeholder?: string;
+    description?: string;
+  }[];
+}
+
+const COMMAND_PRESETS: CommandPreset[] = [
+  {
+    name: "Request Current TWF Info Packet",
+    fPort: 22,
+    type: 'simple',
+    staticPayload: "0001",
+    notes: "Requests the current Time Waveform configuration."
+  },
+  {
+    name: "Request Current Sensor Configuration Packet",
+    fPort: 22,
+    type: 'simple',
+    staticPayload: "0002",
+    notes: "Requests the current sensor configuration."
+  },
+  {
+    name: "Trigger New TWF Collection",
+    fPort: 22,
+    type: 'simple',
+    staticPayload: "0003",
+    notes: "Triggers a new Time Waveform collection immediately."
+  },
+  {
+    name: "Initialize AirVibe TPM/VSM Upgrade Session",
+    fPort: 22,
+    type: 'simple',
+    staticPayload: "0005",
+    notes: "Warning - this will set the AirVibe into Class C Mode which will use more battery."
+  },
+  {
+    name: "Verify Upgrade Image Data",
+    fPort: 22,
+    type: 'simple',
+    staticPayload: "0006",
+    notes: "Verifies the uploaded firmware image."
+  },
+  {
+    name: "Alarm - Set Off",
+    fPort: 31,
+    type: 'simple',
+    staticPayload: "00000000000000000000000000000000",
+    notes: "Disables all alarms."
+  },
+  {
+    name: "Alarm - Set Temp 50",
+    fPort: 31,
+    type: 'simple',
+    staticPayload: "00011388000000000000000000000000",
+    notes: "Sets temperature alarm threshold to 50."
+  },
+  {
+    name: "Alarm - Set Accel 0.5 g RMS",
+    fPort: 31,
+    type: 'simple',
+    staticPayload: "000E000001F401F401F4000000000000",
+    notes: "Sets acceleration alarm to 0.5 g RMS."
+  },
+  {
+    name: "Alarm - Set Accel 0.1 in/sec RMS",
+    fPort: 31,
+    type: 'simple',
+    staticPayload: "00710000000000000000006400640064",
+    notes: "Sets acceleration alarm to 0.1 in/sec RMS."
+  },
+  {
+    name: "Configuration - Overall Only Mode 1 Minute",
+    fPort: 30,
+    type: 'simple',
+    staticPayload: "0201070881000F000100D2000213880100010019"
+  },
+  {
+    name: "Configuration - Overall Only Mode 5 Minute",
+    fPort: 30,
+    type: 'simple',
+    staticPayload: "0201070881000F000500D2000213880100050019"
+  },
+  {
+    name: "Configuration - Overall Only Mode 10 Minute",
+    fPort: 30,
+    type: 'simple',
+    staticPayload: "0201070881000F000A00D2000213880100010019",
+    notes: "Includes 1 Minute Alarm Checks."
+  },
+  {
+    name: "Configuration - TWF Only Mode (TriAxial)",
+    fPort: 30,
+    type: 'simple',
+    staticPayload: "0202070881000f00020015000213880100020019"
+  },
+  {
+    name: "Configuration - TWF Only Mode (Axis 1)",
+    fPort: 30,
+    type: 'simple',
+    staticPayload: "0202010881000f0002003f000213880100020019"
+  },
+  {
+    name: "Configuration - TWF Only Mode (Axis 2)",
+    fPort: 30,
+    type: 'simple',
+    staticPayload: "0202020881000f0002003f000213880100020019"
+  },
+  {
+    name: "Configuration - TWF Only Mode (Axis 3)",
+    fPort: 30,
+    type: 'simple',
+    staticPayload: "0202040881000f0002003f000213880100020019"
+  },
+  {
+    name: "Configuration - Dual Mode 5 Min Overall, Max Tri-Axial",
+    fPort: 30,
+    type: 'simple',
+    staticPayload: "0203070881000F00051000000213880100050019"
+  },
+  {
+    name: "Waveform Control - TWI Acknowledge",
+    fPort: 20,
+    type: 'waveform_ack',
+    notes: "Signals receipt of waveform info. Command byte is 03.",
+    params: [{ label: "Waveform TXID (Hex)", key: "txid", type: "hex", placeholder: "FF", description: "1 Byte Hex" }]
+  },
+  {
+    name: "Waveform Control - TWD Acknowledge",
+    fPort: 20,
+    type: 'waveform_ack',
+    notes: "Signals verification of no missing segments. Command byte is 01.",
+    params: [{ label: "Waveform TXID (Hex)", key: "txid", type: "hex", placeholder: "FF", description: "1 Byte Hex" }]
+  },
+  {
+    name: "Waveform Control - TWF Missing Segments",
+    fPort: 21,
+    type: 'missed_segments',
+    notes: "Requests re-transmission of missing segments."
+  }
+];
+
+// --- Icons ---
+
+const CopyIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+  </svg>
+);
+
+// --- Component ---
 
 function AppContent() {
   const { connected, messages, socket } = useSocket();
@@ -13,17 +183,182 @@ function AppContent() {
   // Downlink Builder State
   const [topic, setTopic] = useState('mqtt/things/[DevEUI]/downlink');
   const [devEui, setDevEui] = useState('');
-  const [fPort, setFPort] = useState('22');
-  const [payloadHex, setPayloadHex] = useState('');
+  const [knownDevEuis, setKnownDevEuis] = useState<Set<string>>(new Set());
   const [host, setHost] = useState('');
 
+  // Preset State
+  const [selectedPresetName, setSelectedPresetName] = useState<string>('');
+  const [customFPort, setCustomFPort] = useState('22');
+  const [customPayload, setCustomPayload] = useState('');
 
-  // Initialize host on mount
+  // Dynamic Params State
+  const [waveformTxId, setWaveformTxId] = useState('');
+  const [missedSegSize, setMissedSegSize] = useState<'00' | '01'>('00');
+  const [missedSegIndices, setMissedSegIndices] = useState<string>(''); // Comma separated
+  const [inputFormat, setInputFormat] = useState<'hex' | 'decimal'>('hex');
+  const [missedSegError, setMissedSegError] = useState<string | null>(null);
+
+  // UI Feedback
+  const [copiedJson, setCopiedJson] = useState(false);
+  const [copiedCmd, setCopiedCmd] = useState(false);
+
+  // Initialize host
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setHost(window.location.hostname);
     }
   }, []);
+
+  // DevEUI Discovery
+  useEffect(() => {
+    messages.forEach(msg => {
+      try {
+        if (typeof msg.payload === 'object' && msg.payload !== null) {
+          // Check for DevEUI_uplink wrapper
+          const uplinkData = (msg.payload as any).DevEUI_uplink;
+          if (uplinkData && uplinkData.DevEUI) {
+            setKnownDevEuis(prev => {
+              const newSet = new Set(prev);
+              newSet.add(uplinkData.DevEUI);
+              return newSet;
+            });
+          }
+        }
+      } catch (e) {
+        // Ignore parsing errors
+      }
+    });
+  }, [messages]);
+
+  const selectedPreset = useMemo(() =>
+    COMMAND_PRESETS.find(p => p.name === selectedPresetName),
+    [selectedPresetName]);
+
+  // Strict Validation Effect
+  useEffect(() => {
+    setMissedSegError(null);
+    if (!missedSegIndices) return;
+
+    const parts = missedSegIndices.split(',').map(s => s.trim()).filter(s => s !== '');
+    let hasSmall = false; // <= 255
+    let hasLarge = false; // > 255
+
+    for (const part of parts) {
+      let num = 0;
+      if (inputFormat === 'hex') {
+        if (!/^[0-9A-Fa-f]+$/.test(part)) continue; // Skip incomplete typing
+        num = parseInt(part, 16);
+      } else {
+        if (!/^\d+$/.test(part)) continue;
+        num = parseInt(part, 10);
+      }
+
+      if (isNaN(num)) continue;
+
+      if (num > 65535) {
+        setMissedSegError(`Value ${part} exceeds 2 bytes (65535)`);
+        return;
+      }
+
+      if (num > 255) hasLarge = true;
+      else hasSmall = true;
+    }
+
+    if (hasSmall && hasLarge) {
+      setMissedSegError("Cannot mix 1-byte (<=255) and 2-byte (>255) indices.");
+      return;
+    }
+
+    if (missedSegSize === '00' && hasLarge) {
+      setMissedSegError("Value > 255 requires 2-byte mode.");
+      return;
+    }
+
+    if (missedSegSize === '01' && hasSmall) {
+      setMissedSegError("Value <= 255 should use 1-byte mode.");
+      return;
+    }
+
+  }, [missedSegIndices, missedSegSize, inputFormat]);
+
+  // Calculate Payload
+  const currentPayloadHex = useMemo(() => {
+    if (!selectedPreset) return customPayload;
+
+    if (selectedPreset.type === 'simple') {
+      return selectedPreset.staticPayload || '';
+    }
+
+    if (selectedPreset.type === 'waveform_ack') {
+      // 03 for TWI, 01 for TWD
+      const cmdByte = selectedPreset.name.includes('TWI') ? '03' : '01';
+      return `${cmdByte}${waveformTxId || '00'}`;
+    }
+
+    if (selectedPreset.type === 'missed_segments') {
+      // Logic: Size (1 byte) + Count (1 byte) + Segments
+      const parts = missedSegIndices.split(',')
+        .map(s => s.trim())
+        .filter(s => s !== '');
+
+      const count = parts.length;
+      const countHex = count.toString(16).padStart(2, '0').toUpperCase();
+
+      // Parse and Pad indices based on size
+      const paddedIndices = parts.map(part => {
+        let val = 0;
+        if (inputFormat === 'hex') {
+          val = parseInt(part, 16);
+        } else {
+          val = parseInt(part, 10);
+        }
+
+        if (isNaN(val)) return ''; // Should be handled by validation, but safe fallback
+
+        const hexVal = val.toString(16).toUpperCase();
+        const targetLen = missedSegSize === '00' ? 2 : 4;
+        return hexVal.padStart(targetLen, '0');
+      }).join('');
+
+      return `${missedSegSize}${countHex}${paddedIndices}`.toUpperCase();
+    }
+
+    return '';
+  }, [selectedPreset, customPayload, waveformTxId, missedSegSize, missedSegIndices, inputFormat]);
+
+  const currentFPort = useMemo(() => {
+    return selectedPreset ? selectedPreset.fPort.toString() : customFPort;
+  }, [selectedPreset, customFPort]);
+
+  const getJsonPayload = () => {
+    return JSON.stringify({
+      DevEUI_downlink: {
+        DevEUI: devEui || "8C1F64...",
+        FPort: parseInt(currentFPort) || 22,
+        payload_hex: currentPayloadHex || "0000"
+      }
+    }, null, 2);
+  };
+
+  const publishMessage = () => {
+    if (!socket) return;
+    const finalTopic = topic.replace('[DevEUI]', devEui || '8C1F642113000533');
+    socket.emit('publish', {
+      topic: finalTopic,
+      payload: getJsonPayload()
+    });
+  };
+
+  const copyToClipboard = (text: string, type: 'json' | 'cmd') => {
+    navigator.clipboard.writeText(text);
+    if (type === 'json') {
+      setCopiedJson(true);
+      setTimeout(() => setCopiedJson(false), 2000);
+    } else {
+      setCopiedCmd(true);
+      setTimeout(() => setCopiedCmd(false), 2000);
+    }
+  };
 
   const generateCerts = async () => {
     try {
@@ -39,29 +374,6 @@ function AppContent() {
       console.error(e);
       alert('Error generating certs');
     }
-  };
-
-  const getJsonPayload = () => {
-    return JSON.stringify({
-      DevEUI_downlink: {
-        DevEUI: devEui || "8C1F642113000533",
-        FPort: parseInt(fPort) || 22,
-        payload_hex: payloadHex || "0002"
-      }
-    }, null, 2);
-  };
-
-  const publishMessage = () => {
-    if (!socket) return;
-    const finalTopic = topic.replace('[DevEUI]', devEui || '8C1F642113000533');
-    socket.emit('publish', {
-      topic: finalTopic,
-      payload: getJsonPayload()
-    });
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
   };
 
   return (
@@ -124,7 +436,7 @@ function AppContent() {
 
                   {/* Broker Connection (Read Only) */}
                   <div className="bg-[#252526] p-4 rounded border border-[#333]">
-                    <h3 className="text-xs font-semibold text-gray-400 uppercase mb-3">Broker Connection</h3>
+                    <h3 className="text-xs font-semibold text-green-500 uppercase mb-3">Broker Connection</h3>
                     <div className="grid grid-cols-3 gap-4">
                       <div className="col-span-2">
                         <label className="block text-[10px] text-gray-500 mb-1">HOST</label>
@@ -139,7 +451,7 @@ function AppContent() {
 
                   {/* MQTT Message Config */}
                   <div className="bg-[#252526] p-4 rounded border border-[#333]">
-                    <h3 className="text-xs font-semibold text-gray-400 uppercase mb-3">MQTT Message</h3>
+                    <h3 className="text-xs font-semibold text-green-500 uppercase mb-3">MQTT Message</h3>
 
                     <div className="mb-4">
                       <label className="block text-[10px] text-gray-500 mb-1">TOPIC</label>
@@ -151,45 +463,144 @@ function AppContent() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 mb-4">
-                      <div className="col-span-2">
-                        <label className="block text-[10px] text-gray-500 mb-1">DevEUI</label>
+                    <div className="mb-4">
+                      <label className="block text-[10px] text-gray-500 mb-1">DevEUI</label>
+                      <div className="relative">
                         <input
                           type="text"
+                          list="deveui-options"
                           value={devEui}
                           onChange={(e) => setDevEui(e.target.value)}
-                          placeholder="8C1F64..."
+                          placeholder="Select or Enter DevEUI..."
                           className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                        />
+                        <datalist id="deveui-options">
+                          {Array.from(knownDevEuis).map(id => (
+                            <option key={id} value={id} />
+                          ))}
+                        </datalist>
+                      </div>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-[10px] text-gray-500 mb-1">COMMAND PRESET</label>
+                      <select
+                        value={selectedPresetName}
+                        onChange={(e) => setSelectedPresetName(e.target.value)}
+                        className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                      >
+                        <option value="">-- Custom Command --</option>
+                        {COMMAND_PRESETS.map(p => (
+                          <option key={p.name} value={p.name}>{p.name}</option>
+                        ))}
+                      </select>
+                      {selectedPreset?.notes && (
+                        <p className="text-[10px] text-gray-400 mt-1 italic">{selectedPreset.notes}</p>
+                      )}
+                    </div>
+
+                    {/* Dynamic Inputs based on Preset Type */}
+                    {selectedPreset?.type === 'waveform_ack' && (
+                      <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42]">
+                        <label className="block text-[10px] text-blue-400 mb-1">Waveform TXID (Hex)</label>
+                        <input
+                          type="text"
+                          value={waveformTxId}
+                          onChange={(e) => setWaveformTxId(e.target.value)}
+                          placeholder="FF"
+                          maxLength={2}
+                          className="w-20 bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono"
+                        />
+                      </div>
+                    )}
+
+                    {selectedPreset?.type === 'missed_segments' && (
+                      <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42] space-y-3">
+
+                        {/* Hex/Decimal Toggle */}
+                        <div className="flex justify-end">
+                          <div className="bg-[#252526] p-1 rounded border border-[#3e3e42] flex text-[10px]">
+                            <button
+                              onClick={() => setInputFormat('hex')}
+                              className={`px-3 py-1 rounded transition-colors ${inputFormat === 'hex' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                            >
+                              Hex
+                            </button>
+                            <button
+                              onClick={() => setInputFormat('decimal')}
+                              className={`px-3 py-1 rounded transition-colors ${inputFormat === 'decimal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                            >
+                              Decimal
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-blue-400 mb-1">Size of Values</label>
+                          <select
+                            value={missedSegSize}
+                            onChange={(e) => setMissedSegSize(e.target.value as any)}
+                            className="w-full bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                          >
+                            <option value="00">1 Byte per Value (Indices &lt; 256)</option>
+                            <option value="01">2 Bytes per Value (Indices &gt; 255)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-blue-400 mb-1">
+                            Missed Segment Indices ({inputFormat === 'hex' ? 'Hex' : 'Decimal'}, comma separated)
+                          </label>
+                          <input
+                            type="text"
+                            value={missedSegIndices}
+                            onChange={(e) => setMissedSegIndices(e.target.value)}
+                            placeholder={inputFormat === 'hex' ? (missedSegSize === '00' ? "01, 4C, FF" : "0105, 0A01") : "1, 76, 255"}
+                            className={`w-full bg-[#252526] border rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono ${missedSegError ? 'border-red-500' : 'border-[#3e3e42]'}`}
+                          />
+                          {missedSegError && <p className="text-[9px] text-red-500 mt-1">{missedSegError}</p>}
+                          <p className="text-[9px] text-gray-500 mt-1">
+                            Number of values will be calculated automatically.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-3 gap-4 mb-4">
+                      <div className="col-span-2">
+                        <label className="block text-[10px] text-gray-500 mb-1">PAYLOAD (HEX)</label>
+                        <input
+                          type="text"
+                          value={currentPayloadHex}
+                          onChange={(e) => !selectedPreset && setCustomPayload(e.target.value)}
+                          readOnly={!!selectedPreset}
+                          placeholder="0002"
+                          className={`w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono ${selectedPreset ? 'opacity-75 cursor-not-allowed' : ''}`}
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-gray-500 mb-1">FPort</label>
                         <input
                           type="text"
-                          value={fPort}
-                          onChange={(e) => setFPort(e.target.value)}
-                          className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                          value={currentFPort}
+                          onChange={(e) => !selectedPreset && setCustomFPort(e.target.value)}
+                          readOnly={!!selectedPreset}
+                          className={`w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none ${selectedPreset ? 'opacity-75 cursor-not-allowed' : ''}`}
                         />
                       </div>
-                    </div>
-
-                    <div className="mb-4">
-                      <label className="block text-[10px] text-gray-500 mb-1">PAYLOAD (HEX)</label>
-                      <input
-                        type="text"
-                        value={payloadHex}
-                        onChange={(e) => setPayloadHex(e.target.value)}
-                        placeholder="0002"
-                        className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono"
-                      />
                     </div>
                   </div>
 
                   {/* JSON Preview */}
                   <div className="bg-[#252526] p-4 rounded border border-[#333]">
                     <div className="flex justify-between items-center mb-2">
-                      <h3 className="text-xs font-semibold text-gray-400 uppercase">MQTT Payload Preview</h3>
-                      <button onClick={() => copyToClipboard(getJsonPayload())} className="text-[10px] text-blue-400 hover:text-blue-300">Copy JSON</button>
+                      <h3 className="text-xs font-semibold text-blue-400 uppercase">MQTT Payload Preview</h3>
+                      <button
+                        onClick={() => copyToClipboard(getJsonPayload(), 'json')}
+                        className="flex items-center space-x-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        <span>{copiedJson ? 'Copied!' : 'Copy JSON'}</span>
+                        {copiedJson ? <CheckIcon /> : <CopyIcon />}
+                      </button>
                     </div>
                     <pre className="bg-[#1e1e1e] p-2 rounded border border-[#3e3e42] text-[10px] text-green-400 font-mono overflow-x-auto">
                       {getJsonPayload()}
@@ -199,15 +610,16 @@ function AppContent() {
                   {/* Command Preview */}
                   <div className="bg-[#252526] p-4 rounded border border-[#333]">
                     <div className="flex justify-between items-center mb-2">
-                      <h3 className="text-xs font-semibold text-gray-400 uppercase">Mosquitto Pub Command</h3>
+                      <h3 className="text-xs font-semibold text-blue-400 uppercase">Mosquitto Pub Command</h3>
                       <button
                         onClick={() => {
                           const cmd = `mosquitto_pub -h ${host} -p 8883 -t "${topic.replace('[DevEUI]', devEui || '8C1F64...')}" -m '${getJsonPayload()}'`;
-                          copyToClipboard(cmd);
+                          copyToClipboard(cmd, 'cmd');
                         }}
-                        className="text-[10px] text-blue-400 hover:text-blue-300"
+                        className="flex items-center space-x-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
                       >
-                        Copy Command
+                        <span>{copiedCmd ? 'Copied!' : 'Copy Command'}</span>
+                        {copiedCmd ? <CheckIcon /> : <CopyIcon />}
                       </button>
                     </div>
                     <div className="bg-[#1e1e1e] p-2 rounded border border-[#3e3e42] text-[10px] text-gray-400 font-mono break-all">
