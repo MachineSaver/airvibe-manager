@@ -452,7 +452,7 @@ function AppContent() {
                     <div className="grid grid-cols-3 gap-4">
                       <div className="col-span-2">
                         <label className="block text-[10px] text-gray-500 mb-1">HOST</label>
-                        <input type="text" readOnly value={host} className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300" />
+                        <input type="text" readOnly value={host} className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300" suppressHydrationWarning />
                       </div>
                       <div>
                         <label className="block text-[10px] text-gray-500 mb-1">PORT</label>
@@ -477,10 +477,17 @@ function AppContent() {
 
                     <div className="mb-4">
                       <label className="block text-[10px] text-gray-500 mb-1">DevEUI</label>
-                      {knownDevEuis.size > 0 ? (
+                      {knownDevEuis.size > 0 && devEui !== '__custom__' ? (
                         <select
                           value={devEui}
-                          onChange={(e) => setDevEui(e.target.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '__custom__') {
+                              setDevEui(''); // Clear for custom input
+                            } else {
+                              setDevEui(val);
+                            }
+                          }}
                           className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
                         >
                           <option value="">-- Select DevEUI --</option>
@@ -496,16 +503,6 @@ function AppContent() {
                           onChange={(e) => setDevEui(e.target.value)}
                           placeholder="Enter DevEUI..."
                           className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
-                        />
-                      )}
-                      {knownDevEuis.size > 0 && devEui === '__custom__' && (
-                        <input
-                          type="text"
-                          value=""
-                          onChange={(e) => setDevEui(e.target.value)}
-                          placeholder="Enter custom DevEUI..."
-                          className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none mt-2"
-                          autoFocus
                         />
                       )}
                     </div>
