@@ -201,6 +201,7 @@ function AppContent() {
   // UI Feedback
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
+  const [showCustomInput, setShowCustomInput] = useState(false);
 
   // Initialize host
   useEffect(() => {
@@ -477,13 +478,14 @@ function AppContent() {
 
                     <div className="mb-4">
                       <label className="block text-[10px] text-gray-500 mb-1">DevEUI</label>
-                      {knownDevEuis.size > 0 && devEui !== '__custom__' ? (
+                      {knownDevEuis.size > 0 && !showCustomInput ? (
                         <select
                           value={devEui}
                           onChange={(e) => {
                             const val = e.target.value;
                             if (val === '__custom__') {
-                              setDevEui(''); // Clear for custom input
+                              setShowCustomInput(true);
+                              setDevEui('');
                             } else {
                               setDevEui(val);
                             }
@@ -497,13 +499,26 @@ function AppContent() {
                           <option value="__custom__">-- Enter Custom DevEUI --</option>
                         </select>
                       ) : (
-                        <input
-                          type="text"
-                          value={devEui}
-                          onChange={(e) => setDevEui(e.target.value)}
-                          placeholder="Enter DevEUI..."
-                          className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
-                        />
+                        <div>
+                          <input
+                            type="text"
+                            value={devEui}
+                            onChange={(e) => setDevEui(e.target.value)}
+                            placeholder="Enter DevEUI..."
+                            className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                          />
+                          {knownDevEuis.size > 0 && (
+                            <button
+                              onClick={() => {
+                                setShowCustomInput(false);
+                                setDevEui('');
+                              }}
+                              className="text-[10px] text-blue-400 hover:text-blue-300 mt-1"
+                            >
+                              ← Back to dropdown
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
 
