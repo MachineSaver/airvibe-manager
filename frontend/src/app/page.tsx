@@ -184,6 +184,7 @@ function AppContent() {
   const [topic, setTopic] = useState('mqtt/things/[DevEUI]/downlink');
   const [devEui, setDevEui] = useState('');
   const [knownDevEuis, setKnownDevEuis] = useState<Set<string>>(new Set());
+  const [isCustomMode, setIsCustomMode] = useState(false);
   const [host, setHost] = useState('');
 
   // Preset State
@@ -201,7 +202,6 @@ function AppContent() {
   // UI Feedback
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
-  const [showCustomInput, setShowCustomInput] = useState(false);
 
   // Initialize host
   useEffect(() => {
@@ -478,13 +478,13 @@ function AppContent() {
 
                     <div className="mb-4">
                       <label className="block text-[10px] text-gray-500 mb-1">DevEUI</label>
-                      {knownDevEuis.size > 0 && !showCustomInput ? (
+                      {knownDevEuis.size > 0 && !isCustomMode ? (
                         <select
                           value={devEui}
                           onChange={(e) => {
                             const val = e.target.value;
                             if (val === '__custom__') {
-                              setShowCustomInput(true);
+                              setIsCustomMode(true);
                               setDevEui('');
                             } else {
                               setDevEui(val);
@@ -499,23 +499,21 @@ function AppContent() {
                           <option value="__custom__">-- Enter Custom DevEUI --</option>
                         </select>
                       ) : (
-                        <div>
+                        <div className="relative">
                           <input
                             type="text"
                             value={devEui}
                             onChange={(e) => setDevEui(e.target.value)}
                             placeholder="Enter DevEUI..."
                             className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                            autoFocus={isCustomMode}
                           />
                           {knownDevEuis.size > 0 && (
                             <button
-                              onClick={() => {
-                                setShowCustomInput(false);
-                                setDevEui('');
-                              }}
-                              className="text-[10px] text-blue-400 hover:text-blue-300 mt-1"
+                              onClick={() => setIsCustomMode(false)}
+                              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[10px] text-blue-400 hover:text-blue-300"
                             >
-                              ← Back to dropdown
+                              List
                             </button>
                           )}
                         </div>
