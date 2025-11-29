@@ -213,9 +213,21 @@ function AppContent() {
   useEffect(() => {
     messages.forEach(msg => {
       try {
-        if (typeof msg.payload === 'object' && msg.payload !== null) {
+        let payload = msg.payload;
+
+        // If payload is a string, try to parse it as JSON
+        if (typeof payload === 'string') {
+          try {
+            payload = JSON.parse(payload);
+          } catch (e) {
+            // Not JSON, skip
+            return;
+          }
+        }
+
+        if (typeof payload === 'object' && payload !== null) {
           // Check for DevEUI_uplink wrapper
-          const uplinkData = (msg.payload as any).DevEUI_uplink;
+          const uplinkData = (payload as any).DevEUI_uplink;
           if (uplinkData && uplinkData.DevEUI) {
             setKnownDevEuis(prev => {
               const newSet = new Set(prev);
@@ -465,21 +477,37 @@ function AppContent() {
 
                     <div className="mb-4">
                       <label className="block text-[10px] text-gray-500 mb-1">DevEUI</label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          list="deveui-options"
+                      {knownDevEuis.size > 0 ? (
+                        <select
                           value={devEui}
                           onChange={(e) => setDevEui(e.target.value)}
-                          placeholder="Select or Enter DevEUI..."
+                          className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                        >
+                          <option value="">-- Select DevEUI --</option>
+                          {Array.from(knownDevEuis).map(id => (
+                            <option key={id} value={id}>{id}</option>
+                          ))}
+                          <option value="__custom__">-- Enter Custom DevEUI --</option>
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={devEui}
+                          onChange={(e) => setDevEui(e.target.value)}
+                          placeholder="Enter DevEUI..."
                           className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
                         />
-                        <datalist id="deveui-options">
-                          {Array.from(knownDevEuis).map(id => (
-                            <option key={id} value={id} />
-                          ))}
-                        </datalist>
-                      </div>
+                      )}
+                      {knownDevEuis.size > 0 && devEui === '__custom__' && (
+                        <input
+                          type="text"
+                          value=""
+                          onChange={(e) => setDevEui(e.target.value)}
+                          placeholder="Enter custom DevEUI..."
+                          className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none mt-2"
+                          autoFocus
+                        />
+                      )}
                     </div>
 
                     <div className="mb-4">
