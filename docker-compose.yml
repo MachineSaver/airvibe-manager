@@ -16,6 +16,22 @@ services:
     entrypoint: [ "/mosquitto/watcher.sh" ]
     restart: unless-stopped
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: mqtt-manager-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-airvibe}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   backend:
     build: ./backend
     container_name: mqtt-manager-backend
@@ -25,10 +41,18 @@ services:
       - PORT=4000
       - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
       - DOMAIN=${DOMAIN}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB:-airvibe}
+      - POSTGRES_PORT=5432
     volumes:
       - ./certs:/app/certs
     depends_on:
-      - mqtt-broker
+      mqtt-broker:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -62,3 +86,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  postgres_data:

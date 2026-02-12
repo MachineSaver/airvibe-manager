@@ -2,7 +2,7 @@ const mqtt = require('mqtt');
 
 let client = null;
 
-function connect(brokerUrl, io) {
+function connect(brokerUrl, io, onMessage) {
     console.log(`Connecting to MQTT Broker at ${brokerUrl}`);
 
     client = mqtt.connect(brokerUrl, {
@@ -25,12 +25,14 @@ function connect(brokerUrl, io) {
     });
 
     client.on('message', (topic, message) => {
-        // console.log(`Received message on ${topic}: ${message.toString()}`);
         io.emit('mqtt:message', {
             topic,
             payload: message.toString(),
             timestamp: new Date().toISOString()
         });
+        if (onMessage) {
+            try { onMessage(topic, message); } catch (e) { console.error('onMessage callback error:', e); }
+        }
     });
 
     client.on('error', (err) => {

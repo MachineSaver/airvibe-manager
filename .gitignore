@@ -11,3 +11,5 @@ coverage/
 mosquitto/data/
 mosquitto/log/
 certs/
+deploy.tar.gz
+*.crt

@@ -5,6 +5,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 const mqttClient = require('./mqttClient');
 const pki = require('./pki');
+const { connectWithRetry, pool } = require('./db');
+const waveformManager = require('./services/WaveformManager');
 
 dotenv.config();
 
@@ -22,12 +24,18 @@ const io = new Server(server, {
     }
 });
 
-// Initialize MQTT Client
-const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
-mqttClient.connect(MQTT_BROKER_URL, io);
-
-// Auto-initialize PKI on startup
+// Initialize services
 (async () => {
+    // Connect to Postgres
+    await connectWithRetry();
+
+    // Initialize MQTT Client with waveform processing callback
+    const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
+    mqttClient.connect(MQTT_BROKER_URL, io, (topic, msg) => {
+        waveformManager.processPacket(topic, msg);
+    });
+
+    // Auto-initialize PKI
     const domain = process.env.DOMAIN || 'localhost';
     try {
         console.log(`Checking/Initializing PKI for domain: ${domain}`);
@@ -68,6 +76,59 @@ app.post('/api/certs/client', async (req, res) => {
         res.json(result);
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Waveform API endpoints
+app.get('/api/waveforms', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, device_eui, transaction_id, start_time, status,
+                   expected_segments, received_segments_count, metadata, created_at
+            FROM waveforms ORDER BY created_at DESC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/waveforms/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const wfRes = await pool.query(`SELECT * FROM waveforms WHERE id = $1`, [id]);
+        if (wfRes.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+        const segRes = await pool.query(
+            `SELECT segment_index FROM waveform_segments WHERE waveform_id = $1 ORDER BY segment_index`,
+            [id]
+        );
+
+        const waveform = wfRes.rows[0];
+        waveform.segments = segRes.rows.map(r => r.segment_index);
+        res.json(waveform);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/waveforms/:id/download', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const wfRes = await pool.query(`SELECT * FROM waveforms WHERE id = $1 AND status = 'complete'`, [id]);
+        if (wfRes.rows.length === 0) return res.status(404).json({ error: 'Not found or not complete' });
+
+        const waveform = wfRes.rows[0];
+        res.setHeader('Content-Disposition', `attachment; filename=waveform_${waveform.device_eui}_${waveform.transaction_id}.json`);
+        res.json({
+            device_eui: waveform.device_eui,
+            transaction_id: waveform.transaction_id,
+            metadata: waveform.metadata,
+            final_data: waveform.final_data,
+            completed_at: waveform.last_updated
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
