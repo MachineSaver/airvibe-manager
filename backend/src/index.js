@@ -60,6 +60,9 @@ app.post('/api/certs/client', async (req, res) => {
     if (!clientId) {
         return res.status(400).json({ success: false, error: 'clientId is required' });
     }
+    if (!/^[a-zA-Z0-9._-]+$/.test(clientId) || clientId.length > 253) {
+        return res.status(400).json({ success: false, error: 'clientId must contain only alphanumeric characters, hyphens, underscores, and dots (max 253 chars)' });
+    }
     try {
         const result = await pki.generateClientCert(clientId);
         res.json(result);

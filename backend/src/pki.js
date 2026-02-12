@@ -1,10 +1,26 @@
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const util = require('util');
 
-const execPromise = util.promisify(exec);
+const execFilePromise = util.promisify(execFile);
 const CERTS_DIR = process.env.CERTS_DIR || '/app/certs';
+
+// Validate identifiers to prevent command injection.
+// Allows alphanumeric, hyphens, underscores, and dots only.
+const SAFE_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
+
+function validateId(value, label) {
+    if (!value || typeof value !== 'string') {
+        throw new Error(`${label} is required`);
+    }
+    if (value.length > 253) {
+        throw new Error(`${label} exceeds maximum length of 253 characters`);
+    }
+    if (!SAFE_ID_PATTERN.test(value)) {
+        throw new Error(`${label} contains invalid characters. Only alphanumeric, hyphens, underscores, and dots are allowed.`);
+    }
+}
 
 // Ensure certs directory exists
 if (!fs.existsSync(CERTS_DIR)) {
@@ -16,6 +32,8 @@ if (!fs.existsSync(CERTS_DIR)) {
 }
 
 async function generateCA(domain) {
+    validateId(domain, 'domain');
+
     const caKeyPath = path.join(CERTS_DIR, 'ca.key');
     const caCrtPath = path.join(CERTS_DIR, 'ca.crt');
 
@@ -27,11 +45,12 @@ async function generateCA(domain) {
     const subject = `/C=US/ST=State/L=City/O=MyOrg/OU=IoT/CN=${domain}`;
 
     try {
-        // Generate CA Key
-        await execPromise(`openssl genrsa -out ${caKeyPath} 2048`);
-
-        // Generate CA Certificate
-        await execPromise(`openssl req -x509 -new -nodes -key ${caKeyPath} -sha256 -days 3650 -out ${caCrtPath} -subj "${subject}"`);
+        await execFilePromise('openssl', ['genrsa', '-out', caKeyPath, '2048']);
+        await execFilePromise('openssl', [
+            'req', '-x509', '-new', '-nodes',
+            '-key', caKeyPath, '-sha256', '-days', '3650',
+            '-out', caCrtPath, '-subj', subject
+        ]);
 
         return { success: true, message: 'CA Generated' };
     } catch (error) {
@@ -41,6 +60,8 @@ async function generateCA(domain) {
 }
 
 async function generateServerCert(domain) {
+    validateId(domain, 'domain');
+
     const serverKeyPath = path.join(CERTS_DIR, 'server.key');
     const serverCrtPath = path.join(CERTS_DIR, 'server.crt');
 
@@ -50,16 +71,21 @@ async function generateServerCert(domain) {
     }
 
     const subject = `/C=US/ST=State/L=City/O=MyOrg/OU=IoT/CN=${domain}`;
+    const serverCsrPath = path.join(CERTS_DIR, 'server.csr');
 
     try {
-        // Generate Server Key
-        await execPromise(`openssl genrsa -out ${serverKeyPath} 2048`);
-
-        // Generate Server CSR
-        await execPromise(`openssl req -new -key ${serverKeyPath} -out ${path.join(CERTS_DIR, 'server.csr')} -subj "${subject}"`);
-
-        // Sign Server Cert with CA
-        await execPromise(`openssl x509 -req -in ${path.join(CERTS_DIR, 'server.csr')} -CA ${path.join(CERTS_DIR, 'ca.crt')} -CAkey ${path.join(CERTS_DIR, 'ca.key')} -CAcreateserial -out ${serverCrtPath} -days 365 -sha256`);
+        await execFilePromise('openssl', ['genrsa', '-out', serverKeyPath, '2048']);
+        await execFilePromise('openssl', [
+            'req', '-new', '-key', serverKeyPath,
+            '-out', serverCsrPath, '-subj', subject
+        ]);
+        await execFilePromise('openssl', [
+            'x509', '-req', '-in', serverCsrPath,
+            '-CA', path.join(CERTS_DIR, 'ca.crt'),
+            '-CAkey', path.join(CERTS_DIR, 'ca.key'),
+            '-CAcreateserial', '-out', serverCrtPath,
+            '-days', '365', '-sha256'
+        ]);
 
         return { success: true, message: 'Server Cert Generated' };
     } catch (error) {
@@ -69,20 +95,26 @@ async function generateServerCert(domain) {
 }
 
 async function generateClientCert(clientId) {
+    validateId(clientId, 'clientId');
+
     const subject = `/C=US/ST=State/L=City/O=MyOrg/OU=IoT/CN=${clientId}`;
     const clientKeyPath = path.join(CERTS_DIR, `${clientId}.key`);
     const clientCsrPath = path.join(CERTS_DIR, `${clientId}.csr`);
     const clientCrtPath = path.join(CERTS_DIR, `${clientId}.crt`);
 
     try {
-        // Generate Client Key
-        await execPromise(`openssl genrsa -out ${clientKeyPath} 2048`);
-
-        // Generate Client CSR
-        await execPromise(`openssl req -new -key ${clientKeyPath} -out ${clientCsrPath} -subj "${subject}"`);
-
-        // Sign Client Cert with CA
-        await execPromise(`openssl x509 -req -in ${clientCsrPath} -CA ${path.join(CERTS_DIR, 'ca.crt')} -CAkey ${path.join(CERTS_DIR, 'ca.key')} -CAcreateserial -out ${clientCrtPath} -days 365 -sha256`);
+        await execFilePromise('openssl', ['genrsa', '-out', clientKeyPath, '2048']);
+        await execFilePromise('openssl', [
+            'req', '-new', '-key', clientKeyPath,
+            '-out', clientCsrPath, '-subj', subject
+        ]);
+        await execFilePromise('openssl', [
+            'x509', '-req', '-in', clientCsrPath,
+            '-CA', path.join(CERTS_DIR, 'ca.crt'),
+            '-CAkey', path.join(CERTS_DIR, 'ca.key'),
+            '-CAcreateserial', '-out', clientCrtPath,
+            '-days', '365', '-sha256'
+        ]);
 
         return {
             success: true,
