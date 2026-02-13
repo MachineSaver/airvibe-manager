@@ -109,7 +109,8 @@ const WaveformChart: React.FC<WaveformChartProps> = ({ data, sampleRate }) => {
             },
             y: {
                 ticks: { color: '#94a3b8' },
-                grid: { color: '#334155' }
+                grid: { color: '#334155' },
+                title: { display: true, text: 'Acceleration (mg)', color: '#94a3b8' }
             }
         }
     };

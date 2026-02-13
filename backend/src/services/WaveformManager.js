@@ -1,7 +1,5 @@
 const { pool } = require('../db');
-
-// Helper to parse hex string to buffer
-const hexToBuffer = (hex) => Buffer.from(hex, 'hex');
+const codec = require('../codec/AirVibe_TS013_Codec');
 
 class WaveformManager {
     constructor() {
@@ -54,19 +52,20 @@ class WaveformManager {
     }
 
     async handleTWIU(devEui, txId, buffer) {
-        // Parse TWIU
-        // 03 [TxID] [SegNum(2)] [AxisSel] [Err] [NumSegs] [Filter] [SR(2)] [Samples(2)]
-        const numSegments = buffer[6];
-        const sampleRate = buffer.readUInt16BE(8);
-        const samplesPerAxis = buffer.readUInt16BE(10);
-        const axisSelection = buffer[4];
+        // Use canonical codec to parse TWIU packet
+        const { data } = codec.decodeUplink({ bytes: [...buffer], fPort: 8 });
 
         const metadata = {
-            sampleRate,
-            samplesPerAxis,
-            axisSelection,
-            numSegments
+            sampleRate: data.sampling_rate_hz,
+            samplesPerAxis: data.samples_per_axis,
+            axisSelection: data.axis_selection,
+            axisMask: buffer[4],
+            numSegments: data.number_of_segments,
+            hwFilter: data.hw_filter,
+            errorCode: data.error_code,
         };
+
+        const numSegments = data.number_of_segments;
 
         // Find existing pending waveform or create new
         let waveformId = await this.findPendingWaveformId(devEui, txId);
@@ -87,14 +86,19 @@ class WaveformManager {
 
         console.log(`TWIU received for ${devEui} TxID ${txId}`);
 
-        // Send ACK TWIU: 03 + TxID
-        const ackPayload = Buffer.from([0x03, txId]);
-        this.sendDownlink(devEui, 20, ackPayload);
+        // Send ACK via codec
+        const ackResult = codec.encodeDownlink({
+            fPort: 20,
+            data: { opcode: 'waveform_info_ack', transaction_id: txId }
+        });
+        this.sendDownlink(devEui, 20, Buffer.from(ackResult.bytes));
     }
 
     async handleDataSegment(devEui, txId, buffer, isLast) {
-        const segmentIndex = buffer.readUInt16BE(2);
-        const data = buffer.subarray(4); // Payload starts at byte 4
+        // Use canonical codec to parse data segment
+        const { data } = codec.decodeUplink({ bytes: [...buffer], fPort: 8 });
+        const segmentIndex = data.segment_number;
+        const payload = buffer.subarray(4); // Raw sample data starts at byte 4
 
         // Find or Create Waveform (if out of order)
         let waveformId = await this.findPendingWaveformId(devEui, txId);
@@ -114,7 +118,7 @@ class WaveformManager {
             VALUES ($1, $2, $3)
             ON CONFLICT (waveform_id, segment_index) DO NOTHING
             RETURNING segment_index
-        `, [waveformId, segmentIndex, data]);
+        `, [waveformId, segmentIndex, payload]);
 
         // Update last_updated and increment segment count if this was a new segment
         if (insertResult.rowCount > 0) {
@@ -160,31 +164,21 @@ class WaveformManager {
             await this.assembleWaveform(waveformId);
             console.log(`Waveform ${devEui} TxID ${txId} Complete!`);
 
-            // Send Data ACK: 01 + TxID
-            const ackPayload = Buffer.from([0x01, txId]);
-            this.sendDownlink(devEui, 20, ackPayload);
+            // Send Data ACK via codec
+            const ackResult = codec.encodeDownlink({
+                fPort: 20,
+                data: { opcode: 'waveform_data_ack', transaction_id: txId }
+            });
+            this.sendDownlink(devEui, 20, Buffer.from(ackResult.bytes));
         } else {
             console.log(`Waveform ${devEui} TxID ${txId} Missing ${missing.length} segments`);
-            // Request Missing
-            // Payload: 02 + [Indices]
-            const maxIndex = Math.max(...missing);
-            const useTwoBytes = maxIndex > 254;
-
-            const payloadLen = 1 + (missing.length * (useTwoBytes ? 2 : 1));
-            const payload = Buffer.alloc(payloadLen);
-            payload[0] = 0x02;
-
-            let offset = 1;
-            for (const idx of missing) {
-                if (useTwoBytes) {
-                    payload.writeUInt16BE(idx, offset);
-                    offset += 2;
-                } else {
-                    payload.writeUInt8(idx, offset);
-                    offset += 1;
-                }
-            }
-            this.sendDownlink(devEui, 21, payload);
+            // Request missing segments via codec
+            const maxIdx = Math.max(...missing);
+            const reqResult = codec.encodeDownlink({
+                fPort: 21,
+                data: { value_size_mode: maxIdx > 254 ? 1 : 0, segments: missing }
+            });
+            this.sendDownlink(devEui, 21, Buffer.from(reqResult.bytes));
         }
     }
 
@@ -259,8 +253,12 @@ class WaveformManager {
 
                 for (const row of res.rows) {
                     console.log(`Requesting missing TWIU for ${row.device_eui} TxID ${row.transaction_id}`);
-                    const payload = Buffer.from([0x00, 0x01]);
-                    this.sendDownlink(row.device_eui, 22, payload);
+                    // Request waveform info via codec (port 22, command: request_waveform_info)
+                    const result = codec.encodeDownlink({
+                        fPort: 22,
+                        data: { command_id: 'request_waveform_info', parameters: [] }
+                    });
+                    this.sendDownlink(row.device_eui, 22, Buffer.from(result.bytes));
 
                     await pool.query(`UPDATE waveforms SET last_updated = NOW() WHERE id = $1`, [row.id]);
                 }

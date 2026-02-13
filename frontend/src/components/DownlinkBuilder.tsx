@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { COMMAND_PRESETS } from '@/lib/commandPresets';
 
@@ -40,9 +40,29 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
 
-  // DevEUI Discovery — derived from messages
+  // DevEUI Discovery — API-based with message fallback
+  const [apiDevEuis, setApiDevEuis] = useState<string[]>([]);
+
+  const fetchDevices = useCallback(async () => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const res = await fetch(`${apiUrl}/api/devices`);
+      const data = await res.json();
+      setApiDevEuis(data.map((d: { dev_eui: string }) => d.dev_eui));
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(fetchDevices, 0);
+    const interval = setInterval(fetchDevices, 10000);
+    return () => { clearTimeout(timeout); clearInterval(interval); };
+  }, [fetchDevices]);
+
+  // Merge API devices with message-derived EUIs for immediate discovery
   const knownDevEuis = useMemo(() => {
-    const euis = new Set<string>();
+    const euis = new Set<string>(apiDevEuis);
     for (const msg of messages) {
       try {
         let payload: unknown = msg.payload;
@@ -64,7 +84,7 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
       }
     }
     return euis;
-  }, [messages]);
+  }, [apiDevEuis, messages]);
 
   const selectedPreset = useMemo(() =>
     COMMAND_PRESETS.find(p => p.name === selectedPresetName),

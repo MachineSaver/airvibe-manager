@@ -15,7 +15,11 @@ interface Waveform {
     metadata?: {
         sampleRate: number;
         samplesPerAxis: number;
-        axisSelection: number;
+        axisSelection: string;
+        axisMask: number;
+        numSegments: number;
+        hwFilter: string;
+        errorCode: number;
     };
     final_data?: { raw_hex: string };
     segments?: number[];
@@ -25,18 +29,18 @@ function processChartData(wf: Waveform): { axis1: number[], axis2: number[], axi
     if (!wf.final_data?.raw_hex || !wf.metadata) return null;
 
     const buffer = Buffer.from(wf.final_data.raw_hex, 'hex');
-    const { axisSelection } = wf.metadata;
+    const axisMask = wf.metadata.axisMask;
 
     const axis1: number[] = [];
     const axis2: number[] = [];
     const axis3: number[] = [];
 
-    const isTri = axisSelection === 0x07;
-    const isAxis1 = (axisSelection & 0x01) !== 0;
-    const isAxis2 = (axisSelection & 0x02) !== 0;
-    const isAxis3 = (axisSelection & 0x04) !== 0;
+    const isTri = axisMask === 0x07;
+    const isAxis1 = (axisMask & 0x01) !== 0;
+    const isAxis2 = (axisMask & 0x02) !== 0;
+    const isAxis3 = (axisMask & 0x04) !== 0;
 
-    const readInt16 = (buf: Buffer, off: number) => buf.readInt16BE(off);
+    const readInt16 = (buf: Buffer, off: number) => buf.readInt16LE(off);
 
     let offset = 0;
     while (offset < buffer.length) {
@@ -61,19 +65,38 @@ function processChartData(wf: Waveform): { axis1: number[], axis2: number[], axi
     return { axis1, axis2, axis3 };
 }
 
-function formatAxisName(axisSelection: number): string {
+function formatAxisLabel(axisSelection: string, axisMask: number): string {
     const axes: string[] = [];
-    if (axisSelection & 0x01) axes.push('Axis 1');
-    if (axisSelection & 0x02) axes.push('Axis 2');
-    if (axisSelection & 0x04) axes.push('Axis 3');
-    return `${axes.join(', ')} (0x${axisSelection.toString(16).padStart(2, '0')})`;
+    if (axisMask & 0x01) axes.push('Axis 1');
+    if (axisMask & 0x02) axes.push('Axis 2');
+    if (axisMask & 0x04) axes.push('Axis 3');
+    return `${axes.join(', ')} (${axisSelection})`;
+}
+
+interface Device {
+    dev_eui: string;
+    uplink_count: number;
+    downlink_count: number;
+    last_seen: string;
 }
 
 export default function WaveformsView() {
     const [waveforms, setWaveforms] = useState<Waveform[]>([]);
+    const [devices, setDevices] = useState<Device[]>([]);
+    const [filterEui, setFilterEui] = useState<string | null>(null);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedWaveform, setSelectedWaveform] = useState<Waveform | null>(null);
     const [chartData, setChartData] = useState<{ axis1: number[], axis2: number[], axis3: number[] } | null>(null);
+
+    const fetchDevices = useCallback(async () => {
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+            const res = await fetch(`${apiUrl}/api/devices`);
+            setDevices(await res.json());
+        } catch {
+            // silently ignore
+        }
+    }, []);
 
     const fetchWaveforms = useCallback(async () => {
         try {
@@ -110,6 +133,16 @@ export default function WaveformsView() {
     }, [fetchWaveforms]);
 
     useEffect(() => {
+        const timeout = setTimeout(fetchDevices, 0);
+        const interval = setInterval(fetchDevices, 5000);
+        return () => { clearTimeout(timeout); clearInterval(interval); };
+    }, [fetchDevices]);
+
+    const filteredWaveforms = filterEui
+        ? waveforms.filter(wf => wf.device_eui === filterEui)
+        : waveforms;
+
+    useEffect(() => {
         if (selectedId) {
             const timeout = setTimeout(() => fetchWaveformDetail(selectedId), 0);
             const interval = setInterval(() => fetchWaveformDetail(selectedId), 2000);
@@ -125,13 +158,42 @@ export default function WaveformsView() {
 
     return (
         <div className="flex h-full bg-[#1e1e1e] text-gray-300 font-sans overflow-hidden">
+            {/* Device Sidebar */}
+            <div className="w-48 border-r border-[#333] flex flex-col shrink-0">
+                <div className="p-3 border-b border-[#333] bg-[#252526]">
+                    <h2 className="text-xs font-semibold text-gray-200">Devices</h2>
+                </div>
+                <div className="overflow-y-auto flex-1 p-1.5 space-y-1">
+                    <button
+                        onClick={() => setFilterEui(null)}
+                        className={`w-full text-left px-2 py-1.5 rounded text-[10px] transition-colors ${filterEui === null ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50' : 'text-gray-400 hover:bg-[#2a2a2b]'}`}
+                    >
+                        All Devices ({devices.length})
+                    </button>
+                    {devices.map(d => (
+                        <button
+                            key={d.dev_eui}
+                            onClick={() => setFilterEui(d.dev_eui)}
+                            className={`w-full text-left px-2 py-1.5 rounded transition-colors ${filterEui === d.dev_eui ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50' : 'text-gray-400 hover:bg-[#2a2a2b] border border-transparent'}`}
+                        >
+                            <div className="font-mono text-[10px] truncate">{d.dev_eui}</div>
+                            <div className="flex gap-2 text-[9px] text-gray-500 mt-0.5">
+                                <span>↑{d.uplink_count}</span>
+                                <span>↓{d.downlink_count}</span>
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Transactions Panel */}
             <div className="w-1/3 border-r border-[#333] flex flex-col">
                 <div className="p-4 border-b border-[#333] bg-[#252526]">
                     <h2 className="text-sm font-semibold text-gray-200">Transactions</h2>
                 </div>
                 <div className="overflow-y-auto flex-1 p-2 space-y-2">
-                    {waveforms.length === 0 && <div className="text-gray-500 text-center mt-4 text-xs">No waveforms found.</div>}
-                    {waveforms.map(wf => (
+                    {filteredWaveforms.length === 0 && <div className="text-gray-500 text-center mt-4 text-xs">No waveforms found.</div>}
+                    {filteredWaveforms.map(wf => (
                         <div
                             key={wf.id}
                             onClick={() => setSelectedId(wf.id)}
@@ -177,18 +239,32 @@ export default function WaveformsView() {
                                     </div>
                                     <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Segments</div>
                                     {selectedWaveform.status === 'complete' && (
-                                        <button
-                                            onClick={() => {
-                                                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-                                                window.open(`${apiUrl}/api/waveforms/${selectedWaveform.id}/download`, '_blank');
-                                            }}
-                                            className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1 ml-auto"
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-                                                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-                                            </svg>
-                                            Download JSON
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+                                                    window.open(`${apiUrl}/api/waveforms/${selectedWaveform.id}/download`, '_blank');
+                                                }}
+                                                className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                </svg>
+                                                Download JSON
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+                                                    window.open(`${apiUrl}/api/waveforms/${selectedWaveform.id}/csv`, '_blank');
+                                                }}
+                                                className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                </svg>
+                                                Download CSV
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -205,7 +281,7 @@ export default function WaveformsView() {
                                     </div>
                                     <div>
                                         <div className="text-[10px] text-gray-500 mb-1">Axes</div>
-                                        <div className="font-mono text-gray-300 text-sm">{formatAxisName(selectedWaveform.metadata.axisSelection)}</div>
+                                        <div className="font-mono text-gray-300 text-sm">{formatAxisLabel(selectedWaveform.metadata.axisSelection, selectedWaveform.metadata.axisMask)}</div>
                                     </div>
                                 </div>
                             )}
@@ -216,6 +292,10 @@ export default function WaveformsView() {
                             <SegmentMap
                                 totalSegments={selectedWaveform.expected_segments || 0}
                                 receivedSegments={selectedWaveform.segments || []}
+                                finalSegmentSeen={
+                                    selectedWaveform.status === 'complete' ||
+                                    (selectedWaveform.segments || []).includes((selectedWaveform.expected_segments || 0) - 1)
+                                }
                             />
                         </div>
 

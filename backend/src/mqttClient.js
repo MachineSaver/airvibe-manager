@@ -1,4 +1,5 @@
 const mqtt = require('mqtt');
+const messageTracker = require('./services/MessageTracker');
 
 let client = null;
 
@@ -30,6 +31,7 @@ function connect(brokerUrl, io, onMessage) {
             payload: message.toString(),
             timestamp: new Date().toISOString()
         });
+        messageTracker.trackMessage(topic, message).catch(e => console.error('MessageTracker error:', e));
         if (onMessage) {
             try { onMessage(topic, message); } catch (e) { console.error('onMessage callback error:', e); }
         }
