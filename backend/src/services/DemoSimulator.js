@@ -246,3 +246,4 @@ class DemoSimulator {
 }
 
 module.exports = new DemoSimulator();
+module.exports.WAVEFORM_PACKETS = WAVEFORM_PACKETS;

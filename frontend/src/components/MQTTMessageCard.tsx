@@ -15,7 +15,7 @@ const MQTTMessageCard: React.FC<MQTTMessageCardProps> = ({ topic, payload, times
     let jsonPayload = null;
     try {
         jsonPayload = JSON.parse(payload);
-    } catch (e) {
+    } catch {
         // Not JSON
     }
 

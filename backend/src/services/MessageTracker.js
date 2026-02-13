@@ -65,7 +65,7 @@ class MessageTracker {
     }
 
     startRetentionCleanup() {
-        setInterval(async () => {
+        const timer = setInterval(async () => {
             try {
                 const res = await pool.query(
                     `DELETE FROM messages WHERE received_at < NOW() - INTERVAL '30 days'`
@@ -77,6 +77,7 @@ class MessageTracker {
                 console.error('MessageTracker retention cleanup error:', err.message);
             }
         }, 24 * 60 * 60 * 1000); // Every 24 hours
+        timer.unref(); // Don't prevent process exit (e.g. during tests)
     }
 }
 

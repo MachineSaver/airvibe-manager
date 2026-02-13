@@ -25,14 +25,14 @@ const WAVEFORM_PACKETS = [
     '03190000070a0081204e420008',                                                                                           // TWIU
     '011900000600a60209000900440207000700ca0103000600350101000700930005000500f1ffffff050050fff9ff',                         // TWD 0
     '011901000100b8fef7ff0000dbfdf6fffdff94fdf7ff02007afdfbff050089fdfaff0300b9fdf6fffeff11fef8ff',                       // TWD 1
-    '011902000f9ff8afef9fff9ff19fffcfff4ffafff0100f3ff53000500fafff8001200ffff90010f00fcff8b020d00',                     // TWD 2
-    '011903000fbffd3020c00fffff5020d00fcffed020d000000c502080005001202070008008d0100000d00eb000000',                     // TWD 3
-    '011904000800400003000500a9fff0000040002fffdff030076fef4ff010003fef2ff0500b1fdfaff090081fdfdff',                     // TWD 4
-    '011905000800a9afd5ff0400e0fdf4ff000045fefafffaffc6fefefffbff5efffdfff8fffffffefff9ffa700fdff',                     // TWD 5
-    '011906000fff490101000000db010300ffffb6020100fefff10205000200040305000500e6020200ffffab020300',                       // TWD 6
-    '011907000000cf0107000400cf01090007003f0105000300faffffff030057ff00000800c1fe000003003cfefdff',                       // TWD 7
-    '011908000000d8fdf6ffffff98fdf7fffcff78fdfffffdff87fdf7fff9ff0ffefefff8ff85fefdfff4ff0eff0000',                       // TWD 8
-    '051909000f4ffacff0300f9ff4e000200fcffee000800',                                                                       // TWF 9
+    '01190200f9ff8afef9fff9ff19fffcfff4ffafff0100f3ff53000500fafff8001200ffff90010f00fcff8b020d00',                      // TWD 2
+    '01190300fbffd3020c00fffff5020d00fcffed020d000000c502080005001202070008008d0100000d00eb000000',                      // TWD 3
+    '0119040008004000030005009fff0000040002fffdff030076fef4ff010003fef2ff0500b1fdfaff090081fdfdff',                      // TWD 4
+    '0119050008009afdf5ff0400e0fdf4ff000045fefafffaffc6fefefffbff5efffdfff8fffffffefff9ffa700fdff',                      // TWD 5
+    '01190600ffff490101000000db010300ffffb6020100fefff10205000200040305000500e6020200ffffab020300',                      // TWD 6
+    '011907000000cf0107000400cf01090007003f0105000300faffffff030057ff00000800c1fe000003003cfefdff',                      // TWD 7
+    '011908000000d8fdf6ffffff98fdf7fffcff78fdfffffdff87fdf7fff9ff0ffefefff8ff85fefdfff4ff0eff0000',                      // TWD 8
+    '05190900f4ffacff0300f9ff4e000200fcffee000800',                                                                       // TWF 9
 ];
 
 const OVERALL_PAYLOAD_HEX = '020000da9a631400150013000a000f000d00';

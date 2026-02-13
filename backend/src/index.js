@@ -8,6 +8,7 @@ const pki = require('./pki');
 const { connectWithRetry, pool } = require('./db');
 const waveformManager = require('./services/WaveformManager');
 const demoSimulator = require('./services/DemoSimulator');
+const { deinterleaveWaveform } = require('./utils/deinterleave');
 
 dotenv.config();
 
@@ -80,34 +81,15 @@ app.post('/api/certs/client', async (req, res) => {
     }
 });
 
-// Deinterleave raw hex waveform data into per-axis int16 sample arrays
-function deinterleaveWaveform(rawHex, axisMask) {
-    const buf = Buffer.from(rawHex, 'hex');
-    const isTri = axisMask === 0x07;
-    const isAxis1 = (axisMask & 0x01) !== 0;
-    const isAxis2 = (axisMask & 0x02) !== 0;
-    const isAxis3 = (axisMask & 0x04) !== 0;
-
-    const axis1 = [], axis2 = [], axis3 = [];
-    let offset = 0;
-    while (offset < buf.length) {
-        if (isTri) {
-            if (offset + 6 > buf.length) break;
-            axis1.push(buf.readInt16LE(offset));
-            axis2.push(buf.readInt16LE(offset + 2));
-            axis3.push(buf.readInt16LE(offset + 4));
-            offset += 6;
-        } else {
-            if (offset + 2 > buf.length) break;
-            const val = buf.readInt16LE(offset);
-            if (isAxis1) axis1.push(val);
-            else if (isAxis2) axis2.push(val);
-            else if (isAxis3) axis3.push(val);
-            offset += 2;
-        }
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+    try {
+        await pool.query('SELECT 1');
+        res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
+    } catch (err) {
+        res.status(503).json({ status: 'error', db: 'disconnected', error: err.message });
     }
-    return { axis1, axis2, axis3, isAxis1, isAxis2, isAxis3 };
-}
+});
 
 // Waveform API endpoints
 app.get('/api/waveforms', async (req, res) => {
