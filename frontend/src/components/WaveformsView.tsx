@@ -142,10 +142,21 @@ export default function WaveformsView() {
         ? waveforms.filter(wf => wf.device_eui === filterEui)
         : waveforms;
 
+    // Auto-select: when a device filter is active and no valid selection exists, pick the most recent
+    const effectiveSelectedId = (() => {
+        if (filterEui) {
+            const hasValidSelection = selectedId && filteredWaveforms.some(wf => wf.id === selectedId);
+            if (!hasValidSelection) {
+                return filteredWaveforms.length > 0 ? filteredWaveforms[0].id : null;
+            }
+        }
+        return selectedId;
+    })();
+
     useEffect(() => {
-        if (selectedId) {
-            const timeout = setTimeout(() => fetchWaveformDetail(selectedId), 0);
-            const interval = setInterval(() => fetchWaveformDetail(selectedId), 2000);
+        if (effectiveSelectedId) {
+            const timeout = setTimeout(() => fetchWaveformDetail(effectiveSelectedId), 0);
+            const interval = setInterval(() => fetchWaveformDetail(effectiveSelectedId), 2000);
             return () => { clearTimeout(timeout); clearInterval(interval); };
         } else {
             const timeout = setTimeout(() => {
@@ -154,7 +165,7 @@ export default function WaveformsView() {
             }, 0);
             return () => clearTimeout(timeout);
         }
-    }, [selectedId, fetchWaveformDetail]);
+    }, [effectiveSelectedId, fetchWaveformDetail]);
 
     return (
         <div className="flex h-full bg-[#1e1e1e] text-gray-300 font-sans overflow-hidden">
@@ -197,11 +208,11 @@ export default function WaveformsView() {
                         <div
                             key={wf.id}
                             onClick={() => setSelectedId(wf.id)}
-                            className={`p-3 rounded cursor-pointer transition-colors ${selectedId === wf.id ? 'bg-[#37373d] border border-blue-500/50' : 'bg-[#252526] border border-[#333] hover:bg-[#2a2a2b]'}`}
+                            className={`p-3 rounded cursor-pointer transition-colors ${effectiveSelectedId === wf.id ? 'bg-[#37373d] border border-blue-500/50' : 'bg-[#252526] border border-[#333] hover:bg-[#2a2a2b]'}`}
                         >
                             <div className="flex justify-between items-start mb-1">
                                 <span className="font-mono text-blue-400 font-bold text-xs">#{wf.transaction_id}</span>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full uppercase ${wf.status === 'complete' ? 'bg-green-900/50 text-green-400' : 'bg-yellow-900/50 text-yellow-400'}`}>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full uppercase ${wf.status === 'complete' ? 'bg-green-900/50 text-green-400' : wf.status === 'aborted' ? 'bg-red-900/50 text-red-400' : 'bg-yellow-900/50 text-yellow-400'}`}>
                                     {wf.status}
                                 </span>
                             </div>

@@ -51,7 +51,26 @@ class WaveformManager {
         }
     }
 
+    async abortStalePendingWaveforms(devEui, newTxId) {
+        const res = await pool.query(
+            `SELECT id, transaction_id FROM waveforms WHERE device_eui = $1 AND status = 'pending'`,
+            [devEui]
+        );
+        for (const row of res.rows) {
+            const distance = (newTxId - row.transaction_id + 256) % 256;
+            // distance 1-128 means newTxId is ahead → abort the old one
+            // distance 0 is same TxID (handled separately), 129-255 means stale retransmit
+            if (distance >= 1 && distance <= 128) {
+                await pool.query(`UPDATE waveforms SET status = 'aborted' WHERE id = $1`, [row.id]);
+                console.log(`Aborted stale waveform ${row.id} (TxID ${row.transaction_id}) for ${devEui}, superseded by TxID ${newTxId}`);
+            }
+        }
+    }
+
     async handleTWIU(devEui, txId, buffer) {
+        // Abort any pending waveforms with older transaction IDs
+        await this.abortStalePendingWaveforms(devEui, txId);
+
         // Use canonical codec to parse TWIU packet
         const { data } = codec.decodeUplink({ bytes: [...buffer], fPort: 8 });
 
@@ -69,6 +88,17 @@ class WaveformManager {
 
         // Find existing pending waveform or create new
         let waveformId = await this.findPendingWaveformId(devEui, txId);
+
+        if (waveformId) {
+            // If this waveform already has metadata, it's a TxID reuse (rollover cycle).
+            // Abort the old one and create a fresh row.
+            const existing = await pool.query(`SELECT metadata FROM waveforms WHERE id = $1`, [waveformId]);
+            if (existing.rows[0]?.metadata) {
+                await pool.query(`UPDATE waveforms SET status = 'aborted' WHERE id = $1`, [waveformId]);
+                console.log(`Aborted reused TxID ${txId} waveform ${waveformId} for ${devEui}, creating fresh row`);
+                waveformId = null;
+            }
+        }
 
         if (waveformId) {
             await pool.query(`
@@ -95,6 +125,9 @@ class WaveformManager {
     }
 
     async handleDataSegment(devEui, txId, buffer, isLast) {
+        // Abort any pending waveforms with older transaction IDs
+        await this.abortStalePendingWaveforms(devEui, txId);
+
         // Use canonical codec to parse data segment
         const { data } = codec.decodeUplink({ bytes: [...buffer], fPort: 8 });
         const segmentIndex = data.segment_number;
@@ -178,7 +211,7 @@ class WaveformManager {
                 fPort: 21,
                 data: { value_size_mode: maxIdx > 254 ? 1 : 0, segments: missing }
             });
-            this.sendDownlink(devEui, 21, Buffer.from(reqResult.bytes));
+            this.sendAutoDownlink(devEui, 21, Buffer.from(reqResult.bytes));
         }
     }
 
@@ -206,6 +239,30 @@ class WaveformManager {
             LIMIT 1
         `, [devEui, txId]);
         return res.rows[0]?.id;
+    }
+
+    canSendAutoDownlink(devEui) {
+        const now = Date.now();
+        const timestamps = this.lastDownlinkTimes.get(devEui) || [];
+        // Prune timestamps older than 60s
+        const recent = timestamps.filter(t => now - t < 60000);
+        this.lastDownlinkTimes.set(devEui, recent);
+        return recent.length < 2;
+    }
+
+    recordAutoDownlink(devEui) {
+        const timestamps = this.lastDownlinkTimes.get(devEui) || [];
+        timestamps.push(Date.now());
+        this.lastDownlinkTimes.set(devEui, timestamps);
+    }
+
+    sendAutoDownlink(devEui, port, payload) {
+        if (!this.canSendAutoDownlink(devEui)) {
+            console.log(`Rate-limited: skipping automated downlink for ${devEui} (max 2/min)`);
+            return;
+        }
+        this.recordAutoDownlink(devEui);
+        this.sendDownlink(devEui, port, payload);
     }
 
     sendDownlink(devEui, port, payload) {
@@ -258,7 +315,7 @@ class WaveformManager {
                         fPort: 22,
                         data: { command_id: 'request_waveform_info', parameters: [] }
                     });
-                    this.sendDownlink(row.device_eui, 22, Buffer.from(result.bytes));
+                    this.sendAutoDownlink(row.device_eui, 22, Buffer.from(result.bytes));
 
                     await pool.query(`UPDATE waveforms SET last_updated = NOW() WHERE id = $1`, [row.id]);
                 }

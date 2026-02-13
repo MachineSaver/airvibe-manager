@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS waveforms (
     session_id VARCHAR(100) GENERATED ALWAYS AS (device_eui || '_' || transaction_id) STORED, -- Logical grouping
     start_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    status VARCHAR(20) DEFAULT 'pending', -- pending, complete, failed
+    status VARCHAR(20) DEFAULT 'pending', -- pending, complete, failed, aborted
     expected_segments INTEGER,
     received_segments_count INTEGER DEFAULT 0,
     metadata JSONB, -- Sample rate, axis config, etc.
