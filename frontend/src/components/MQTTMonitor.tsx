@@ -98,7 +98,7 @@ export default function MQTTMonitor({ messages }: MQTTMonitorProps) {
     <div className="overflow-auto p-4 space-y-2">
       {/* Stats Banner */}
       {stats && (
-        <div className="flex gap-4 mb-2 p-3 bg-[#252526] rounded border border-[#333] text-xs">
+        <div className="flex flex-wrap gap-4 mb-2 p-3 bg-[#252526] rounded border border-[#333] text-xs">
           <div className="flex items-center gap-1.5">
             <span className="text-gray-500">Devices</span>
             <span className="font-mono text-blue-400 font-bold">{stats.total_devices}</span>
@@ -134,7 +134,7 @@ export default function MQTTMonitor({ messages }: MQTTMonitorProps) {
 
         {demo.running ? (
           <div className="mt-2 space-y-2">
-            <div className="flex items-center gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                 <span className="text-green-400 font-semibold">Running</span>
@@ -178,7 +178,7 @@ export default function MQTTMonitor({ messages }: MQTTMonitorProps) {
             </button>
           </div>
         ) : (
-          <div className="mt-2 flex items-center gap-3">
+          <div className="mt-2 flex flex-wrap items-center gap-3">
             <button
               onClick={startDemo}
               className="px-3 py-1.5 bg-green-600/80 hover:bg-green-600 text-white text-xs rounded transition-colors font-medium"

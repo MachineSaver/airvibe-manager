@@ -83,7 +83,8 @@ interface Device {
 export default function WaveformsView() {
     const [waveforms, setWaveforms] = useState<Waveform[]>([]);
     const [devices, setDevices] = useState<Device[]>([]);
-    const [filterEui, setFilterEui] = useState<string | null>(null);
+    const [selectedEui, setSelectedEui] = useState<string | null>(null);
+    const [expandedEui, setExpandedEui] = useState<string | null>(null);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedWaveform, setSelectedWaveform] = useState<Waveform | null>(null);
     const [chartData, setChartData] = useState<{ axis1: number[], axis2: number[], axis3: number[] } | null>(null);
@@ -138,19 +139,20 @@ export default function WaveformsView() {
         return () => { clearTimeout(timeout); clearInterval(interval); };
     }, [fetchDevices]);
 
-    const filteredWaveforms = filterEui
-        ? waveforms.filter(wf => wf.device_eui === filterEui)
-        : waveforms;
-
-    // Auto-select: when a device filter is active and no valid selection exists, pick the most recent
+    // Derive effective selected ID: if a device is selected but no explicit transaction
+    // was picked, auto-select the best one (active > most recent)
     const effectiveSelectedId = (() => {
-        if (filterEui) {
-            const hasValidSelection = selectedId && filteredWaveforms.some(wf => wf.id === selectedId);
-            if (!hasValidSelection) {
-                return filteredWaveforms.length > 0 ? filteredWaveforms[0].id : null;
-            }
+        if (selectedId) {
+            // Validate that selectedId still belongs to the selected device (or no device filter)
+            if (!selectedEui) return selectedId;
+            const wf = waveforms.find(w => w.id === selectedId);
+            if (wf && wf.device_eui === selectedEui) return selectedId;
         }
-        return selectedId;
+        if (!selectedEui) return null;
+        const deviceWaveforms = waveforms.filter(wf => wf.device_eui === selectedEui);
+        if (deviceWaveforms.length === 0) return null;
+        const active = deviceWaveforms.find(wf => wf.status !== 'complete' && wf.status !== 'aborted');
+        return active ? active.id : deviceWaveforms[0].id;
     })();
 
     useEffect(() => {
@@ -167,79 +169,114 @@ export default function WaveformsView() {
         }
     }, [effectiveSelectedId, fetchWaveformDetail]);
 
+    const handleDeviceClick = (devEui: string) => {
+        setSelectedEui(devEui);
+        setSelectedId(null); // Reset so auto-select picks the best transaction
+    };
+
+    const handleChevronClick = (e: React.MouseEvent, devEui: string) => {
+        e.stopPropagation();
+        setExpandedEui(prev => prev === devEui ? null : devEui);
+    };
+
+    const handleTransactionClick = (wfId: string) => {
+        setSelectedId(wfId);
+    };
+
     return (
-        <div className="flex h-full bg-[#1e1e1e] text-gray-300 font-sans overflow-hidden">
+        <div className="flex flex-col md:flex-row h-full bg-[#1e1e1e] text-gray-300 font-sans overflow-hidden">
             {/* Device Sidebar */}
-            <div className="w-48 border-r border-[#333] flex flex-col shrink-0">
+            <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-[#333] flex flex-col shrink-0 max-h-64 md:max-h-none">
                 <div className="p-3 border-b border-[#333] bg-[#252526]">
                     <h2 className="text-xs font-semibold text-gray-200">Devices</h2>
                 </div>
                 <div className="overflow-y-auto flex-1 p-1.5 space-y-1">
-                    <button
-                        onClick={() => setFilterEui(null)}
-                        className={`w-full text-left px-2 py-1.5 rounded text-[10px] transition-colors ${filterEui === null ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50' : 'text-gray-400 hover:bg-[#2a2a2b]'}`}
-                    >
-                        All Devices ({devices.length})
-                    </button>
-                    {devices.map(d => (
-                        <button
-                            key={d.dev_eui}
-                            onClick={() => setFilterEui(d.dev_eui)}
-                            className={`w-full text-left px-2 py-1.5 rounded transition-colors ${filterEui === d.dev_eui ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50' : 'text-gray-400 hover:bg-[#2a2a2b] border border-transparent'}`}
-                        >
-                            <div className="font-mono text-[10px] truncate">{d.dev_eui}</div>
-                            <div className="flex gap-2 text-[9px] text-gray-500 mt-0.5">
-                                <span>↑{d.uplink_count}</span>
-                                <span>↓{d.downlink_count}</span>
-                            </div>
-                        </button>
-                    ))}
-                </div>
-            </div>
+                    {devices.length === 0 && (
+                        <div className="text-gray-500 text-center mt-4 text-xs">No devices found.</div>
+                    )}
+                    {devices.map(d => {
+                        const isSelected = selectedEui === d.dev_eui;
+                        const isExpanded = expandedEui === d.dev_eui;
+                        const deviceWaveforms = waveforms.filter(wf => wf.device_eui === d.dev_eui);
 
-            {/* Transactions Panel */}
-            <div className="w-1/3 border-r border-[#333] flex flex-col">
-                <div className="p-4 border-b border-[#333] bg-[#252526]">
-                    <h2 className="text-sm font-semibold text-gray-200">Transactions</h2>
-                </div>
-                <div className="overflow-y-auto flex-1 p-2 space-y-2">
-                    {filteredWaveforms.length === 0 && <div className="text-gray-500 text-center mt-4 text-xs">No waveforms found.</div>}
-                    {filteredWaveforms.map(wf => (
-                        <div
-                            key={wf.id}
-                            onClick={() => setSelectedId(wf.id)}
-                            className={`p-3 rounded cursor-pointer transition-colors ${effectiveSelectedId === wf.id ? 'bg-[#37373d] border border-blue-500/50' : 'bg-[#252526] border border-[#333] hover:bg-[#2a2a2b]'}`}
-                        >
-                            <div className="flex justify-between items-start mb-1">
-                                <span className="font-mono text-blue-400 font-bold text-xs">#{wf.transaction_id}</span>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full uppercase ${wf.status === 'complete' ? 'bg-green-900/50 text-green-400' : wf.status === 'aborted' ? 'bg-red-900/50 text-red-400' : 'bg-yellow-900/50 text-yellow-400'}`}>
-                                    {wf.status}
-                                </span>
-                            </div>
-                            <div className="text-[10px] text-gray-500 mb-2">
-                                DevEUI: <span className="font-mono text-gray-400">{wf.device_eui}</span>
-                            </div>
-                            <div className="w-full bg-[#1e1e1e] rounded-full h-1 overflow-hidden">
+                        return (
+                            <div key={d.dev_eui}>
+                                {/* Device card row */}
                                 <div
-                                    className="bg-blue-500 h-full transition-all duration-500"
-                                    style={{ width: `${(wf.received_segments_count / (wf.expected_segments || 1)) * 100}%` }}
-                                />
+                                    onClick={() => handleDeviceClick(d.dev_eui)}
+                                    className={`flex items-center cursor-pointer rounded transition-colors ${isSelected ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50' : 'text-gray-400 hover:bg-[#2a2a2b] border border-transparent'}`}
+                                >
+                                    <div className="flex-1 px-2 py-1.5 min-w-0">
+                                        <div className="font-mono text-[10px] truncate">{d.dev_eui}</div>
+                                        <div className="flex gap-2 text-[9px] text-gray-500 mt-0.5">
+                                            <span>↑{d.uplink_count}</span>
+                                            <span>↓{d.downlink_count}</span>
+                                        </div>
+                                    </div>
+                                    {/* Chevron toggle */}
+                                    {deviceWaveforms.length > 0 && (
+                                        <button
+                                            onClick={(e) => handleChevronClick(e, d.dev_eui)}
+                                            className="flex items-center justify-center min-w-[44px] min-h-[44px] shrink-0 text-gray-500 hover:text-gray-300 transition-colors"
+                                            aria-label={isExpanded ? 'Collapse transactions' : 'Expand transactions'}
+                                        >
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                                                viewBox="0 0 20 20"
+                                                fill="currentColor"
+                                            >
+                                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                            </svg>
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Expanded transaction history */}
+                                {isExpanded && (
+                                    <div className="pl-3 space-y-1 mt-1 max-h-[280px] overflow-y-auto">
+                                        {deviceWaveforms.length === 0 && (
+                                            <div className="text-gray-500 text-[10px] px-2 py-1">No transactions</div>
+                                        )}
+                                        {deviceWaveforms.map(wf => (
+                                            <div
+                                                key={wf.id}
+                                                onClick={() => handleTransactionClick(wf.id)}
+                                                className={`px-2 py-1.5 rounded cursor-pointer transition-colors ${effectiveSelectedId === wf.id ? 'bg-[#37373d] border border-blue-500/50' : 'bg-[#252526] border border-[#333] hover:bg-[#2a2a2b]'}`}
+                                            >
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-mono text-blue-400 font-bold text-[10px]">#{wf.transaction_id}</span>
+                                                    <span className={`text-[9px] px-1 py-0.5 rounded-full uppercase ${wf.status === 'complete' ? 'bg-green-900/50 text-green-400' : wf.status === 'aborted' ? 'bg-red-900/50 text-red-400' : 'bg-yellow-900/50 text-yellow-400'}`}>
+                                                        {wf.status}
+                                                    </span>
+                                                </div>
+                                                <div className="w-full bg-[#1e1e1e] rounded-full h-1 overflow-hidden mt-1">
+                                                    <div
+                                                        className="bg-blue-500 h-full transition-all duration-500"
+                                                        style={{ width: `${(wf.received_segments_count / (wf.expected_segments || 1)) * 100}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 
+            {/* Detail Panel */}
             <div className="flex-1 flex flex-col overflow-y-auto p-6 gap-6">
                 {selectedWaveform ? (
                     <>
                         <div className="bg-[#252526] rounded border border-[#333] p-6">
-                            <div className="flex justify-between items-start">
+                            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                                 <div>
                                     <h1 className="text-xl font-bold text-white mb-1">
                                         Transaction #{selectedWaveform.transaction_id}
                                     </h1>
-                                    <div className="flex gap-4 text-xs text-gray-400">
+                                    <div className="flex flex-wrap gap-4 text-xs text-gray-400">
                                         <span>DevEUI: <span className="font-mono text-gray-300">{selectedWaveform.device_eui}</span></span>
                                         <span>Started: {new Date(selectedWaveform.start_time).toLocaleTimeString()}</span>
                                     </div>
@@ -250,7 +287,7 @@ export default function WaveformsView() {
                                     </div>
                                     <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Segments</div>
                                     {selectedWaveform.status === 'complete' && (
-                                        <div className="flex gap-2">
+                                        <div className="flex flex-wrap gap-2">
                                             <button
                                                 onClick={() => {
                                                     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -281,7 +318,7 @@ export default function WaveformsView() {
                             </div>
 
                             {selectedWaveform.metadata && (
-                                <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-[#333]">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-[#333]">
                                     <div>
                                         <div className="text-[10px] text-gray-500 mb-1">Sample Rate</div>
                                         <div className="font-mono text-gray-300 text-sm">{selectedWaveform.metadata.sampleRate} Hz</div>
@@ -326,7 +363,7 @@ export default function WaveformsView() {
                     </>
                 ) : (
                     <div className="h-full flex items-center justify-center text-gray-500 text-sm">
-                        Select a transaction to view details
+                        Select a device to view details
                     </div>
                 )}
             </div>

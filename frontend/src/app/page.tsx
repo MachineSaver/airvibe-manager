@@ -70,7 +70,7 @@ function AppContent() {
         {/* View Content */}
         <div className="flex-1 overflow-hidden relative">
           {activeView === 'mqtt' && (
-            <div className="absolute inset-0 grid grid-cols-2 divide-x divide-[#333]">
+            <div className="absolute inset-0 grid grid-cols-1 md:grid-cols-2 md:divide-x divide-[#333]">
               <MQTTMonitor messages={messages} />
               <DownlinkBuilder socket={socket} messages={messages} />
             </div>
