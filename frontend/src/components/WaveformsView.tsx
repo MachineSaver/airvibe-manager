@@ -23,6 +23,7 @@ interface Waveform {
     };
     final_data?: { raw_hex: string };
     segments?: number[];
+    requested_segments?: number[];
 }
 
 function processChartData(wf: Waveform): { axis1: number[], axis2: number[], axis3: number[] } | null {
@@ -179,7 +180,8 @@ export default function WaveformsView() {
         setExpandedEui(prev => prev === devEui ? null : devEui);
     };
 
-    const handleTransactionClick = (wfId: string) => {
+    const handleTransactionClick = (wfId: string, devEui: string) => {
+        setSelectedEui(devEui);
         setSelectedId(wfId);
     };
 
@@ -241,7 +243,7 @@ export default function WaveformsView() {
                                         {deviceWaveforms.map(wf => (
                                             <div
                                                 key={wf.id}
-                                                onClick={() => handleTransactionClick(wf.id)}
+                                                onClick={() => handleTransactionClick(wf.id, d.dev_eui)}
                                                 className={`px-2 py-1.5 rounded cursor-pointer transition-colors ${effectiveSelectedId === wf.id ? 'bg-[#37373d] border border-blue-500/50' : 'bg-[#252526] border border-[#333] hover:bg-[#2a2a2b]'}`}
                                             >
                                                 <div className="flex justify-between items-center">
@@ -340,6 +342,7 @@ export default function WaveformsView() {
                             <SegmentMap
                                 totalSegments={selectedWaveform.expected_segments || 0}
                                 receivedSegments={selectedWaveform.segments || []}
+                                missingRequested={selectedWaveform.requested_segments || []}
                                 finalSegmentSeen={
                                     selectedWaveform.status === 'complete' ||
                                     (selectedWaveform.segments || []).includes((selectedWaveform.expected_segments || 0) - 1)

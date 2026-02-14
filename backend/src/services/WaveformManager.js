@@ -212,6 +212,11 @@ class WaveformManager {
                 data: { value_size_mode: maxIdx > 254 ? 1 : 0, segments: missing }
             });
             this.sendAutoDownlink(devEui, 21, Buffer.from(reqResult.bytes));
+
+            // Track which segments were requested
+            await pool.query(`
+                UPDATE waveforms SET requested_segments = $1 WHERE id = $2
+            `, [JSON.stringify(missing), waveformId]);
         }
     }
 

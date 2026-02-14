@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS waveforms (
     -- For active ingestion, we query for status='pending' AND device_eui AND transaction_id.
 );
 
+-- Add requested_segments column (safe for existing databases)
+ALTER TABLE waveforms ADD COLUMN IF NOT EXISTS requested_segments JSONB DEFAULT '[]';
+
 -- Index for fast lookups of active transactions
 CREATE INDEX IF NOT EXISTS idx_waveforms_active ON waveforms(device_eui, transaction_id) WHERE status = 'pending';
 
