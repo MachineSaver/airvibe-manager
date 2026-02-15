@@ -478,30 +478,30 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
               />
             </div>
           </div>
-        </div>
 
-        {/* Downlink Options */}
-        <div className="bg-[#252526] p-4 rounded border border-[#333]">
-          <h3 className="text-xs font-semibold text-green-500 uppercase mb-3">Options</h3>
-          <div className="space-y-2">
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isConfirmed}
-                onChange={(e) => setIsConfirmed(e.target.checked)}
-                className="form-checkbox h-3 w-3 text-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded focus:ring-0 focus:ring-offset-0"
-              />
-              <span className="text-[10px] text-gray-300">Send as Confirmed Downlink</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={flushQueue}
-                onChange={(e) => setFlushQueue(e.target.checked)}
-                className="form-checkbox h-3 w-3 text-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded focus:ring-0 focus:ring-offset-0"
-              />
-              <span className="text-[10px] text-gray-300">Flush Downlink Queue</span>
-            </label>
+          {/* Downlink Options */}
+          <div className="mt-4 pt-3 border-t border-[#3e3e42]">
+            <h3 className="text-[10px] text-gray-500 mb-2 uppercase">Options</h3>
+            <div className="flex gap-6">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isConfirmed}
+                  onChange={(e) => setIsConfirmed(e.target.checked)}
+                  className="h-3 w-3 accent-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded"
+                />
+                <span className="text-[10px] text-gray-300">Confirmed Downlink</span>
+              </label>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={flushQueue}
+                  onChange={(e) => setFlushQueue(e.target.checked)}
+                  className="h-3 w-3 accent-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded"
+                />
+                <span className="text-[10px] text-gray-300">Flush Downlink Queue</span>
+              </label>
+            </div>
           </div>
         </div>
 
