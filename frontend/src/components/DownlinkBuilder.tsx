@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { COMMAND_PRESETS } from '@/lib/commandPresets';
+import { encodeDownlink, bytesToHex } from '@/lib/codec';
 
 const CopyIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -39,6 +40,10 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
   const [inputFormat, setInputFormat] = useState<'hex' | 'decimal'>('hex');
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
+
+  // Codec JSON editor state — tracks which preset last initialized the text
+  const [codecJsonText, setCodecJsonText] = useState('');
+  const [lastCodecPreset, setLastCodecPreset] = useState<string>('');
 
   // DevEUI Discovery — API-based with message fallback
   const [apiDevEuis, setApiDevEuis] = useState<string[]>([]);
@@ -90,6 +95,32 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
     COMMAND_PRESETS.find(p => p.name === selectedPresetName),
     [selectedPresetName]);
 
+  // Initialize codec JSON text when a new codec preset is selected
+  if (selectedPreset?.type === 'codec' && selectedPreset.codecInput && selectedPresetName !== lastCodecPreset) {
+    setCodecJsonText(JSON.stringify(selectedPreset.codecInput, null, 2));
+    setLastCodecPreset(selectedPresetName);
+  } else if (selectedPresetName !== lastCodecPreset) {
+    setLastCodecPreset(selectedPresetName);
+  }
+
+  // Codec encoding result (derived from codecJsonText)
+  const codecResult = useMemo(() => {
+    if (!selectedPreset || selectedPreset.type !== 'codec') return null;
+
+    try {
+      const parsed = JSON.parse(codecJsonText);
+      const result = encodeDownlink({ fPort: selectedPreset.fPort, data: parsed });
+      return result;
+    } catch (e) {
+      return {
+        fPort: selectedPreset.fPort,
+        bytes: [] as number[],
+        errors: [(e as Error).message],
+        warnings: [] as string[]
+      };
+    }
+  }, [selectedPreset, codecJsonText]);
+
   // Missed segments validation (derived state, not an effect)
   const missedSegError = useMemo(() => {
     if (!missedSegIndices) return null;
@@ -134,6 +165,13 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
   const currentPayloadHex = useMemo(() => {
     if (!selectedPreset) return customPayload;
 
+    if (selectedPreset.type === 'codec') {
+      if (codecResult && codecResult.errors.length === 0 && codecResult.bytes.length > 0) {
+        return bytesToHex(codecResult.bytes);
+      }
+      return '';
+    }
+
     if (selectedPreset.type === 'simple') {
       return selectedPreset.staticPayload || '';
     }
@@ -168,7 +206,7 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
     }
 
     return '';
-  }, [selectedPreset, customPayload, waveformTxId, missedSegSize, missedSegIndices, inputFormat]);
+  }, [selectedPreset, customPayload, waveformTxId, missedSegSize, missedSegIndices, inputFormat, codecResult]);
 
   const currentFPort = useMemo(() => {
     return selectedPreset ? selectedPreset.fPort.toString() : customFPort;
@@ -297,6 +335,34 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
               <p className="text-[10px] text-gray-400 mt-1 italic">{selectedPreset.notes}</p>
             )}
           </div>
+
+          {/* Codec JSON Editor */}
+          {selectedPreset?.type === 'codec' && (
+            <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42]">
+              <label className="block text-[10px] text-blue-400 mb-1 uppercase">Codec Input (JSON)</label>
+              <textarea
+                value={codecJsonText}
+                onChange={(e) => setCodecJsonText(e.target.value)}
+                spellCheck={false}
+                rows={Math.min(20, Math.max(4, codecJsonText.split('\n').length + 1))}
+                className="w-full bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono resize-y"
+              />
+              {codecResult && codecResult.errors.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {codecResult.errors.map((err, i) => (
+                    <p key={i} className="text-[9px] text-red-500">{err}</p>
+                  ))}
+                </div>
+              )}
+              {codecResult && codecResult.warnings.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {codecResult.warnings.map((warn, i) => (
+                    <p key={i} className="text-[9px] text-yellow-500">{warn}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Dynamic Inputs based on Preset Type */}
           {selectedPreset?.type === 'waveform_ack' && (
