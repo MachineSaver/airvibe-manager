@@ -41,6 +41,10 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
 
+  // Downlink options
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [flushQueue, setFlushQueue] = useState(false);
+
   // Codec JSON editor state — tracks which preset last initialized the text
   const [codecJsonText, setCodecJsonText] = useState('');
   const [lastCodecPreset, setLastCodecPreset] = useState<string>('');
@@ -212,22 +216,45 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
     return selectedPreset ? selectedPreset.fPort.toString() : customFPort;
   }, [selectedPreset, customFPort]);
 
-  const getJsonPayload = () => {
-    return JSON.stringify({
+  const getFormattedTimestamp = () => {
+    const now = new Date();
+    const pad = (n: number) => n < 10 ? '0' + n : String(n);
+    const offset = -now.getTimezoneOffset();
+    const sign = offset >= 0 ? '+' : '-';
+    const offsetHours = pad(Math.floor(Math.abs(offset) / 60));
+    const offsetMinutes = pad(Math.abs(offset) % 60);
+
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${String(now.getMilliseconds()).padStart(3, '0')}${sign}${offsetHours}:${offsetMinutes}`;
+  };
+
+  const getJsonPayload = (timestamp?: string) => {
+    const payload: Record<string, Record<string, string | number>> = {
       DevEUI_downlink: {
+        Time: timestamp || getFormattedTimestamp(),
         DevEUI: devEui || "8C1F64...",
         FPort: parseInt(currentFPort) || 22,
         payload_hex: currentPayloadHex || "0000"
       }
-    }, null, 2);
+    };
+
+    if (isConfirmed) {
+      payload.DevEUI_downlink.Confirmed = "1";
+    }
+
+    if (flushQueue) {
+      payload.DevEUI_downlink.FlushDownlinkQueue = "1";
+    }
+
+    return JSON.stringify(payload, null, 2);
   };
 
   const publishMessage = () => {
     if (!socket) return;
     const finalTopic = topic.replace('[DevEUI]', devEui || '8C1F642113000533');
+    const timestamp = getFormattedTimestamp();
     socket.emit('publish', {
       topic: finalTopic,
-      payload: getJsonPayload()
+      payload: getJsonPayload(timestamp)
     });
   };
 
@@ -450,6 +477,31 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
                 className={`w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none ${selectedPreset ? 'opacity-75 cursor-not-allowed' : ''}`}
               />
             </div>
+          </div>
+        </div>
+
+        {/* Downlink Options */}
+        <div className="bg-[#252526] p-4 rounded border border-[#333]">
+          <h3 className="text-xs font-semibold text-green-500 uppercase mb-3">Options</h3>
+          <div className="space-y-2">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isConfirmed}
+                onChange={(e) => setIsConfirmed(e.target.checked)}
+                className="form-checkbox h-3 w-3 text-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded focus:ring-0 focus:ring-offset-0"
+              />
+              <span className="text-[10px] text-gray-300">Send as Confirmed Downlink</span>
+            </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={flushQueue}
+                onChange={(e) => setFlushQueue(e.target.checked)}
+                className="form-checkbox h-3 w-3 text-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded focus:ring-0 focus:ring-offset-0"
+              />
+              <span className="text-[10px] text-gray-300">Flush Downlink Queue</span>
+            </label>
           </div>
         </div>
 
