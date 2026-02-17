@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { COMMAND_PRESETS } from '@/lib/commandPresets';
 import { encodeDownlink, bytesToHex } from '@/lib/codec';
@@ -26,13 +26,8 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
   const [topic, setTopic] = useState('mqtt/things/[DevEUI]/downlink');
   const [devEui, setDevEui] = useState('');
   const [isCustomMode, setIsCustomMode] = useState(false);
-  const [host, setHost] = useState('');
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setHost(window.location.hostname);
-    setMounted(true);
-  }, []);
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+  const mounted = typeof window !== 'undefined';
 
   const [selectedPresetName, setSelectedPresetName] = useState<string>('');
   const [customFPort, setCustomFPort] = useState('22');

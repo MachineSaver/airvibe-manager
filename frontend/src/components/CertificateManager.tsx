@@ -16,9 +16,10 @@ export default function CertificateManager() {
   const [clientId, setClientId] = useState('');
   const [certResult, setCertResult] = useState<CertResult | null>(null);
 
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
   const generateCerts = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
       const res = await fetch(`${apiUrl}/api/certs/client`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,11 +63,18 @@ export default function CertificateManager() {
             <div className={`${certResult.error ? 'text-red-400' : 'text-green-500'} mb-2`}>{certResult.message}</div>
             {certResult.files && (
               <div className="text-xs text-gray-400">
-                Files generated in <code>certs/</code> volume:
-                <ul className="list-disc pl-4 mt-1">
-                  <li>{certResult.files.key}</li>
-                  <li>{certResult.files.cert}</li>
-                  <li>{certResult.files.ca}</li>
+                Files generated:
+                <ul className="list-disc pl-4 mt-1 space-y-1">
+                  {[certResult.files.key, certResult.files.cert, certResult.files.ca].map((file) => (
+                    <li key={file}>
+                      <button
+                        onClick={() => window.open(`${apiUrl}/api/certs/download/${file}`, '_blank')}
+                        className="text-blue-400 hover:text-blue-300 underline"
+                      >
+                        {file}
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               </div>
             )}

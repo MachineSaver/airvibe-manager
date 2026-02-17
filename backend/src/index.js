@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 const mqttClient = require('./mqttClient');
 const pki = require('./pki');
@@ -87,6 +89,21 @@ app.post('/api/certs/client', async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+const CERTS_DIR = process.env.CERTS_DIR || '/app/certs';
+
+app.get('/api/certs/download/:filename', (req, res) => {
+    const { filename } = req.params;
+    if (!filename || !/^[a-zA-Z0-9._-]+$/.test(filename)) {
+        return res.status(400).json({ success: false, error: 'Invalid filename' });
+    }
+    const filePath = path.join(CERTS_DIR, filename);
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ success: false, error: 'File not found' });
+    }
+    auditLogger.log('pki', 'cert_download', null, { filename });
+    res.download(filePath);
 });
 
 // Health check endpoint
