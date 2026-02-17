@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { COMMAND_PRESETS } from '@/lib/commandPresets';
 import { encodeDownlink, bytesToHex } from '@/lib/codec';
