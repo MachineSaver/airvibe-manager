@@ -52,6 +52,7 @@ if [ ! -f .env ]; then
     # Create .env file
     cat <<EOF > .env
 DOMAIN=$DOMAIN_INPUT
+NEXT_PUBLIC_API_URL=https://$DOMAIN_INPUT
 # MQTT Credentials (Optional - leave empty for anonymous)
 MQTT_USER=
 MQTT_PASS=
