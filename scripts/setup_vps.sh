@@ -28,18 +28,23 @@ else
     echo "[2/5] Docker is already installed."
 fi
 
-# 3. Clone Repository
+# 3. Clone Repository (or detect we're already inside it)
 REPO_URL="https://github.com/MachineSaver/mqtt-manager.git"
 DIR_NAME="mqtt-manager"
 
-if [ -d "$DIR_NAME" ]; then
+if git rev-parse --is-inside-work-tree &>/dev/null; then
+    # Already inside the repo — navigate to its root
+    echo "[3/5] Already inside the repository. Using current clone..."
+    cd "$(git rev-parse --show-toplevel)"
+    git pull
+elif [ -d "$DIR_NAME" ]; then
     echo "[3/5] Directory '$DIR_NAME' exists. Pulling latest changes..."
-    cd $DIR_NAME
+    cd "$DIR_NAME"
     git pull
 else
     echo "[3/5] Cloning repository..."
-    git clone $REPO_URL
-    cd $DIR_NAME
+    git clone "$REPO_URL"
+    cd "$DIR_NAME"
 fi
 
 # 4. Configure Environment
