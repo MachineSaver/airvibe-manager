@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 interface CertResult {
   message: string;
+  error?: boolean;
   files?: {
     key: string;
     cert: string;
@@ -24,10 +25,14 @@ export default function CertificateManager() {
         body: JSON.stringify({ clientId })
       });
       const data = await res.json();
+      if (!res.ok || data.success === false) {
+        setCertResult({ message: data.error || `Server error (${res.status})`, error: true });
+        return;
+      }
       setCertResult(data);
     } catch (e) {
       console.error(e);
-      alert('Error generating certs');
+      setCertResult({ message: 'Network error — could not reach backend', error: true });
     }
   };
 
@@ -53,16 +58,18 @@ export default function CertificateManager() {
         </button>
 
         {certResult && (
-          <div className="mt-6 p-4 bg-[#1e1e1e] rounded border border-green-900">
-            <div className="text-green-500 mb-2">{certResult.message}</div>
-            <div className="text-xs text-gray-400">
-              Files generated in <code>certs/</code> volume:
-              <ul className="list-disc pl-4 mt-1">
-                <li>{certResult.files?.key}</li>
-                <li>{certResult.files?.cert}</li>
-                <li>{certResult.files?.ca}</li>
-              </ul>
-            </div>
+          <div className={`mt-6 p-4 bg-[#1e1e1e] rounded border ${certResult.error ? 'border-red-900' : 'border-green-900'}`}>
+            <div className={`${certResult.error ? 'text-red-400' : 'text-green-500'} mb-2`}>{certResult.message}</div>
+            {certResult.files && (
+              <div className="text-xs text-gray-400">
+                Files generated in <code>certs/</code> volume:
+                <ul className="list-disc pl-4 mt-1">
+                  <li>{certResult.files.key}</li>
+                  <li>{certResult.files.cert}</li>
+                  <li>{certResult.files.ca}</li>
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </div>

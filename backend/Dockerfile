@@ -15,7 +15,8 @@ WORKDIR /app
 
 RUN apk add --no-cache openssl && \
     addgroup -g 1001 -S nodeapp && \
-    adduser -S nodeapp -u 1001 -G nodeapp
+    adduser -S nodeapp -u 1001 -G nodeapp && \
+    mkdir -p /app/certs && chown nodeapp:nodeapp /app/certs
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
