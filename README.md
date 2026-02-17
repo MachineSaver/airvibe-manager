@@ -152,9 +152,10 @@ Open `https://your-domain` in a browser. Caddy automatically provisions a Let's 
 3. Click **Generate & Sign**
 4. The system generates:
    - `ca.crt` — Root CA (created once, reused for all clients)
-   - `server.crt` / `server.key` — Mosquitto TLS server identity
+   - `server.crt` / `server.key` — Mosquitto TLS server identity (includes SAN for your domain)
    - `{client-id}.crt` / `{client-id}.key` — Client certificate pair
-5. Files are stored in the `./certs/` directory on your VPS
+5. Click each filename to **download the certificate files** directly from the browser
+6. After generating certificates, Mosquitto's watcher detects the new files and automatically restarts with TLS enabled. **Allow 30–60 seconds** for the broker to restart before testing the TLS connection
 
 ### 6. Configure Actility ThingPark
 
@@ -170,7 +171,9 @@ In your ThingPark account, create a **Generic MQTT Connector** with:
 | **Uplink topic pattern** | `mqtt/things/{DevEUI}/uplink` |
 | **Downlink topic pattern** | `mqtt/things/{DevEUI}/downlink` |
 
-After uploading, the TLS connection between ThingPark and your Mosquitto broker is established. Uplink messages from your AirVibe sensors will appear in the MQTT Monitor tab.
+After uploading, **allow 1–2 minutes** for ThingPark to establish the TLS connection. The connector status may show "Connection closed" initially while it retries with the new certificates. Once established, uplink messages from your AirVibe sensors will appear in the MQTT Monitor tab.
+
+> **Tip:** If the connector doesn't connect on the first attempt, verify port 8883 is reachable from the internet (`openssl s_client -connect mqtt.example.com:8883`) and check the Mosquitto logs (`docker compose logs mqtt-broker`) for TLS errors.
 
 ### 7. Verify the MQTT connection
 
@@ -277,6 +280,13 @@ All configuration is through environment variables in `.env`. See `.env.example`
 - Verify the broker is running: `docker compose logs mqtt-broker`
 - Test locally with an MQTT client: `mosquitto_pub -h localhost -p 1883 -t test -m "hello"`
 - For Actility, check the ThingPark connector status and certificate validity
+
+**Actility connector shows "Connection closed" or "Timed out"**
+- This is normal immediately after uploading certificates — ThingPark retries every 30–60 seconds. Wait a few minutes.
+- Verify Mosquitto's TLS listener is running: `docker compose logs mqtt-broker | grep 8883`
+- Test the TLS connection from your VPS: `openssl s_client -connect mqtt.example.com:8883 -CAfile ./certs/ca.crt -cert ./certs/{client-id}.crt -key ./certs/{client-id}.key`
+- If you see `certificate verify failed` in Mosquitto logs, ensure the `ca.crt` uploaded to ThingPark matches the one that signed your server certificate (regenerate all certs if unsure: `sudo rm -rf ./certs && docker compose down && docker compose up -d --build`)
+- If you see `peer did not return a certificate`, ThingPark is not sending the client cert — double-check the client certificate and key uploads in the connector settings
 
 **Waveform assembly not working**
 - Waveform features require PostgreSQL. Ensure a `postgres` service is available and `POSTGRES_*` env vars are configured
