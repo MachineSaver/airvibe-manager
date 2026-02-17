@@ -72,8 +72,12 @@ async function generateServerCert(domain) {
 
     const subject = `/C=US/ST=State/L=City/O=MyOrg/OU=IoT/CN=${domain}`;
     const serverCsrPath = path.join(CERTS_DIR, 'server.csr');
+    const serverExtPath = path.join(CERTS_DIR, 'server.ext');
 
     try {
+        // Write SAN extension file so TLS clients can verify the hostname
+        fs.writeFileSync(serverExtPath, `subjectAltName=DNS:${domain}\n`);
+
         await execFilePromise('openssl', ['genrsa', '-out', serverKeyPath, '2048']);
         await execFilePromise('openssl', [
             'req', '-new', '-key', serverKeyPath,
@@ -84,7 +88,8 @@ async function generateServerCert(domain) {
             '-CA', path.join(CERTS_DIR, 'ca.crt'),
             '-CAkey', path.join(CERTS_DIR, 'ca.key'),
             '-CAcreateserial', '-out', serverCrtPath,
-            '-days', '365', '-sha256'
+            '-days', '365', '-sha256',
+            '-extfile', serverExtPath
         ]);
 
         return { success: true, message: 'Server Cert Generated' };
