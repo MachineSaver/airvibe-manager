@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package*.json ./
 
 RUN apk add --no-cache openssl
-RUN npm install
+RUN npm ci
 
 COPY . .
 

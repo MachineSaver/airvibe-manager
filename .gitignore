@@ -13,3 +13,4 @@ mosquitto/log/
 certs/
 deploy.tar.gz
 *.crt
+*:Zone.Identifier

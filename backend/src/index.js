@@ -15,13 +15,20 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 4000;
 
-app.use(cors());
+const domain = process.env.DOMAIN || 'localhost';
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:4000',
+    ...(domain !== 'localhost' ? [`https://${domain}`] : [])
+];
+
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*",
+        origin: allowedOrigins,
         methods: ["GET", "POST"]
     }
 });
@@ -38,7 +45,6 @@ const io = new Server(server, {
     });
 
     // Auto-initialize PKI
-    const domain = process.env.DOMAIN || 'localhost';
     try {
         console.log(`Checking/Initializing PKI for domain: ${domain}`);
         await pki.generateCA(domain);
@@ -54,7 +60,6 @@ app.get('/', (req, res) => {
 });
 
 app.post('/api/certs/init', async (req, res) => {
-    const domain = process.env.DOMAIN || 'localhost';
     try {
         console.log(`Initializing PKI for domain: ${domain}`);
         await pki.generateCA(domain);

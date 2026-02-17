@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Socket } from 'socket.io-client';
 import { COMMAND_PRESETS } from '@/lib/commandPresets';
 import { encodeDownlink, bytesToHex } from '@/lib/codec';
@@ -26,9 +26,13 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
   const [topic, setTopic] = useState('mqtt/things/[DevEUI]/downlink');
   const [devEui, setDevEui] = useState('');
   const [isCustomMode, setIsCustomMode] = useState(false);
-  const [host] = useState(() =>
-    typeof window !== 'undefined' ? window.location.hostname : ''
-  );
+  const [host, setHost] = useState('');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setHost(window.location.hostname);
+    setMounted(true);
+  }, []);
 
   const [selectedPresetName, setSelectedPresetName] = useState<string>('');
   const [customFPort, setCustomFPort] = useState('22');
@@ -518,7 +522,7 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
             </button>
           </div>
           <pre className="bg-[#1e1e1e] p-2 rounded border border-[#3e3e42] text-[10px] text-green-400 font-mono overflow-x-auto">
-            {getJsonPayload()}
+            {mounted ? getJsonPayload() : ''}
           </pre>
         </div>
 
@@ -538,7 +542,7 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
             </button>
           </div>
           <div className="bg-[#1e1e1e] p-2 rounded border border-[#3e3e42] text-[10px] text-gray-400 font-mono break-all">
-            mosquitto_pub -h {host} -p 8883 -t &quot;{topic.replace('[DevEUI]', devEui || '8C1F64...')}&quot; -m &apos;{getJsonPayload()}&apos;
+            {mounted ? `mosquitto_pub -h ${host} -p 8883 -t "${topic.replace('[DevEUI]', devEui || '8C1F64...')}" -m '${getJsonPayload()}'` : ''}
           </div>
         </div>
 
