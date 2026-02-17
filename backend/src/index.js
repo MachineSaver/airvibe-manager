@@ -8,6 +8,7 @@ const pki = require('./pki');
 const { connectWithRetry, pool } = require('./db');
 const waveformManager = require('./services/WaveformManager');
 const demoSimulator = require('./services/DemoSimulator');
+const auditLogger = require('./services/AuditLogger');
 const { deinterleaveWaveform } = require('./utils/deinterleave');
 
 dotenv.config();
@@ -64,6 +65,7 @@ app.post('/api/certs/init', async (req, res) => {
         console.log(`Initializing PKI for domain: ${domain}`);
         await pki.generateCA(domain);
         await pki.generateServerCert(domain);
+        auditLogger.log('pki', 'cert_init', null, { domain });
         res.json({ success: true, message: 'CA and Server Certificates generated successfully.' });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -80,6 +82,7 @@ app.post('/api/certs/client', async (req, res) => {
     }
     try {
         const result = await pki.generateClientCert(clientId);
+        auditLogger.log('pki', 'cert_client', null, { clientId });
         res.json(result);
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -299,6 +302,46 @@ app.get('/api/messages', async (req, res) => {
     }
 });
 
+app.get('/api/audit-log', async (req, res) => {
+    try {
+        let limit = Math.min(parseInt(req.query.limit) || 100, 1000);
+        const conditions = [];
+        const params = [];
+
+        if (req.query.source) {
+            params.push(req.query.source);
+            conditions.push(`source = $${params.length}`);
+        }
+        if (req.query.action) {
+            params.push(req.query.action);
+            conditions.push(`action = $${params.length}`);
+        }
+        if (req.query.device_eui) {
+            params.push(req.query.device_eui);
+            conditions.push(`device_eui = $${params.length}`);
+        }
+        if (req.query.from) {
+            params.push(req.query.from);
+            conditions.push(`created_at >= $${params.length}`);
+        }
+        if (req.query.to) {
+            params.push(req.query.to);
+            conditions.push(`created_at <= $${params.length}`);
+        }
+
+        const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        params.push(limit);
+
+        const result = await pool.query(
+            `SELECT * FROM audit_log ${where} ORDER BY created_at DESC LIMIT $${params.length}`,
+            params
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/stats', async (req, res) => {
     try {
         const [devices, messages, lastHour, waveforms] = await Promise.all([
@@ -323,12 +366,14 @@ app.post('/api/demo/start', (req, res) => {
     const duration = Math.min(Math.max(parseFloat(req.body.duration) || 5, 1), 30);
     const result = demoSimulator.start(duration);
     if (result.error) return res.status(409).json(result);
+    auditLogger.log('demo_simulator', 'demo_start', null, { duration_minutes: duration });
     res.json(result);
 });
 
 app.post('/api/demo/stop', (req, res) => {
     const result = demoSimulator.stop();
     if (result.error) return res.status(409).json(result);
+    auditLogger.log('demo_simulator', 'demo_stop');
     res.json(result);
 });
 
@@ -342,6 +387,7 @@ app.post('/api/demo/reset', async (req, res) => {
     }
     try {
         await pool.query('TRUNCATE waveform_segments, waveforms, messages, devices CASCADE');
+        auditLogger.log('demo_simulator', 'demo_reset');
         res.json({ success: true, message: 'All data cleared' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -354,6 +400,8 @@ io.on('connection', (socket) => {
     socket.on('publish', (data) => {
         try {
             mqttClient.publish(data.topic, data.payload);
+            const devEuiMatch = data.topic.match(/mqtt\/things\/([^/]+)\//);
+            auditLogger.log('user', 'downlink_publish', devEuiMatch?.[1] || null, { topic: data.topic, payload: data.payload });
         } catch (e) {
             console.error('Publish error:', e);
         }

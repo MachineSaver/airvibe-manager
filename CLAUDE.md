@@ -80,6 +80,15 @@ Downlink commands target specific fPorts (20-22, 30-31) with hex payloads.
 - **Certificates** are stored in `./certs/` volume shared between backend and Mosquitto
 - **mosquitto/watcher.sh**: Watchdog that monitors cert file changes and auto-restarts the broker
 
+## Decision-Making Process
+
+Before implementing any feature or change the user asks for, always:
+
+1. Consider a minimum of **3 alternative approaches** to the problem
+2. Compare each alternative against the original ask on: cleanliness, performance, long-term maintainability, and risk of painting ourselves into a corner
+3. If any alternative is clearly better (cleaner, more performant, better senior-developer-style decision), **push for that approach over the original ask** — explain why and let the user decide
+4. Prefer solutions that avoid unnecessary overhead, schema bloat, or coupling that would make future changes harder
+
 ## CI/CD
 
 GitHub Actions (`.github/workflows/ci.yml`) runs `docker compose build` on pushes/PRs to `main`.

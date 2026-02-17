@@ -1,5 +1,6 @@
 const { pool } = require('../db');
 const codec = require('../codec/AirVibe_TS013_Codec');
+const auditLogger = require('./AuditLogger');
 
 class WaveformManager {
     constructor() {
@@ -122,6 +123,7 @@ class WaveformManager {
             data: { opcode: 'waveform_info_ack', transaction_id: txId }
         });
         this.sendDownlink(devEui, 20, Buffer.from(ackResult.bytes));
+        auditLogger.log('waveform_manager', 'twiu_ack', devEui, { fPort: 20, txId });
     }
 
     async handleDataSegment(devEui, txId, buffer, isLast) {
@@ -203,6 +205,7 @@ class WaveformManager {
                 data: { opcode: 'waveform_data_ack', transaction_id: txId }
             });
             this.sendDownlink(devEui, 20, Buffer.from(ackResult.bytes));
+            auditLogger.log('waveform_manager', 'data_ack', devEui, { fPort: 20, txId });
         } else {
             console.log(`Waveform ${devEui} TxID ${txId} Missing ${missing.length} segments`);
             // Request missing segments via codec
@@ -212,6 +215,7 @@ class WaveformManager {
                 data: { value_size_mode: maxIdx > 254 ? 1 : 0, segments: missing }
             });
             this.sendAutoDownlink(devEui, 21, Buffer.from(reqResult.bytes));
+            auditLogger.log('waveform_manager', 'missing_segment_req', devEui, { fPort: 21, txId, missingCount: missing.length, segments: missing });
 
             // Track which segments were requested
             await pool.query(`
@@ -321,6 +325,7 @@ class WaveformManager {
                         data: { command_id: 'request_waveform_info', parameters: [] }
                     });
                     this.sendAutoDownlink(row.device_eui, 22, Buffer.from(result.bytes));
+                    auditLogger.log('waveform_manager', 'twiu_retry_req', row.device_eui, { fPort: 22, txId: row.transaction_id });
 
                     await pool.query(`UPDATE waveforms SET last_updated = NOW() WHERE id = $1`, [row.id]);
                 }

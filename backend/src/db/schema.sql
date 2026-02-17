@@ -65,3 +65,17 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_device_time ON messages(device_eui, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_direction_time ON messages(direction, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(received_at DESC);
+
+-- Audit Log Table
+CREATE TABLE IF NOT EXISTS audit_log (
+    id BIGSERIAL PRIMARY KEY,
+    source VARCHAR(30) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    device_eui VARCHAR(50),
+    details JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_source ON audit_log(source);
+CREATE INDEX IF NOT EXISTS idx_audit_log_device ON audit_log(device_eui) WHERE device_eui IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_audit_log_time ON audit_log(created_at DESC);

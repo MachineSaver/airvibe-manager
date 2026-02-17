@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import SegmentMap from './SegmentMap';
 import WaveformChart from './WaveformChart';
+import { deinterleaveWaveform } from '@/lib/deinterleave';
 
 interface Waveform {
     id: string;
@@ -28,42 +29,7 @@ interface Waveform {
 
 function processChartData(wf: Waveform): { axis1: number[], axis2: number[], axis3: number[] } | null {
     if (!wf.final_data?.raw_hex || !wf.metadata) return null;
-
-    const buffer = Buffer.from(wf.final_data.raw_hex, 'hex');
-    const axisMask = wf.metadata.axisMask;
-
-    const axis1: number[] = [];
-    const axis2: number[] = [];
-    const axis3: number[] = [];
-
-    const isTri = axisMask === 0x07;
-    const isAxis1 = (axisMask & 0x01) !== 0;
-    const isAxis2 = (axisMask & 0x02) !== 0;
-    const isAxis3 = (axisMask & 0x04) !== 0;
-
-    const readInt16 = (buf: Buffer, off: number) => buf.readInt16LE(off);
-
-    let offset = 0;
-    while (offset < buffer.length) {
-        if (isTri) {
-            if (offset + 6 <= buffer.length) {
-                axis1.push(readInt16(buffer, offset));
-                axis2.push(readInt16(buffer, offset + 2));
-                axis3.push(readInt16(buffer, offset + 4));
-                offset += 6;
-            } else break;
-        } else {
-            if (offset + 2 <= buffer.length) {
-                const val = readInt16(buffer, offset);
-                if (isAxis1) axis1.push(val);
-                else if (isAxis2) axis2.push(val);
-                else if (isAxis3) axis3.push(val);
-                offset += 2;
-            } else break;
-        }
-    }
-
-    return { axis1, axis2, axis3 };
+    return deinterleaveWaveform(wf.final_data.raw_hex, wf.metadata.axisMask);
 }
 
 function formatAxisLabel(axisSelection: string, axisMask: number): string {

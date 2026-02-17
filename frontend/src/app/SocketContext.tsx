@@ -7,6 +7,7 @@ interface MQTTMessage {
     topic: string;
     payload: string;
     timestamp: string;
+    _key: string;
 }
 
 interface SocketContextType {
@@ -43,8 +44,8 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
             setConnected(false);
         });
 
-        newSocket.on('mqtt:message', (message: MQTTMessage) => {
-            setMessages((prev) => [message, ...prev].slice(0, 500)); // Keep last 500
+        newSocket.on('mqtt:message', (message: Omit<MQTTMessage, '_key'>) => {
+            setMessages((prev) => [{ ...message, _key: crypto.randomUUID() }, ...prev].slice(0, 500)); // Keep last 500
         });
 
         return () => {

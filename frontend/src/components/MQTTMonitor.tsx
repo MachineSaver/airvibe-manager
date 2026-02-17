@@ -22,7 +22,7 @@ interface DemoStatus {
 }
 
 interface MQTTMonitorProps {
-  messages: { topic: string; payload: string; timestamp: string }[];
+  messages: { topic: string; payload: string; timestamp: string; _key: string }[];
 }
 
 export default function MQTTMonitor({ messages }: MQTTMonitorProps) {
@@ -214,9 +214,9 @@ export default function MQTTMonitor({ messages }: MQTTMonitorProps) {
       {messages.length === 0 && (
         <div className="text-gray-500 text-center mt-10">No messages received yet.</div>
       )}
-      {messages.map((msg, idx) => (
+      {messages.map((msg) => (
         <MQTTMessageCard
-          key={idx}
+          key={msg._key}
           topic={msg.topic}
           payload={msg.payload}
           timestamp={msg.timestamp}

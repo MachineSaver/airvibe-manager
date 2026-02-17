@@ -19,7 +19,7 @@ const CheckIcon = () => (
 
 interface DownlinkBuilderProps {
   socket: Socket | null;
-  messages: { topic: string; payload: string; timestamp: string }[];
+  messages: { topic: string; payload: string; timestamp: string; _key: string }[];
 }
 
 export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderProps) {
