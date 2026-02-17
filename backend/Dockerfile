@@ -13,16 +13,15 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-RUN apk add --no-cache openssl && \
+RUN apk add --no-cache openssl su-exec && \
     addgroup -g 1001 -S nodeapp && \
-    adduser -S nodeapp -u 1001 -G nodeapp && \
-    mkdir -p /app/certs && chown nodeapp:nodeapp /app/certs
+    adduser -S nodeapp -u 1001 -G nodeapp
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-USER nodeapp
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 4000
 
-CMD ["node", "src/index.js"]
+ENTRYPOINT ["/app/entrypoint.sh"]
