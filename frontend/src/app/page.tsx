@@ -82,6 +82,13 @@ function AppContent() {
 
           {activeView === 'tracker' && <WaveformTracker />}
         </div>
+
+        {/* Build Info Footer */}
+        <div className="h-6 flex items-center justify-center border-t border-[#333] bg-[#252526] shrink-0">
+          <span className="text-[10px] text-gray-600 font-mono">
+            build {process.env.NEXT_PUBLIC_BUILD_HASH} &bull; {process.env.NEXT_PUBLIC_BUILD_DATE} UTC
+          </span>
+        </div>
       </div>
     </div>
   );
