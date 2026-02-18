@@ -11,7 +11,7 @@ A self-hosted web dashboard for managing AirVibe vibration sensors over LoRaWAN.
 - **PKI certificate management** — generate CA, server, and client X.509 certificates compatible with Actility ThingPark
 - **Waveform data collection** — assemble fragmented waveform packets, request missing segments, and visualize tri-axial vibration data
 - **Auto-TLS** — Caddy provisions Let's Encrypt certificates automatically for your domain
-- **One-command deploy** — `docker compose up` runs the entire stack
+- **One-command deploy** — `./build.sh` builds and starts the entire stack, stamping the git commit hash and timestamp into the UI footer for easy version identification
 
 ## Architecture
 
@@ -69,7 +69,7 @@ A self-hosted web dashboard for managing AirVibe vibration sensors over LoRaWAN.
 git clone https://github.com/MachineSaver/mqtt-manager.git
 cd mqtt-manager
 cp .env.example .env
-docker compose up -d --build
+./build.sh
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
@@ -138,7 +138,7 @@ cp .env.example .env
 # Edit .env:
 #   DOMAIN=mqtt.example.com
 #   NEXT_PUBLIC_API_URL=https://mqtt.example.com
-docker compose up -d --build
+./build.sh
 ```
 
 ### 4. Verify
@@ -274,7 +274,7 @@ All configuration is through environment variables in `.env`. See `.env.example`
 
 **Frontend can't connect to Socket.io**
 - For production, ensure `NEXT_PUBLIC_API_URL` is set to your HTTPS domain in `.env`
-- This variable is baked into the frontend at build time — rebuild after changing: `docker compose up -d --build`
+- This variable is baked into the frontend at build time — rebuild after changing: `./build.sh`
 
 **No messages appearing in MQTT Monitor**
 - Verify the broker is running: `docker compose logs mqtt-broker`
@@ -285,7 +285,7 @@ All configuration is through environment variables in `.env`. See `.env.example`
 - This is normal immediately after uploading certificates — ThingPark retries every 30–60 seconds. Wait a few minutes.
 - Verify Mosquitto's TLS listener is running: `docker compose logs mqtt-broker | grep 8883`
 - Test the TLS connection from your VPS: `openssl s_client -connect mqtt.example.com:8883 -CAfile ./certs/ca.crt -cert ./certs/{client-id}.crt -key ./certs/{client-id}.key`
-- If you see `certificate verify failed` in Mosquitto logs, ensure the `ca.crt` uploaded to ThingPark matches the one that signed your server certificate (regenerate all certs if unsure: `sudo rm -rf ./certs && docker compose down && docker compose up -d --build`)
+- If you see `certificate verify failed` in Mosquitto logs, ensure the `ca.crt` uploaded to ThingPark matches the one that signed your server certificate (regenerate all certs if unsure: `sudo rm -rf ./certs && docker compose down && ./build.sh`)
 - If you see `peer did not return a certificate`, ThingPark is not sending the client cert — double-check the client certificate and key uploads in the connector settings
 
 **Waveform assembly not working**
