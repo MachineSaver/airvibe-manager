@@ -1,10 +1,13 @@
+# syntax=docker/dockerfile:1
 FROM node:20-alpine AS deps
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN apk add --no-cache openssl && \
+RUN apk add --no-cache openssl
+
+RUN --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev
 
 # ---

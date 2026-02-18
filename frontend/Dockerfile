@@ -1,10 +1,12 @@
+# syntax=docker/dockerfile:1
 FROM node:20-alpine AS deps
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 # ---
 
@@ -24,7 +26,8 @@ ENV NEXT_PUBLIC_BUILD_DATE=$NEXT_PUBLIC_BUILD_DATE
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-RUN npm run build
+RUN --mount=type=cache,target=/app/.next/cache \
+    npm run build
 
 # ---
 
