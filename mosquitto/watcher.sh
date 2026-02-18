@@ -13,6 +13,11 @@ persistence true
 persistence_location /mosquitto/data/
 log_dest stdout
 
+max_connections 100
+max_inflight_messages 20
+max_queued_messages 500
+message_size_limit 8192
+
 listener 1883
 allow_anonymous true
 EOF
