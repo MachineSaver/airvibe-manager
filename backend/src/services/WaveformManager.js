@@ -170,6 +170,11 @@ class WaveformManager {
 
         if (isLast) {
             await this.checkCompletion(devEui, txId, waveformId);
+        } else if (insertResult.rowCount > 0) {
+            // Not the final segment — but if we're mid-repair, check whether
+            // the outstanding requested batch has now been fully received so
+            // we can issue the next batch request.
+            await this.checkRepairBatchComplete(devEui, txId, waveformId);
         }
     }
 
@@ -208,19 +213,49 @@ class WaveformManager {
             auditLogger.log('waveform_manager', 'data_ack', devEui, { fPort: 20, txId });
         } else {
             console.log(`Waveform ${devEui} TxID ${txId} Missing ${missing.length} segments`);
-            // Request missing segments via codec
-            const maxIdx = Math.max(...missing);
+            // Request up to 20 missing segments per downlink (LoRaWAN payload limit).
+            // If more than 20 are missing, the next batch will be requested once
+            // the device resends these and checkRepairBatchComplete fires.
+            const batch = missing.slice(0, 20);
+            const maxIdx = Math.max(...batch);
             const reqResult = codec.encodeDownlink({
                 fPort: 21,
-                data: { value_size_mode: maxIdx > 254 ? 1 : 0, segments: missing }
+                data: { value_size_mode: maxIdx > 254 ? 1 : 0, segments: batch }
             });
             this.sendAutoDownlink(devEui, 21, Buffer.from(reqResult.bytes));
-            auditLogger.log('waveform_manager', 'missing_segment_req', devEui, { fPort: 21, txId, missingCount: missing.length, segments: missing });
+            auditLogger.log('waveform_manager', 'missing_segment_req', devEui, { fPort: 21, txId, totalMissing: missing.length, batchSize: batch.length, segments: batch });
 
-            // Track which segments were requested
+            // Track only the batch we actually requested so checkRepairBatchComplete
+            // knows when to trigger the next checkCompletion.
             await pool.query(`
                 UPDATE waveforms SET requested_segments = $1 WHERE id = $2
-            `, [JSON.stringify(missing), waveformId]);
+            `, [JSON.stringify(batch), waveformId]);
+        }
+    }
+
+    async checkRepairBatchComplete(devEui, txId, waveformId) {
+        // Only act when there are outstanding requested segments
+        const wfRes = await pool.query(
+            `SELECT requested_segments FROM waveforms WHERE id = $1`,
+            [waveformId]
+        );
+        const requested = wfRes.rows[0]?.requested_segments;
+        if (!requested || requested.length === 0) return;
+
+        // Check how many of the requested segments have now been received
+        const segRes = await pool.query(
+            `SELECT segment_index FROM waveform_segments
+             WHERE waveform_id = $1 AND segment_index = ANY($2::int[])`,
+            [waveformId, requested]
+        );
+        if (segRes.rows.length >= requested.length) {
+            // All segments in this batch have arrived — clear the batch record
+            // and re-run checkCompletion to either finish or request the next batch.
+            await pool.query(
+                `UPDATE waveforms SET requested_segments = '[]' WHERE id = $1`,
+                [waveformId]
+            );
+            await this.checkCompletion(devEui, txId, waveformId);
         }
     }
 
