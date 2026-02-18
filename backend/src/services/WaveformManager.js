@@ -220,7 +220,7 @@ class WaveformManager {
             const maxIdx = Math.max(...batch);
             const reqResult = codec.encodeDownlink({
                 fPort: 21,
-                data: { value_size_mode: maxIdx > 254 ? 1 : 0, segments: batch }
+                data: { value_size_mode: maxIdx > 0xFF ? 1 : 0, segments: batch }
             });
             this.sendAutoDownlink(devEui, 21, Buffer.from(reqResult.bytes));
             auditLogger.log('waveform_manager', 'missing_segment_req', devEui, { fPort: 21, txId, totalMissing: missing.length, batchSize: batch.length, segments: batch });
