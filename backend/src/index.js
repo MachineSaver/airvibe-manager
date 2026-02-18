@@ -9,6 +9,7 @@ const mqttClient = require('./mqttClient');
 const pki = require('./pki');
 const { connectWithRetry, pool } = require('./db');
 const waveformManager = require('./services/WaveformManager');
+const fuotaManager = require('./services/FUOTAManager');
 const demoSimulator = require('./services/DemoSimulator');
 const auditLogger = require('./services/AuditLogger');
 const { deinterleaveWaveform } = require('./utils/deinterleave');
@@ -26,7 +27,7 @@ const allowedOrigins = [
 ];
 
 app.use(cors({ origin: allowedOrigins }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -35,6 +36,9 @@ const io = new Server(server, {
         methods: ["GET", "POST"]
     }
 });
+
+// Initialize FUOTA manager with Socket.io reference
+fuotaManager.init(io);
 
 // Initialize services
 (async () => {
@@ -45,6 +49,7 @@ const io = new Server(server, {
     const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
     mqttClient.connect(MQTT_BROKER_URL, io, (topic, msg) => {
         waveformManager.processPacket(topic, msg);
+        fuotaManager.processPacket(topic, msg);
     });
 
     // Auto-initialize PKI
@@ -409,6 +414,79 @@ app.post('/api/demo/reset', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// ---------------------------------------------------------------------------
+// FUOTA endpoints
+// ---------------------------------------------------------------------------
+
+// Upload firmware binary (base64-encoded JSON body)
+app.post('/api/fuota/upload', (req, res) => {
+    const { name, data } = req.body;
+    if (!name || !data) {
+        return res.status(400).json({ error: 'name and data (base64) are required' });
+    }
+    if (!/^[a-zA-Z0-9._\-\s]+$/.test(name) || name.length > 255) {
+        return res.status(400).json({ error: 'Invalid firmware name' });
+    }
+    let buf;
+    try {
+        buf = Buffer.from(data, 'base64');
+    } catch {
+        return res.status(400).json({ error: 'data must be valid base64' });
+    }
+    if (buf.length === 0) {
+        return res.status(400).json({ error: 'Empty firmware file' });
+    }
+    const result = fuotaManager.storeFirmware(name, buf);
+    auditLogger.log('fuota', 'firmware_upload', null, { name, size: buf.length, totalBlocks: result.totalBlocks });
+    res.json(result);
+});
+
+// Start FUOTA sessions for one or more devices
+app.post('/api/fuota/start', async (req, res) => {
+    const { sessionId, devEuis } = req.body;
+    if (!sessionId || !Array.isArray(devEuis) || devEuis.length === 0) {
+        return res.status(400).json({ error: 'sessionId and devEuis[] are required' });
+    }
+    const started = [];
+    const errors = [];
+    for (const devEui of devEuis) {
+        try {
+            await fuotaManager.startSession(sessionId, devEui);
+            started.push(devEui);
+        } catch (err) {
+            errors.push({ devEui, error: err.message });
+        }
+    }
+    auditLogger.log('fuota', 'sessions_start', null, { sessionId, started, errors });
+    res.json({ started, errors });
+});
+
+// Get recent FUOTA sessions from DB + active in-memory sessions
+app.get('/api/fuota/sessions', async (req, res) => {
+    try {
+        const dbResult = await pool.query(
+            `SELECT * FROM fuota_sessions ORDER BY started_at DESC LIMIT 100`
+        );
+        res.json({
+            sessions: dbResult.rows,
+            active: fuotaManager.getActiveSessions(),
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Abort an active FUOTA session
+app.post('/api/fuota/abort/:devEui', async (req, res) => {
+    const { devEui } = req.params;
+    const aborted = await fuotaManager.abortSession(devEui);
+    if (!aborted) {
+        return res.status(404).json({ error: 'No active FUOTA session for this device' });
+    }
+    auditLogger.log('fuota', 'session_abort', devEui, {});
+    res.json({ aborted: true });
 });
 
 io.on('connection', (socket) => {

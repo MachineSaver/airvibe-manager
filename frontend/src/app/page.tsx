@@ -7,10 +7,11 @@ import DownlinkBuilder from '@/components/DownlinkBuilder';
 import CertificateManager from '@/components/CertificateManager';
 import WaveformsView from '@/components/WaveformsView';
 import WaveformTracker from '@/components/WaveformTracker';
+import FUOTAManager from '@/components/FUOTAManager';
 
 function AppContent() {
   const { connected, messages, socket } = useSocket();
-  const [activeView, setActiveView] = useState<'mqtt' | 'certs' | 'waveforms' | 'tracker'>('mqtt');
+  const [activeView, setActiveView] = useState<'mqtt' | 'certs' | 'waveforms' | 'tracker' | 'fuota'>('mqtt');
 
   return (
     <div className="flex h-screen bg-[#1e1e1e] text-gray-300 font-sans">
@@ -52,6 +53,15 @@ function AppContent() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
           </svg>
         </button>
+        <button
+          onClick={() => setActiveView('fuota')}
+          className={`p-3 mb-2 rounded-lg ${activeView === 'fuota' ? 'bg-[#37373d] text-amber-500' : 'hover:bg-[#2d2d2d]'}`}
+          title="FUOTA Manager"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+        </button>
       </div>
 
       {/* Main Content */}
@@ -59,7 +69,7 @@ function AppContent() {
         {/* Header */}
         <div className="h-12 bg-[#252526] border-b border-[#333] flex items-center px-4 justify-between shrink-0">
           <h1 className="font-semibold text-sm text-gray-200">
-            {activeView === 'mqtt' ? 'MQTT Monitor' : activeView === 'certs' ? 'Certificate Management' : activeView === 'waveforms' ? 'Waveform Manager' : 'Waveform Tracker'}
+            {activeView === 'mqtt' ? 'MQTT Monitor' : activeView === 'certs' ? 'Certificate Management' : activeView === 'waveforms' ? 'Waveform Manager' : activeView === 'tracker' ? 'Waveform Tracker' : 'FUOTA Manager'}
           </h1>
           <div className="flex items-center space-x-2">
             <span className={`h-2 w-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
@@ -81,6 +91,8 @@ function AppContent() {
           {activeView === 'waveforms' && <WaveformsView />}
 
           {activeView === 'tracker' && <WaveformTracker />}
+
+          {activeView === 'fuota' && <FUOTAManager socket={socket} />}
         </div>
 
         {/* Build Info Footer */}

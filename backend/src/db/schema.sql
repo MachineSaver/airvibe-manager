@@ -79,3 +79,23 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_log_source ON audit_log(source);
 CREATE INDEX IF NOT EXISTS idx_audit_log_device ON audit_log(device_eui) WHERE device_eui IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_audit_log_time ON audit_log(created_at DESC);
+
+-- FUOTA Sessions Table
+CREATE TABLE IF NOT EXISTS fuota_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    device_eui VARCHAR(50) NOT NULL,
+    firmware_name VARCHAR(255),
+    firmware_size INTEGER NOT NULL,
+    total_blocks INTEGER NOT NULL,
+    status VARCHAR(30) DEFAULT 'pending',
+    -- pending | initializing | waiting_ack | sending_blocks | verifying | resending | complete | failed | aborted
+    blocks_sent INTEGER DEFAULT 0,
+    verify_attempts INTEGER DEFAULT 0,
+    last_missed_blocks JSONB DEFAULT '[]',
+    error TEXT,
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_fuota_device_time ON fuota_sessions(device_eui, started_at DESC);
