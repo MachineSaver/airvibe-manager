@@ -120,7 +120,6 @@ apt-get update && apt-get install -y git
 git clone https://github.com/MachineSaver/mqtt-manager.git
 cd mqtt-manager
 
-chmod +x scripts/setup_vps.sh
 ./scripts/setup_vps.sh
 ```
 
