@@ -33,8 +33,6 @@ services:
   backend:
     build: ./backend
     container_name: mqtt-manager-backend
-    ports:
-      - "4000:4000"
     environment:
       - PORT=4000
       - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
@@ -61,8 +59,6 @@ services:
         - NEXT_PUBLIC_BUILD_HASH=${NEXT_PUBLIC_BUILD_HASH:-unknown}
         - NEXT_PUBLIC_BUILD_DATE=${NEXT_PUBLIC_BUILD_DATE:-unknown}
     container_name: mqtt-manager-frontend
-    ports:
-      - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     depends_on:

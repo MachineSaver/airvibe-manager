@@ -71,6 +71,10 @@ fi
 # 5. Firewall & Startup
 echo "[5/5] Configuring Firewall and Starting Services..."
 
+# Set default policies: deny all inbound, allow all outbound
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
 # Allow necessary ports
 # 22: SSH
 # 80/443: Web (Caddy handles HTTPS)
