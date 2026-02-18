@@ -84,8 +84,8 @@ function AppContent() {
         </div>
 
         {/* Build Info Footer */}
-        <div className="h-6 flex items-center justify-center border-t border-[#333] bg-[#252526] shrink-0">
-          <span className="text-[10px] text-gray-600 font-mono">
+        <div className="h-7 flex items-center justify-center border-t border-[#333] bg-[#252526] shrink-0">
+          <span className="text-[11px] text-gray-400 font-mono tracking-wide">
             build {process.env.NEXT_PUBLIC_BUILD_HASH} &bull; {process.env.NEXT_PUBLIC_BUILD_DATE} UTC
           </span>
         </div>

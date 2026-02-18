@@ -58,6 +58,8 @@ services:
       context: ./frontend
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+        - NEXT_PUBLIC_BUILD_HASH=${NEXT_PUBLIC_BUILD_HASH:-unknown}
+        - NEXT_PUBLIC_BUILD_DATE=${NEXT_PUBLIC_BUILD_DATE:-unknown}
     container_name: mqtt-manager-frontend
     ports:
       - "3000:3000"
