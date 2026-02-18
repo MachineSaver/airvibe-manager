@@ -73,21 +73,21 @@ function SummaryBar({ states, totalSegments }: { states: SegState[], totalSegmen
                     </>
                 )}
             </div>
-            {/* Thin segmented progress bar */}
-            <div className="flex w-full h-1.5 rounded-full overflow-hidden bg-[#1e1e1e]">
-                {states.map((state, i) => (
-                    <div
-                        key={i}
-                        className="h-full"
-                        style={{
-                            flex: 1,
-                            backgroundColor: COLORS[state].bg,
-                            // Tiny gap between segments for visual separation
-                            marginRight: i < states.length - 1 ? '0.5px' : 0,
-                        }}
-                    />
-                ))}
-            </div>
+            {/* Thin segmented progress bar — rendered as a single CSS gradient so it
+                displays correctly at any screen width (no sub-pixel flex items). */}
+            <div
+                className="w-full h-1.5 rounded-full"
+                style={{
+                    background: states.length > 0
+                        ? `linear-gradient(to right, ${states.map((state, i) => {
+                            const n = states.length;
+                            const start = (i / n * 100).toFixed(2);
+                            const end = ((i + 1) / n * 100).toFixed(2);
+                            return `${COLORS[state].bg} ${start}% ${end}%`;
+                        }).join(', ')})`
+                        : '#1e1e1e',
+                }}
+            />
         </div>
     );
 }

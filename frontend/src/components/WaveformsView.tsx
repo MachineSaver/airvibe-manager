@@ -176,9 +176,9 @@ export default function WaveformsView() {
                                 >
                                     <div className="flex-1 px-2 py-1.5 min-w-0">
                                         <div className="font-mono text-[10px] truncate">{d.dev_eui}</div>
-                                        <div className="flex gap-2 text-[9px] text-gray-500 mt-0.5">
-                                            <span>↑{d.uplink_count}</span>
-                                            <span>↓{d.downlink_count}</span>
+                                        <div className="flex gap-2 text-[9px] mt-0.5">
+                                            <span style={{ color: '#0d9488' }}>↑{d.uplink_count}</span>
+                                            <span style={{ color: '#9333ea' }}>↓{d.downlink_count}</span>
                                         </div>
                                     </div>
                                     {/* Chevron toggle */}
