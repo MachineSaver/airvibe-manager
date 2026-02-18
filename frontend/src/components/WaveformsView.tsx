@@ -218,19 +218,12 @@ export default function WaveformsView() {
                                                         {wf.status}
                                                     </span>
                                                 </div>
-                                                {(() => {
-                                                    const pct = Math.min((wf.received_segments_count / (wf.expected_segments || 1)) * 100, 100).toFixed(2);
-                                                    const remainColor = wf.status === 'complete' ? '#22c55e' : wf.status === 'aborted' ? '#ef4444' : '#475569';
-                                                    const bg = wf.status === 'complete'
-                                                        ? '#22c55e'
-                                                        : `linear-gradient(to right, #22c55e ${pct}%, ${remainColor} ${pct}%)`;
-                                                    return (
-                                                        <div
-                                                            className="w-full h-1 rounded-full mt-1"
-                                                            style={{ background: bg }}
-                                                        />
-                                                    );
-                                                })()}
+                                                <div className="w-full bg-[#1e1e1e] rounded-full h-1 overflow-hidden mt-1">
+                                                    <div
+                                                        className="bg-blue-500 h-full transition-all duration-500"
+                                                        style={{ width: `${(wf.received_segments_count / (wf.expected_segments || 1)) * 100}%` }}
+                                                    />
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
