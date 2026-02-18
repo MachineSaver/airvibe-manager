@@ -274,7 +274,7 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
 
         {/* Broker Connection (Read Only) */}
         <div className="bg-[#252526] p-4 rounded border border-[#333]">
-          <h3 className="text-xs font-semibold text-green-500 uppercase mb-3">Broker Connection</h3>
+          <h3 className="text-xs font-semibold text-orange-500 uppercase mb-3">Broker Connection</h3>
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-2">
               <label className="block text-[10px] text-gray-500 mb-1">HOST</label>

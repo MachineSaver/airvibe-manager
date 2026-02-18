@@ -41,7 +41,11 @@ const MQTTMessageCard: React.FC<MQTTMessageCardProps> = ({ topic, payload, times
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                     </button>
-                    <span className="text-green-400 font-mono text-xs truncate" title={topic}>{topic}</span>
+                    <span
+                        className="font-mono text-xs truncate"
+                        style={{ color: topic.endsWith('/uplink') ? '#0d9488' : topic.endsWith('/downlink') ? '#9333ea' : '#f97316' }}
+                        title={topic}
+                    >{topic}</span>
                     <span className="text-gray-500 text-xs whitespace-nowrap">{new Date(timestamp).toLocaleTimeString()}</span>
                 </div>
 
