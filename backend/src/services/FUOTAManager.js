@@ -1,16 +1,21 @@
 const { randomUUID } = require('crypto');
 const { pool } = require('../db');
 const auditLogger = require('./AuditLogger');
+const thingParkClient = require('./ThingParkClient');
 
 // ---------------------------------------------------------------------------
 // Protocol constants
 // ---------------------------------------------------------------------------
 const CHUNK_SIZE = 49; // data bytes per block; total downlink = 2-byte LE block_num + 49 bytes = 51 bytes
 
-const FUOTA_BLOCK_INTERVAL_MS = parseInt(process.env.FUOTA_BLOCK_INTERVAL_MS) || 150;
+const FUOTA_BLOCK_INTERVAL_MS = parseInt(process.env.FUOTA_BLOCK_INTERVAL_MS) || 10000;
 const FUOTA_ACK_TIMEOUT_MS    = parseInt(process.env.FUOTA_ACK_TIMEOUT_MS)    || 21600000; // 6 hours
 const FUOTA_VERIFY_TIMEOUT_MS = parseInt(process.env.FUOTA_VERIFY_TIMEOUT_MS) || 14400000; // 4 hours
 const FUOTA_SESSION_TIMEOUT_MS= parseInt(process.env.FUOTA_SESSION_TIMEOUT_MS)|| 93600000; // 26 hours
+
+// Per-session interval clamp bounds (ms)
+const MIN_INTERVAL_MS = 1000;
+const MAX_INTERVAL_MS = 60000;
 
 // Firmware store TTL (1 hour) – uploaded binaries are kept in memory this long
 const FIRMWARE_STORE_TTL_MS = 3600000;
@@ -102,8 +107,27 @@ class FUOTAManager {
     }
 
     /** Must be called once after Socket.io server is created. */
-    init(io) {
+    async init(io) {
         this.io = io;
+
+        // Mark any non-terminal sessions in DB as failed — they were orphaned by the restart
+        try {
+            const result = await pool.query(
+                `UPDATE fuota_sessions
+                 SET status='failed', error='Backend restarted during active session',
+                     completed_at=NOW(), updated_at=NOW()
+                 WHERE status NOT IN ('complete','failed','aborted')
+                 RETURNING id, device_eui`
+            );
+            if (result.rows.length > 0) {
+                console.log(`FUOTAManager: marked ${result.rows.length} orphaned session(s) as failed on startup`);
+                for (const row of result.rows) {
+                    auditLogger.log('fuota_manager', 'startup_cleanup', row.device_eui, { dbId: row.id });
+                }
+            }
+        } catch (err) {
+            console.error('FUOTAManager: startup cleanup error:', err.message);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -139,12 +163,20 @@ class FUOTAManager {
 
     /**
      * Start a FUOTA session for a single device.
+     * @param {string} sessionId       Firmware store key
+     * @param {string} devEui          Target device EUI
+     * @param {number} [blockIntervalMs]  Optional per-session interval; clamped to [1000, 60000]
      */
-    async startSession(sessionId, devEui) {
+    async startSession(sessionId, devEui, blockIntervalMs) {
         const firmware = this.firmwareStore.get(sessionId);
         if (!firmware) {
             throw new Error(`Firmware session ${sessionId} not found or expired`);
         }
+
+        // Clamp per-session interval
+        const intervalMs = (typeof blockIntervalMs === 'number' && isFinite(blockIntervalMs))
+            ? Math.min(MAX_INTERVAL_MS, Math.max(MIN_INTERVAL_MS, Math.round(blockIntervalMs)))
+            : FUOTA_BLOCK_INTERVAL_MS;
 
         // If there is already an active session for this device, abort it first
         if (this.activeSessions.has(devEui)) {
@@ -173,12 +205,17 @@ class FUOTAManager {
             firmwareSize: firmware.size,
             blocks: firmware.blocks,
             totalBlocks: firmware.blocks.length,
+            blockIntervalMs: intervalMs,
             state: 'initializing',
             blocksSent: 0,
             verifyAttempts: 0,
             lastMissedCount: 0,
             error: null,
             aborted: false,
+            // ThingPark Class C state
+            classCConfigured: false,
+            originalProfileId: null,
+            deviceRef: null,
             // Timeout handles
             _ackTimeout: null,
             _verifyTimeout: null,
@@ -195,6 +232,18 @@ class FUOTAManager {
             }
         }, FUOTA_SESSION_TIMEOUT_MS);
 
+        // Attempt Class C profile switch (non-blocking to session creation)
+        const tpResult = await thingParkClient.switchToClassC(devEui);
+        session.originalProfileId = tpResult?.originalProfileId || null;
+        session.deviceRef = tpResult?.deviceRef || null;
+        session.classCConfigured = !!tpResult;
+
+        auditLogger.log('fuota_manager', 'class_c_switch', devEui, {
+            success: session.classCConfigured,
+            originalProfileId: session.originalProfileId,
+            deviceRef: session.deviceRef,
+        });
+
         // Send init downlink then wait for 0x10 ACK
         this._sendInitDownlink(session);
         this._emitProgress(devEui);
@@ -203,6 +252,7 @@ class FUOTAManager {
             firmwareName: firmware.name,
             firmwareSize: firmware.size,
             totalBlocks: firmware.blocks.length,
+            blockIntervalMs: intervalMs,
         });
     }
 
@@ -321,7 +371,7 @@ class FUOTAManager {
             }
 
             if (i < blocks.length - 1) {
-                await sleep(FUOTA_BLOCK_INTERVAL_MS);
+                await sleep(session.blockIntervalMs);
             }
         }
 
@@ -406,7 +456,7 @@ class FUOTAManager {
             this._sendDownlink(devEui, 25, payload);
 
             if (i < missedBlockNums.length - 1) {
-                await sleep(FUOTA_BLOCK_INTERVAL_MS);
+                await sleep(session.blockIntervalMs);
             }
         }
 
@@ -437,6 +487,12 @@ class FUOTAManager {
             verifyAttempts: session.verifyAttempts,
             totalBlocks: session.totalBlocks,
         });
+
+        // Restore Class A profile
+        if (session.originalProfileId && session.deviceRef) {
+            await thingParkClient.restoreClass(devEui, session.originalProfileId, session.deviceRef);
+            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { profileId: session.originalProfileId });
+        }
     }
 
     async _failSession(devEui, reason) {
@@ -454,6 +510,12 @@ class FUOTAManager {
 
         console.error(`FUOTAManager: ${devEui} session failed: ${reason}`);
         auditLogger.log('fuota_manager', 'session_failed', devEui, { reason });
+
+        // Restore Class A profile
+        if (session.originalProfileId && session.deviceRef) {
+            await thingParkClient.restoreClass(devEui, session.originalProfileId, session.deviceRef);
+            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { profileId: session.originalProfileId });
+        }
     }
 
     async _abortSessionInternal(devEui, reason) {
@@ -471,6 +533,12 @@ class FUOTAManager {
 
         console.log(`FUOTAManager: ${devEui} session aborted: ${reason}`);
         auditLogger.log('fuota_manager', 'session_aborted', devEui, { reason });
+
+        // Restore Class A profile
+        if (session.originalProfileId && session.deviceRef) {
+            await thingParkClient.restoreClass(devEui, session.originalProfileId, session.deviceRef);
+            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { profileId: session.originalProfileId });
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -514,6 +582,8 @@ class FUOTAManager {
                   error: session.error,
                   firmwareName: session.firmwareName,
                   firmwareSize: session.firmwareSize,
+                  blockIntervalMs: session.blockIntervalMs,
+                  classCConfigured: session.classCConfigured,
               }
             : { devEui, state: 'idle' };
         this.io.emit('fuota:progress', payload);
@@ -557,6 +627,8 @@ class FUOTAManager {
                 verifyAttempts: s.verifyAttempts,
                 lastMissedCount: s.lastMissedCount,
                 error: s.error,
+                blockIntervalMs: s.blockIntervalMs,
+                classCConfigured: s.classCConfigured,
                 startedAt: new Date(s.startedAt).toISOString(),
             });
         }

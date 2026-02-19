@@ -10,6 +10,7 @@ const pki = require('./pki');
 const { connectWithRetry, pool } = require('./db');
 const waveformManager = require('./services/WaveformManager');
 const fuotaManager = require('./services/FUOTAManager');
+const thingParkClient = require('./services/ThingParkClient');
 const demoSimulator = require('./services/DemoSimulator');
 const auditLogger = require('./services/AuditLogger');
 const { deinterleaveWaveform } = require('./utils/deinterleave');
@@ -37,13 +38,13 @@ const io = new Server(server, {
     }
 });
 
-// Initialize FUOTA manager with Socket.io reference
-fuotaManager.init(io);
-
 // Initialize services
 (async () => {
     // Connect to Postgres
     await connectWithRetry();
+
+    // Initialize FUOTA manager with Socket.io reference (runs startup DB cleanup)
+    await fuotaManager.init(io);
 
     // Initialize MQTT Client with waveform processing callback
     const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
@@ -445,7 +446,7 @@ app.post('/api/fuota/upload', (req, res) => {
 
 // Start FUOTA sessions for one or more devices
 app.post('/api/fuota/start', async (req, res) => {
-    const { sessionId, devEuis } = req.body;
+    const { sessionId, devEuis, blockIntervalMs } = req.body;
     if (!sessionId || !Array.isArray(devEuis) || devEuis.length === 0) {
         return res.status(400).json({ error: 'sessionId and devEuis[] are required' });
     }
@@ -453,13 +454,13 @@ app.post('/api/fuota/start', async (req, res) => {
     const errors = [];
     for (const devEui of devEuis) {
         try {
-            await fuotaManager.startSession(sessionId, devEui);
+            await fuotaManager.startSession(sessionId, devEui, blockIntervalMs);
             started.push(devEui);
         } catch (err) {
             errors.push({ devEui, error: err.message });
         }
     }
-    auditLogger.log('fuota', 'sessions_start', null, { sessionId, started, errors });
+    auditLogger.log('fuota', 'sessions_start', null, { sessionId, started, errors, blockIntervalMs });
     res.json({ started, errors });
 });
 
@@ -487,6 +488,11 @@ app.post('/api/fuota/abort/:devEui', async (req, res) => {
     }
     auditLogger.log('fuota', 'session_abort', devEui, {});
     res.json({ aborted: true });
+});
+
+// ThingPark integration status
+app.get('/api/fuota/thingpark-status', (req, res) => {
+    res.json({ configured: thingParkClient.configured });
 });
 
 io.on('connection', (socket) => {
