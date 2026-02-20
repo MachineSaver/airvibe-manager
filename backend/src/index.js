@@ -24,7 +24,7 @@ const domain = process.env.DOMAIN || 'localhost';
 const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:4000',
-    ...(domain !== 'localhost' ? [`https://${domain}`] : [])
+    `https://${domain}`,   // covers both https://localhost and production domains
 ];
 
 app.use(cors({ origin: allowedOrigins }));
