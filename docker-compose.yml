@@ -79,6 +79,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-airvibe}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init-chirpstack.sql:/docker-entrypoint-initdb.d/init-chirpstack.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
@@ -93,6 +94,8 @@ services:
   backend:
     build: ./backend
     container_name: mqtt-manager-backend
+    ports:
+      - "4000:4000"   # Exposed for local dev (NEXT_PUBLIC_API_URL=http://localhost:4000)
     environment:
       - PORT=4000
       - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
