@@ -14,4 +14,6 @@ certs/
 deploy.tar.gz
 *.crt
 *:Zone.Identifier
+mosquitto/config/mosquitto_nossl.conf
+public/assets/Screenshot*
 FUOTA_IMPROVEMENT_PLAN.md
