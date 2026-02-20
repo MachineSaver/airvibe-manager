@@ -1,10 +1,62 @@
 services:
+
+  # ---------------------------------------------------------------------------
+  # LoRaWAN Infrastructure
+  # ---------------------------------------------------------------------------
+
+  # Accepts UDP Packet Forwarder connections from gateways on port 1700/UDP
+  # and relays them to the MQTT broker. Point your gateway's packet forwarder
+  # "server address" at this host's LAN IP address.
+  chirpstack-gateway-bridge:
+    image: chirpstack/chirpstack-gateway-bridge:4
+    container_name: chirpstack-gateway-bridge
+    ports:
+      - "1700:1700/udp"
+    volumes:
+      - ./chirpstack/chirpstack-gateway-bridge.toml:/etc/chirpstack-gateway-bridge/chirpstack-gateway-bridge.toml
+    depends_on:
+      - mqtt-broker
+    restart: unless-stopped
+
+  # ChirpStack Network Server + Application Server (unified v4)
+  # Web UI available at http://<host>:8080  (admin / admin on first run)
+  chirpstack:
+    image: chirpstack/chirpstack:4
+    container_name: chirpstack
+    volumes:
+      - ./chirpstack:/etc/chirpstack
+    environment:
+      - POSTGRESQL__DSN=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres/chirpstack?sslmode=disable
+      - REDIS__SERVERS=redis:6379
+    ports:
+      - "8080:8080"   # ChirpStack web UI + REST API
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mqtt-broker:
+        condition: service_started
+    restart: unless-stopped
+
+  # Redis — required by ChirpStack for device session state
+  redis:
+    image: redis:7-alpine
+    container_name: chirpstack-redis
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # MQTT Broker
+  # ---------------------------------------------------------------------------
+
   mqtt-broker:
     image: eclipse-mosquitto:2
     container_name: mqtt-broker
     ports:
-      - "1883:1883" # MQTT
-      - "8883:8883" # MQTT over SSL
+      - "1883:1883"   # MQTT (plain)
+      - "8883:8883"   # MQTT over TLS
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
@@ -13,6 +65,10 @@ services:
       - ./mosquitto/watcher.sh:/mosquitto/watcher.sh
     entrypoint: [ "/mosquitto/watcher.sh" ]
     restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Database
+  # ---------------------------------------------------------------------------
 
   postgres:
     image: postgres:16-alpine
@@ -30,18 +86,26 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # AirVibe Waveform Manager (backend + frontend)
+  # ---------------------------------------------------------------------------
+
   backend:
     build: ./backend
     container_name: mqtt-manager-backend
     environment:
       - PORT=4000
       - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
-      - DOMAIN=${DOMAIN}
+      - DOMAIN=${DOMAIN:-localhost}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_HOST=postgres
       - POSTGRES_DB=${POSTGRES_DB:-airvibe}
       - POSTGRES_PORT=5432
+      # ChirpStack integration (generate API key in ChirpStack UI after first run)
+      - CHIRPSTACK_API_URL=${CHIRPSTACK_API_URL:-http://chirpstack:8080}
+      - CHIRPSTACK_API_KEY=${CHIRPSTACK_API_KEY:-}
+      - CHIRPSTACK_APPLICATION_ID=${CHIRPSTACK_APPLICATION_ID:-1}
     volumes:
       - ./certs:/app/certs
     depends_on:
@@ -65,6 +129,10 @@ services:
       - backend
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Reverse Proxy
+  # ---------------------------------------------------------------------------
+
   caddy:
     image: caddy:alpine
     container_name: mqtt-manager-caddy
@@ -73,7 +141,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      - DOMAIN=${DOMAIN}
+      - DOMAIN=${DOMAIN:-localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
@@ -86,3 +154,4 @@ volumes:
   caddy_data:
   caddy_config:
   postgres_data:
+  redis_data:

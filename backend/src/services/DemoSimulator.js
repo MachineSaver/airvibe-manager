@@ -52,19 +52,28 @@ function generateOverallPayload() {
     return buf.toString('hex');
 }
 
-function buildActilityUplink(devEui, payloadHex, fPort = 8) {
-    return JSON.stringify({
-        DevEUI_uplink: {
-            Time: new Date().toISOString(),
-            DevEUI: devEui,
-            FPort: fPort,
-            FCntUp: Math.floor(Math.random() * 65535),
-            payload_hex: payloadHex,
-            LrrRSSI: -80 - Math.floor(Math.random() * 30),
-            LrrSNR: 5 + Math.floor(Math.random() * 10),
-            CustomerData: { alr: { pro: 'LORA/Generic', ver: '1' } },
-        }
-    });
+function buildChirpStackUplink(devEui, payloadHex, fPort = 8) {
+    const appId = process.env.CHIRPSTACK_APPLICATION_ID || '1';
+    return {
+        topic: `application/${appId}/device/${devEui.toLowerCase()}/event/up`,
+        message: JSON.stringify({
+            deviceInfo: {
+                devEui:        devEui.toLowerCase(),
+                deviceName:    `demo-${devEui.slice(-4)}`,
+                applicationId: appId,
+            },
+            fPort,
+            fCnt:  Math.floor(Math.random() * 65535),
+            data:  Buffer.from(payloadHex, 'hex').toString('base64'),
+            rxInfo: [
+                {
+                    rssi: -80 - Math.floor(Math.random() * 30),
+                    snr:   5  + Math.floor(Math.random() * 10),
+                },
+            ],
+            time: new Date().toISOString(),
+        }),
+    };
 }
 
 function replaceTransactionId(hexPayload, newTxId) {
@@ -151,8 +160,7 @@ class DemoSimulator {
     }
 
     _publish(devEui, payloadHex, fPort = 8) {
-        const topic = `mqtt/things/${devEui}/uplink`;
-        const message = buildActilityUplink(devEui, payloadHex, fPort);
+        const { topic, message } = buildChirpStackUplink(devEui, payloadHex, fPort);
         mqttClient.publish(topic, message);
     }
 

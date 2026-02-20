@@ -10,7 +10,7 @@ const pki = require('./pki');
 const { connectWithRetry, pool } = require('./db');
 const waveformManager = require('./services/WaveformManager');
 const fuotaManager = require('./services/FUOTAManager');
-const thingParkClient = require('./services/ThingParkClient');
+const chirpStackClient = require('./services/ChirpStackClient');
 const demoSimulator = require('./services/DemoSimulator');
 const auditLogger = require('./services/AuditLogger');
 const { deinterleaveWaveform } = require('./utils/deinterleave');
@@ -490,9 +490,9 @@ app.post('/api/fuota/abort/:devEui', async (req, res) => {
     res.json({ aborted: true });
 });
 
-// ThingPark integration status
-app.get('/api/fuota/thingpark-status', (req, res) => {
-    res.json({ configured: thingParkClient.configured });
+// ChirpStack integration status
+app.get('/api/fuota/network-server-status', (req, res) => {
+    res.json({ configured: chirpStackClient.configured, type: 'chirpstack' });
 });
 
 io.on('connection', (socket) => {
@@ -501,6 +501,7 @@ io.on('connection', (socket) => {
     socket.on('publish', (data) => {
         try {
             mqttClient.publish(data.topic, data.payload);
+            // Extract DevEUI from internal downlink topic format
             const devEuiMatch = data.topic.match(/mqtt\/things\/([^/]+)\//);
             auditLogger.log('user', 'downlink_publish', devEuiMatch?.[1] || null, { topic: data.topic, payload: data.payload });
         } catch (e) {

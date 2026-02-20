@@ -1,0 +1,52 @@
+# =============================================================================
+# ChirpStack Gateway Bridge — Configuration
+# =============================================================================
+# Documentation: https://www.chirpstack.io/docs/chirpstack-gateway-bridge/
+#
+# The Gateway Bridge accepts Semtech UDP Packet Forwarder connections from
+# LoRaWAN gateways on port 1700/UDP and forwards them to the MQTT broker.
+#
+# On your LoRaWAN gateway, set the "Server Address" in the packet forwarder
+# configuration to the IP address of this Docker host. Port 1700 UDP.
+# =============================================================================
+
+[general]
+  log_level = 2  # 0=debug 1=info 2=warning 3=error
+
+# ---------------------------------------------------------------------------
+# Backend — Semtech UDP Packet Forwarder (default for most gateways)
+# ---------------------------------------------------------------------------
+[backend]
+  type = "semtech_udp"
+
+  [backend.semtech_udp]
+    udp_bind = "0.0.0.0:1700"
+    # Fake-RX-time: use server time if gateway doesn't provide GPS time
+    fake_rx_time = false
+
+# ---------------------------------------------------------------------------
+# Integration — forward gateway events to Mosquitto
+# ---------------------------------------------------------------------------
+[integration]
+  marshaler = "protobuf"
+
+  [integration.mqtt]
+    # Points to our shared Mosquitto broker
+    server = "tcp://mqtt-broker:1883"
+
+    # Must use eu868/ prefix here; ChirpStack NS subscribes to this region prefix.
+    # Change to us915/ or au915/ to match your devices and chirpstack.toml.
+    event_topic_template   = "eu868/gateway/{{ .GatewayID }}/event/{{ .EventType }}"
+    command_topic_template = "eu868/gateway/{{ .GatewayID }}/command/#"
+
+    max_reconnect_interval = "1m0s"
+
+# ---------------------------------------------------------------------------
+# Metrics (optional, for Prometheus scraping)
+# ---------------------------------------------------------------------------
+[metrics]
+  type = "local"  # local = in-memory only; use "prometheus" if desired
+
+  [metrics.prometheus]
+    endpoint_enabled = false
+    bind = "0.0.0.0:9090"

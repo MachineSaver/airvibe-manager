@@ -1,7 +1,7 @@
 const { randomUUID } = require('crypto');
 const { pool } = require('../db');
 const auditLogger = require('./AuditLogger');
-const thingParkClient = require('./ThingParkClient');
+const chirpStackClient = require('./ChirpStackClient');
 
 // ---------------------------------------------------------------------------
 // Protocol constants
@@ -212,10 +212,9 @@ class FUOTAManager {
             lastMissedCount: 0,
             error: null,
             aborted: false,
-            // ThingPark Class C state
+            // ChirpStack Class C state
             classCConfigured: false,
-            originalProfileId: null,
-            deviceRef: null,
+            originalClass: null,
             // Timeout handles
             _ackTimeout: null,
             _verifyTimeout: null,
@@ -232,16 +231,14 @@ class FUOTAManager {
             }
         }, FUOTA_SESSION_TIMEOUT_MS);
 
-        // Attempt Class C profile switch (non-blocking to session creation)
-        const tpResult = await thingParkClient.switchToClassC(devEui);
-        session.originalProfileId = tpResult?.originalProfileId || null;
-        session.deviceRef = tpResult?.deviceRef || null;
-        session.classCConfigured = !!tpResult;
+        // Attempt Class C switch via ChirpStack API (non-blocking to session creation)
+        const csResult = await chirpStackClient.switchToClassC(devEui);
+        session.originalClass    = csResult?.originalClass || null;
+        session.classCConfigured = !!csResult;
 
         auditLogger.log('fuota_manager', 'class_c_switch', devEui, {
             success: session.classCConfigured,
-            originalProfileId: session.originalProfileId,
-            deviceRef: session.deviceRef,
+            originalClass: session.originalClass,
         });
 
         // Send init downlink then wait for 0x10 ACK
@@ -488,10 +485,10 @@ class FUOTAManager {
             totalBlocks: session.totalBlocks,
         });
 
-        // Restore Class A profile
-        if (session.originalProfileId && session.deviceRef) {
-            await thingParkClient.restoreClass(devEui, session.originalProfileId, session.deviceRef);
-            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { profileId: session.originalProfileId });
+        // Restore original device class
+        if (session.classCConfigured && session.originalClass) {
+            await chirpStackClient.restoreClass(devEui, session.originalClass);
+            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass: session.originalClass });
         }
     }
 
@@ -511,10 +508,10 @@ class FUOTAManager {
         console.error(`FUOTAManager: ${devEui} session failed: ${reason}`);
         auditLogger.log('fuota_manager', 'session_failed', devEui, { reason });
 
-        // Restore Class A profile
-        if (session.originalProfileId && session.deviceRef) {
-            await thingParkClient.restoreClass(devEui, session.originalProfileId, session.deviceRef);
-            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { profileId: session.originalProfileId });
+        // Restore original device class
+        if (session.classCConfigured && session.originalClass) {
+            await chirpStackClient.restoreClass(devEui, session.originalClass);
+            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass: session.originalClass });
         }
     }
 
@@ -534,10 +531,10 @@ class FUOTAManager {
         console.log(`FUOTAManager: ${devEui} session aborted: ${reason}`);
         auditLogger.log('fuota_manager', 'session_aborted', devEui, { reason });
 
-        // Restore Class A profile
-        if (session.originalProfileId && session.deviceRef) {
-            await thingParkClient.restoreClass(devEui, session.originalProfileId, session.deviceRef);
-            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { profileId: session.originalProfileId });
+        // Restore original device class
+        if (session.classCConfigured && session.originalClass) {
+            await chirpStackClient.restoreClass(devEui, session.originalClass);
+            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass: session.originalClass });
         }
     }
 
@@ -555,6 +552,7 @@ class FUOTAManager {
     }
 
     _sendDownlink(devEui, port, payloadBuf) {
+        // Publish in internal format — mqttClient.publish translates to ChirpStack
         const topic = `mqtt/things/${devEui}/downlink`;
         const message = JSON.stringify({
             DevEUI_downlink: {

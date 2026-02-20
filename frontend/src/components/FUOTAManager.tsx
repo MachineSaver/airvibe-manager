@@ -187,7 +187,7 @@ export default function FUOTAManager({ socket }: Props) {
   const [sessionHistory, setSessionHistory] = useState<DbSession[]>([]);
   const [historyExpanded, setHistoryExpanded] = useState(false);
 
-  const [thingParkConfigured, setThingParkConfigured] = useState<boolean | null>(null);
+  const [networkServerConfigured, setNetworkServerConfigured] = useState<boolean | null>(null);
 
   // Derived: set of devEuis with an active (non-terminal, non-idle) session
   const activeDevEuis = new Set(
@@ -210,10 +210,10 @@ export default function FUOTAManager({ socket }: Props) {
   }, [apiUrl]);
 
   useEffect(() => {
-    fetch(`${apiUrl}/api/fuota/thingpark-status`)
+    fetch(`${apiUrl}/api/fuota/network-server-status`)
       .then(r => r.json())
-      .then(json => setThingParkConfigured(!!json.configured))
-      .catch(() => setThingParkConfigured(false));
+      .then(json => setNetworkServerConfigured(!!json.configured))
+      .catch(() => setNetworkServerConfigured(false));
   }, [apiUrl]);
 
   useEffect(() => {
@@ -406,17 +406,17 @@ export default function FUOTAManager({ socket }: Props) {
       {/* ------------------------------------------------------------------ */}
       {/* Section A — Class C Status Banner                                   */}
       {/* ------------------------------------------------------------------ */}
-      {thingParkConfigured === true && (
+      {networkServerConfigured === true && (
         <div className="rounded-lg border border-green-700 bg-green-900/20 px-4 py-3 text-xs text-green-300">
-          <span className="font-semibold">ThingPark Class C auto-switch enabled</span>
-          {' '}— device profiles will be updated automatically before each FUOTA session and restored on completion.
+          <span className="font-semibold">ChirpStack Class C auto-switch enabled</span>
+          {' '}— device class will be updated automatically before each FUOTA session and restored on completion.
         </div>
       )}
-      {thingParkConfigured === false && (
+      {networkServerConfigured === false && (
         <div className="rounded-lg border border-amber-700 bg-amber-900/20 px-4 py-3 text-xs text-amber-300">
-          <span className="font-semibold">ThingPark credentials not configured.</span>
-          {' '}Set <code className="font-mono">THINGPARK_CLIENT_ID</code> and <code className="font-mono">THINGPARK_CLIENT_SECRET</code> in <code className="font-mono">.env</code> to enable automatic Class A→C switching.
-          Without this, <strong>manually configure device profiles as Class C</strong> in ThingPark Device Manager before each FUOTA.
+          <span className="font-semibold">ChirpStack API key not configured.</span>
+          {' '}Set <code className="font-mono">CHIRPSTACK_API_KEY</code> in <code className="font-mono">.env</code> to enable automatic Class A→C switching.
+          Without this, <strong>manually set the device class to Class C</strong> in the ChirpStack web UI before each FUOTA session.
         </div>
       )}
 

@@ -1,5 +1,15 @@
 {$DOMAIN} {
-    reverse_proxy /api/* backend:4000
+    # tls internal uses Caddy's built-in CA to issue a self-signed certificate.
+    # Works on any LAN or VPN without requiring a public domain or internet access.
+    # To trust the cert in your browser, download Caddy's root CA from:
+    #   docker exec mqtt-manager-caddy cat /data/caddy/pki/authorities/local/root.crt
+    # and import it into your OS trust store (one-time step per machine).
+    #
+    # For a named private domain resolvable within a VPN (e.g. airvibe.company.local),
+    # you may also configure a DNS-01 ACME challenge here instead.
+    tls internal
+
+    reverse_proxy /api/*       backend:4000
     reverse_proxy /socket.io/* backend:4000
-    reverse_proxy /* frontend:3000
+    reverse_proxy /*           frontend:3000
 }
