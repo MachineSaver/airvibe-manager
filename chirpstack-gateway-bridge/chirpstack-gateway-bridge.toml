@@ -34,8 +34,8 @@
     # Points to our shared Mosquitto broker
     server = "tcp://mqtt-broker:1883"
 
-    # Must use eu868/ prefix here; ChirpStack NS subscribes to this region prefix.
-    # Change to us915/ or au915/ to match your devices and chirpstack.toml.
+    # Prefix must match the topic_prefix in the region file (region_eu868.toml = "eu868",
+    # region_us915_0.toml = "us915_0"). Change both together if switching bands.
     event_topic_template   = "eu868/gateway/{{ .GatewayID }}/event/{{ .EventType }}"
     command_topic_template = "eu868/gateway/{{ .GatewayID }}/command/#"
 

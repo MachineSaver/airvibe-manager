@@ -13,7 +13,7 @@ services:
     ports:
       - "1700:1700/udp"
     volumes:
-      - ./chirpstack/chirpstack-gateway-bridge.toml:/etc/chirpstack-gateway-bridge/chirpstack-gateway-bridge.toml
+      - ./chirpstack-gateway-bridge/chirpstack-gateway-bridge.toml:/etc/chirpstack-gateway-bridge/chirpstack-gateway-bridge.toml
     depends_on:
       - mqtt-broker
     restart: unless-stopped
@@ -23,11 +23,12 @@ services:
   chirpstack:
     image: chirpstack/chirpstack:4
     container_name: chirpstack
+    command: -c /etc/chirpstack
     volumes:
       - ./chirpstack:/etc/chirpstack
     environment:
+      # Override the DSN so it picks up POSTGRES_USER/PASSWORD from .env
       - POSTGRESQL__DSN=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres/chirpstack?sslmode=disable
-      - REDIS__SERVERS=redis:6379
     ports:
       - "8080:8080"   # ChirpStack web UI + REST API
     depends_on:

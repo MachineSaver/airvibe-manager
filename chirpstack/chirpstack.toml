@@ -4,76 +4,51 @@
 # Documentation: https://www.chirpstack.io/docs/chirpstack/configuration.html
 #
 # This file is mounted into the chirpstack container at /etc/chirpstack/.
-# Sensitive values (DB credentials, API secret) can also be set via the
-# environment variables listed in docker-compose.yml.
+# The POSTGRESQL__DSN environment variable (set in docker-compose.yml) overrides
+# the dsn value below so it picks up POSTGRES_USER/POSTGRES_PASSWORD from .env.
 # =============================================================================
 
 [logging]
-  # Levels: trace, debug, info, warn, error
-  level = "info"
+  level="info"
 
-# ---------------------------------------------------------------------------
-# PostgreSQL
-# ---------------------------------------------------------------------------
 [postgresql]
-  # Credentials are injected via environment in docker-compose.yml.
-  # The DSN here is the fallback; it must point to the shared postgres service
-  # and use a dedicated "chirpstack" database (auto-created on first run).
-  dsn = "postgres://postgres:postgres@postgres/chirpstack?sslmode=disable"
-  max_open_connections = 10
+  dsn="postgres://postgres:postgres@postgres/chirpstack?sslmode=disable"
+  max_open_connections=10
+  min_idle_connections=0
 
-# ---------------------------------------------------------------------------
-# Redis (required for device session state and downlink scheduling)
-# ---------------------------------------------------------------------------
 [redis]
-  servers = ["redis:6379"]
-  key_prefix = ""
+  # "redis" is the Docker Compose service name for the chirpstack-redis container.
+  servers=[
+    "redis://redis:6379/",
+  ]
+  tls_enabled=false
+  cluster=false
 
-# ---------------------------------------------------------------------------
-# Network
-# ---------------------------------------------------------------------------
 [network]
-  # Network ID (3-byte hex). 000000 is the default for private networks.
-  net_ids = ["000000"]
+  net_id="000000"
+  # IDs must match the 'id' field in the region .toml files below.
+  # Include eu868, us915_0, or both depending on your hardware.
+  enabled_regions=[
+    "eu868",
+    "us915_0",
+  ]
 
-  # List of enabled regions. Must match filenames in this directory without
-  # the .toml extension. Add "us915" or "au915" etc. as needed.
-  enabled_regions = ["eu868"]
-
-# ---------------------------------------------------------------------------
-# Monitoring
-# ---------------------------------------------------------------------------
-[monitoring]
-  bind = "0.0.0.0:8070"
-
-# ---------------------------------------------------------------------------
-# API (REST/gRPC gateway used by the web UI and ChirpStackClient.js)
-# ---------------------------------------------------------------------------
 [api]
-  bind = "0.0.0.0:8080"
-
+  bind="0.0.0.0:8080"
   # Long random string — used to sign JWT API tokens.
-  # CHANGE THIS before running in production. Generate one with:
-  #   openssl rand -hex 32
-  secret = "CHANGE_ME_USE_openssl_rand_-hex_32_TO_GENERATE_A_PROPER_SECRET"
+  # CHANGE THIS before running in production:
+  #   openssl rand -base64 32
+  secret="CHANGE_ME_USE_openssl_rand_-base64_32_TO_GENERATE_A_PROPER_SECRET"
 
 # ---------------------------------------------------------------------------
-# Integration — publishes decoded uplinks to the MQTT broker
+# Integration — publishes decoded uplinks to the MQTT broker.
+# Topic templates match the regexes in backend/src/adapters/chirpstack.js.
 # ---------------------------------------------------------------------------
 [integration]
-  enabled = ["mqtt"]
+  enabled=["mqtt"]
 
-[integration.mqtt]
-  # Points to our shared Mosquitto broker (same Docker network)
-  server = "tcp://mqtt-broker:1883"
-
-  # Topic templates — must stay in sync with the adapter in
-  # backend/src/adapters/chirpstack.js (CS_UPLINK_RE / CS_CMD_DOWN_RE)
-  event_topic   = "application/{{ .ApplicationID }}/device/{{ .DevEUI }}/event/{{ .EventType }}"
-  command_topic = "application/{{ .ApplicationID }}/device/{{ .DevEUI }}/command/{{ .CommandType }}"
-
-  # Use JSON encoding (not protobuf) so our adapter can parse with JSON.parse()
-  json = true
-
-  # Reconnect behaviour
-  max_reconnect_interval = "1m0s"
+  [integration.mqtt]
+    # "mqtt-broker" is the Docker Compose service name for the Mosquitto container.
+    server="tcp://mqtt-broker:1883/"
+    # Use JSON encoding (not protobuf) so our adapter can parse with JSON.parse()
+    json=true
