@@ -14,8 +14,11 @@ const FUOTA_VERIFY_TIMEOUT_MS = parseInt(process.env.FUOTA_VERIFY_TIMEOUT_MS) ||
 const FUOTA_SESSION_TIMEOUT_MS= parseInt(process.env.FUOTA_SESSION_TIMEOUT_MS)|| 259200000; // 72 hours
 
 // Per-session interval clamp bounds (ms)
+// MAX is 300 s — Class A devices need long intervals because ThingPark/Basic Station
+// queues only 1–2 downlinks per device; at 10 s intervals the queue overflows immediately.
+// Recommended: 10 s for Class C (always-on RX), 120–300 s for Class A.
 const MIN_INTERVAL_MS = 1000;
-const MAX_INTERVAL_MS = 60000;
+const MAX_INTERVAL_MS = 300000;
 
 // Firmware store TTL (1 hour) – uploaded binaries are kept in memory this long
 const FIRMWARE_STORE_TTL_MS = 3600000;
@@ -241,6 +244,16 @@ class FUOTAManager {
             success: session.classCConfigured,
             originalClass: session.originalClass,
         });
+
+        if (!session.classCConfigured) {
+            console.warn(
+                `FUOTAManager: ${devEui} Class C switch failed — proceeding in Class A mode. ` +
+                `ThingPark/Basic Station queues only 1–2 downlinks per device; at the default ` +
+                `10 s block interval the queue will overflow immediately. ` +
+                `Set FUOTA_BLOCK_INTERVAL_MS=120000 (or higher) in .env for Class A, ` +
+                `or fix Class C switching via THINGPARK_CLASS_C_PROFILE and credentials.`
+            );
+        }
 
         // Send init downlink then wait for 0x10 ACK
         this._sendInitDownlink(session);

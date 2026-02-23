@@ -118,7 +118,11 @@ class ThingParkClient {
     async getDeviceRef(devEui) {
         if (!this.configured) return null;
         try {
-            const url = `${this.baseUrl}/thingpark/wireless/rest/subscriptions/mine/devices/${devEui}`;
+            // Use DX Core API device list with DevEUI filter.
+            // The Wireless REST API (/subscriptions/mine/devices/...) is subscription-scoped
+            // and returns 400 "Device not found" when the OAuth2 application belongs to a
+            // different subscription than the device.
+            const url = `${this.baseUrl}/thingpark/dx/core/latest/api/devices?deviceEUI=${encodeURIComponent(devEui)}`;
             const res = await this._fetch(url);
             if (!res || !res.ok) {
                 const text = res ? await res.text().catch(() => '') : '';
@@ -126,8 +130,14 @@ class ThingParkClient {
                 return null;
             }
             const json = await res.json();
-            // ThingPark returns { ref: <integer>, ... }
-            return json.ref ?? json.id ?? null;
+            // DX Core API returns { list: [ { ref, devEUI, ... } ], totalCount }
+            const list = Array.isArray(json.list) ? json.list : (Array.isArray(json) ? json : []);
+            if (list.length === 0) {
+                console.warn(`ThingParkClient: device ${devEui} not found via DX Core API`);
+                return null;
+            }
+            const device = list[0];
+            return device.ref ?? device.id ?? null;
         } catch (err) {
             console.warn(`ThingParkClient: getDeviceRef error for ${devEui}:`, err.message);
             return null;

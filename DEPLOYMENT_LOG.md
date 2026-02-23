@@ -185,6 +185,64 @@ waveform info.
 The job still polls every 10 s for responsiveness, but only re-fires for a
 given waveform once per minute.
 
+### Issue 9 — FUOTA downlink queue overflow in Class A mode ✅ Fixed
+**Severity:** High (FUOTA completely non-functional in Class A fallback)
+**File:** `backend/src/services/FUOTAManager.js`
+
+During a FUOTA session on device `8C1F642113000639`, the first init downlink was
+delivered but subsequent blocks were dropped with "Not sent — RX1: Queue full" and
+"Specific Basics Station failure cause" from Actility Basic Station.
+
+The ThingPark/Basic Station gateway queues only 1–2 downlinks per device. With
+`FUOTA_BLOCK_INTERVAL_MS=10000` (10 s) and the device in Class A (receive window
+only after its own uplinks), blocks were queued faster than the device could drain
+them.
+
+The session hard-cap `MAX_INTERVAL_MS` was 60000 ms (60 s), preventing operators
+from setting a safe interval even via `FUOTA_BLOCK_INTERVAL_MS`.
+
+**Fix applied:**
+- Raised `MAX_INTERVAL_MS` from 60000 → 300000 ms (5 min).
+- Added startup warning log when Class C switch failed (`session.classCConfigured === false`)
+  so operators see an explicit explanation in logs instead of silent queue overflow.
+- Updated `.env.example` with Class A vs Class C interval guidance
+  (`FUOTA_BLOCK_INTERVAL_MS=120000` recommended for Class A).
+
+**Action required (operator):** Set `FUOTA_BLOCK_INTERVAL_MS=120000` in VPS `.env`
+as a safety net until Class C switching is confirmed working (see Issue 10).
+
+---
+
+### Issue 10 — ThingPark `getDeviceRef` using wrong API endpoint ✅ Fixed
+**Severity:** High (Class C auto-switch silently fails for all FUOTA sessions)
+**File:** `backend/src/services/ThingParkClient.js`
+
+VPS logs showed:
+```
+ThingParkClient: getDeviceRef failed for 8C1F642113000639 (400):
+{"code":55,"message":"Device not found: 8C1F642113000639 for Subscription: 24462"}
+ThingParkClient: switchToClassC — could not resolve ref for 8C1F642113000639
+```
+
+The old endpoint (`/thingpark/wireless/rest/subscriptions/mine/devices/{devEUI}`)
+is subscription-scoped: it returns 400 when the OAuth2 application's subscription
+does not match the device's registered subscription. This is a known ThingPark API
+limitation for multi-subscription environments.
+
+**Fix applied:** Switched to the DX Core API device list endpoint:
+`GET /thingpark/dx/core/latest/api/devices?deviceEUI={devEUI}`
+
+This endpoint returns `{ list: [{ ref, devEUI, ... }], totalCount }` and is not
+subscription-scoped. Response parsing updated accordingly.
+
+**Note (US916/CN470 devices):** Device `8C1F642113000639` shows band "cn470, us916"
+in ThingPark portal. The Class C profile must match the device's frequency plan:
+- EU868: `LORA/GenericC.1.0.4a_ETSI`  (default)
+- US915/US916/CN470: `LORA/GenericC.1.0.4a_FCC`
+
+Ensure `THINGPARK_CLASS_C_PROFILE=LORA/GenericC.1.0.4a_FCC` is set in VPS `.env`
+for US-band devices.
+
 ---
 
 ## Deployment Outcome — Session 1
