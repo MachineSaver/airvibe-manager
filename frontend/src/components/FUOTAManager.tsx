@@ -33,6 +33,7 @@ interface DeviceProgress {
   totalBlocks: number;
   verifyAttempts: number;
   lastMissedCount: number;
+  lastMissedBlocks?: number[];
   error: string | null;
   firmwareName?: string;
   firmwareSize?: number;
@@ -682,7 +683,7 @@ function DeviceProgressCard({
 }) {
   const {
     devEui, state, blocksSent, totalBlocks, verifyAttempts,
-    lastMissedCount, error, firmwareName, blockIntervalMs, classCConfigured,
+    lastMissedCount, lastMissedBlocks, error, firmwareName, blockIntervalMs, classCConfigured,
   } = progress;
   const pct = totalBlocks > 0 ? Math.min(100, Math.round((blocksSent / totalBlocks) * 100)) : 0;
   const isTerminal = isTerminalState(state);
@@ -802,9 +803,100 @@ function DeviceProgressCard({
         )}
       </div>
 
+      {/* Missed blocks map — shown during resending or after a verify with missed blocks */}
+      {lastMissedBlocks && lastMissedBlocks.length > 0 && totalBlocks > 0 && state !== 'complete' && (
+        <MissedBlocksMap totalBlocks={totalBlocks} missedBlocks={lastMissedBlocks} />
+      )}
+
       {error && (
         <p className="text-xs text-red-400 font-mono break-all">{error}</p>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MissedBlocksMap
+// ---------------------------------------------------------------------------
+
+const MAP_CELLS = 200; // fixed visual resolution regardless of firmware size
+
+function MissedBlocksMap({
+  totalBlocks,
+  missedBlocks,
+}: {
+  totalBlocks: number;
+  missedBlocks: number[];
+}) {
+  const missedSet = new Set(missedBlocks);
+  const cellCount = Math.min(totalBlocks, MAP_CELLS);
+  // Each cell covers a contiguous range of blocks
+  const cells = Array.from({ length: cellCount }, (_, i) => {
+    const lo = Math.floor((i * totalBlocks) / cellCount);
+    const hi = Math.floor(((i + 1) * totalBlocks) / cellCount);
+    // Cell is "missed" if any block in [lo, hi) is in the missed set
+    let hasMissed = false;
+    for (let b = lo; b < hi; b++) {
+      if (missedSet.has(b)) { hasMissed = true; break; }
+    }
+    return { lo, hi: hi - 1, hasMissed };
+  });
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs text-gray-500">
+        <span className="font-medium text-amber-400">
+          Missed blocks from last 0x11 uplink
+        </span>
+        <span>
+          <span className="text-amber-400 font-mono">{missedBlocks.length}</span>
+          <span> block{missedBlocks.length !== 1 ? 's' : ''} to resend</span>
+        </span>
+      </div>
+
+      {/* Block map grid */}
+      <div
+        className="flex flex-wrap gap-px rounded overflow-hidden"
+        title={`${missedBlocks.length} missed block(s): ${missedBlocks.slice(0, 12).join(', ')}${missedBlocks.length > 12 ? '…' : ''}`}
+      >
+        {cells.map((cell, i) => (
+          <div
+            key={i}
+            title={
+              cell.lo === cell.hi
+                ? `Block ${cell.lo}${cell.hasMissed ? ' — MISSING' : ' — received'}`
+                : `Blocks ${cell.lo}–${cell.hi}${cell.hasMissed ? ' — contains missing' : ' — received'}`
+            }
+            className={`h-3 flex-shrink-0 rounded-sm transition-colors ${
+              cell.hasMissed
+                ? 'bg-amber-500'
+                : 'bg-blue-900/60'
+            }`}
+            style={{ width: `${Math.max(2, Math.floor(100 / cellCount))}%` }}
+          />
+        ))}
+      </div>
+
+      {/* Block number list */}
+      <div className="flex flex-wrap gap-1">
+        {missedBlocks.map(b => (
+          <span
+            key={b}
+            className="font-mono text-[10px] px-1 py-0.5 rounded bg-amber-900/40 border border-amber-700/50 text-amber-300"
+          >
+            {b}
+          </span>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-3 text-[10px] text-gray-600">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-500" /> missing
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-900/60 border border-blue-800" /> received
+        </span>
+      </div>
     </div>
   );
 }

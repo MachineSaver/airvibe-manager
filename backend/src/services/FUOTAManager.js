@@ -11,7 +11,7 @@ const CHUNK_SIZE = 49; // data bytes per block; total downlink = 2-byte LE block
 const FUOTA_BLOCK_INTERVAL_MS = parseInt(process.env.FUOTA_BLOCK_INTERVAL_MS) || 10000;
 const FUOTA_ACK_TIMEOUT_MS    = parseInt(process.env.FUOTA_ACK_TIMEOUT_MS)    || 21600000; // 6 hours
 const FUOTA_VERIFY_TIMEOUT_MS = parseInt(process.env.FUOTA_VERIFY_TIMEOUT_MS) || 14400000; // 4 hours
-const FUOTA_SESSION_TIMEOUT_MS= parseInt(process.env.FUOTA_SESSION_TIMEOUT_MS)|| 93600000; // 26 hours
+const FUOTA_SESSION_TIMEOUT_MS= parseInt(process.env.FUOTA_SESSION_TIMEOUT_MS)|| 259200000; // 72 hours
 
 // Per-session interval clamp bounds (ms)
 const MIN_INTERVAL_MS = 1000;
@@ -210,6 +210,7 @@ class FUOTAManager {
             blocksSent: 0,
             verifyAttempts: 0,
             lastMissedCount: 0,
+            lastMissedBlocks: [],
             error: null,
             aborted: false,
             // ChirpStack Class C state
@@ -227,7 +228,7 @@ class FUOTAManager {
         // Overall session lifetime guard
         session._sessionTimeout = setTimeout(async () => {
             if (this.activeSessions.has(devEui)) {
-                await this._failSession(devEui, 'Session exceeded maximum lifetime (26h)');
+                await this._failSession(devEui, 'Session exceeded maximum lifetime (72h)');
             }
         }, FUOTA_SESSION_TIMEOUT_MS);
 
@@ -426,6 +427,7 @@ class FUOTAManager {
             // Resend missed blocks then verify again
             session.state = 'resending';
             session.lastMissedCount = result.count;
+            session.lastMissedBlocks = result.blocks;
             this._updateDb(session);
             this._emitProgress(devEui);
 
@@ -577,6 +579,7 @@ class FUOTAManager {
                   totalBlocks: session.totalBlocks,
                   verifyAttempts: session.verifyAttempts,
                   lastMissedCount: session.lastMissedCount,
+                  lastMissedBlocks: session.lastMissedBlocks,
                   error: session.error,
                   firmwareName: session.firmwareName,
                   firmwareSize: session.firmwareSize,
@@ -624,6 +627,7 @@ class FUOTAManager {
                 totalBlocks: s.totalBlocks,
                 verifyAttempts: s.verifyAttempts,
                 lastMissedCount: s.lastMissedCount,
+                lastMissedBlocks: s.lastMissedBlocks,
                 error: s.error,
                 blockIntervalMs: s.blockIntervalMs,
                 classCConfigured: s.classCConfigured,
