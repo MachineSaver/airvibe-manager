@@ -1,6 +1,11 @@
 const mqtt = require('mqtt');
 const messageTracker = require('./services/MessageTracker');
-const adapter = require('./adapters/chirpstack');
+
+const NETWORK_SERVER = process.env.NETWORK_SERVER || 'chirpstack';
+const adapter = NETWORK_SERVER === 'thingpark'
+    ? require('./adapters/thingpark')
+    : require('./adapters/chirpstack');
+console.log(`MQTT adapter: ${NETWORK_SERVER}`);
 
 let client = null;
 
@@ -10,6 +15,8 @@ function connect(brokerUrl, io, onMessage) {
     client = mqtt.connect(brokerUrl, {
         clientId: 'mqtt-manager-backend_' + Math.random().toString(16).substr(2, 8),
         reconnectPeriod: 1000,
+        ...(process.env.MQTT_USER ? { username: process.env.MQTT_USER } : {}),
+        ...(process.env.MQTT_PASS ? { password: process.env.MQTT_PASS } : {}),
     });
 
     client.on('connect', () => {
@@ -27,9 +34,10 @@ function connect(brokerUrl, io, onMessage) {
     });
 
     client.on('message', (rawTopic, rawMessage) => {
-        // Normalize ChirpStack uplink/downlink-echo topics and payloads into
-        // the internal canonical format. Non-ChirpStack topics pass through
-        // unchanged so the monitor still shows gateway stats, join events, etc.
+        // Run the incoming message through the active adapter to normalise it
+        // into the internal canonical format. In ChirpStack mode this converts
+        // application/{id}/device/{devEUI}/event/up → mqtt/things/{devEUI}/uplink.
+        // In ThingPark mode the message is already canonical — passthrough.
         const { topic, message } = adapter.normalizeIncoming(rawTopic, rawMessage);
 
         io.emit('mqtt:message', {
@@ -63,9 +71,9 @@ function connect(brokerUrl, io, onMessage) {
 /**
  * Publish a message.
  *
- * Internal downlink messages (topic `mqtt/things/{devEUI}/downlink` carrying
- * a DevEUI_downlink JSON body) are translated to ChirpStack command format
- * before being written to the broker. All other topics are published as-is.
+ * The active adapter translates the topic/payload before writing to the broker:
+ *   - chirpstack: converts mqtt/things/{devEUI}/downlink → ChirpStack command/down (base64 payload)
+ *   - thingpark:  passthrough — publishes to mqtt/things/{devEUI}/downlink as-is (DevEUI_downlink JSON)
  */
 function publish(topic, message) {
     if (!client || !client.connected) {
