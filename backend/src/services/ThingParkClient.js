@@ -13,7 +13,8 @@
  *   THINGPARK_CLIENT_ID       — OAuth2 client ID
  *   THINGPARK_CLIENT_SECRET   — OAuth2 client secret
  *   THINGPARK_CLASS_C_PROFILE — device profile ID to switch to for FUOTA
- *                               (default: LORA/GenericC.1_ETSI_Rx2-SF9)
+ *                               (default EU868: LORA/GenericC.1.0.4a_ETSI)
+ *                               (default US915: LORA/GenericC.1.0.4a_FCC)
  */
 
 class ThingParkClient {
@@ -21,7 +22,7 @@ class ThingParkClient {
         this.baseUrl = (process.env.THINGPARK_BASE_URL || 'https://community.thingpark.io').replace(/\/$/, '');
         this.clientId = process.env.THINGPARK_CLIENT_ID || '';
         this.clientSecret = process.env.THINGPARK_CLIENT_SECRET || '';
-        this.classCProfile = process.env.THINGPARK_CLASS_C_PROFILE || 'LORA/GenericC.1_ETSI_Rx2-SF9';
+        this.classCProfile = process.env.THINGPARK_CLASS_C_PROFILE || 'LORA/GenericC.1.0.4a_ETSI';
 
         this.configured = !!(this.clientId && this.clientSecret);
 
@@ -48,7 +49,7 @@ class ThingParkClient {
             return this._token;
         }
 
-        const tokenUrl = `${this.baseUrl}/thingpark/dx/core/latest/api/oauth/token`;
+        const tokenUrl = `${this.baseUrl}/users-auth/protocol/openid-connect/token`;
         const body = new URLSearchParams({
             grant_type: 'client_credentials',
             client_id: this.clientId,
