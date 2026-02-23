@@ -468,7 +468,10 @@ app.post('/api/fuota/start', async (req, res) => {
 app.get('/api/fuota/sessions', async (req, res) => {
     try {
         const dbResult = await pool.query(
-            `SELECT * FROM fuota_sessions ORDER BY started_at DESC LIMIT 100`
+            `SELECT id, device_eui, firmware_name, firmware_size, total_blocks,
+                    block_interval_ms, status, blocks_sent, verify_attempts,
+                    last_missed_blocks, error, started_at, completed_at, updated_at
+             FROM fuota_sessions ORDER BY started_at DESC LIMIT 100`
         );
         res.json({
             sessions: dbResult.rows,

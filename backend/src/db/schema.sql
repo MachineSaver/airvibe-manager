@@ -99,3 +99,11 @@ CREATE TABLE IF NOT EXISTS fuota_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fuota_device_time ON fuota_sessions(device_eui, started_at DESC);
+
+-- Add persistence columns for restart recovery (safe for existing databases)
+-- firmware_data: raw binary stored as BYTEA (TOAST-compressed by Postgres for large values).
+--   NULL after session completes/fails/aborts to reclaim storage.
+--   Used on startup to recover sessions orphaned by a backend restart.
+-- block_interval_ms: per-session block interval preserved so recovery uses the same cadence.
+ALTER TABLE fuota_sessions ADD COLUMN IF NOT EXISTS firmware_data BYTEA;
+ALTER TABLE fuota_sessions ADD COLUMN IF NOT EXISTS block_interval_ms INTEGER;

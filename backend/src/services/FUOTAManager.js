@@ -113,23 +113,97 @@ class FUOTAManager {
     async init(io) {
         this.io = io;
 
-        // Mark any non-terminal sessions in DB as failed — they were orphaned by the restart
+        // Recover any sessions that were active when the backend last restarted.
+        // Sessions with a persisted firmware binary are resumed from block 0 (safe because
+        // the AirVibe device tolerates duplicate block reception; the verify loop handles gaps).
+        // Sessions without firmware_data (created before this feature was added) are failed.
         try {
-            const result = await pool.query(
-                `UPDATE fuota_sessions
-                 SET status='failed', error='Backend restarted during active session',
-                     completed_at=NOW(), updated_at=NOW()
-                 WHERE status NOT IN ('complete','failed','aborted')
-                 RETURNING id, device_eui`
+            const orphans = await pool.query(
+                `SELECT id, device_eui, firmware_name, firmware_size, total_blocks,
+                        block_interval_ms, verify_attempts, firmware_data
+                 FROM fuota_sessions
+                 WHERE status NOT IN ('complete','failed','aborted')`
             );
-            if (result.rows.length > 0) {
-                console.log(`FUOTAManager: marked ${result.rows.length} orphaned session(s) as failed on startup`);
-                for (const row of result.rows) {
-                    auditLogger.log('fuota_manager', 'startup_cleanup', row.device_eui, { dbId: row.id });
+
+            let recovered = 0;
+            let failed = 0;
+
+            for (const row of orphans.rows) {
+                const devEui = row.device_eui;
+
+                if (!row.firmware_data) {
+                    // Pre-persistence session — no binary, cannot recover
+                    await pool.query(
+                        `UPDATE fuota_sessions
+                         SET status='failed', error='Backend restarted — no firmware binary available for recovery',
+                             completed_at=NOW(), updated_at=NOW()
+                         WHERE id=$1`,
+                        [row.id]
+                    );
+                    auditLogger.log('fuota_manager', 'startup_cleanup', devEui, { dbId: row.id, reason: 'no_firmware_data' });
+                    failed++;
+                    continue;
                 }
+
+                const rawBuffer = Buffer.from(row.firmware_data);
+                const blocks = chunkBuffer(rawBuffer);
+                const intervalMs = row.block_interval_ms || FUOTA_BLOCK_INTERVAL_MS;
+
+                const session = {
+                    sessionId:       null,   // no in-memory firmware store entry for recovered sessions
+                    dbId:            row.id,
+                    devEui,
+                    firmwareName:    row.firmware_name,
+                    firmwareSize:    row.firmware_size,
+                    blocks,
+                    totalBlocks:     row.total_blocks,
+                    blockIntervalMs: intervalMs,
+                    state:           'initializing',
+                    blocksSent:      0,
+                    verifyAttempts:  row.verify_attempts || 0,
+                    lastMissedCount: 0,
+                    lastMissedBlocks:[],
+                    error:           null,
+                    aborted:         false,
+                    classCConfigured:false,
+                    originalClass:   null,
+                    _ackTimeout:     null,
+                    _verifyTimeout:  null,
+                    _sessionTimeout: null,
+                    startedAt:       Date.now(),
+                };
+
+                this.activeSessions.set(devEui, session);
+
+                session._sessionTimeout = setTimeout(async () => {
+                    if (this.activeSessions.has(devEui)) {
+                        await this._failSession(devEui, 'Session exceeded maximum lifetime (72h)');
+                    }
+                }, FUOTA_SESSION_TIMEOUT_MS);
+
+                // Re-attempt Class C switch (non-blocking)
+                const csResult = await networkClient.switchToClassC(devEui).catch(() => null);
+                session.originalClass    = csResult?.originalClass || null;
+                session.classCConfigured = !!csResult;
+
+                // Re-send init downlink and wait for fresh 0x10 ACK; then restart from block 0
+                this._sendInitDownlink(session);
+                this._emitProgress(devEui);
+                auditLogger.log('fuota_manager', 'session_resumed', devEui, {
+                    dbId: row.id,
+                    totalBlocks: row.total_blocks,
+                    blockIntervalMs: intervalMs,
+                    classCConfigured: session.classCConfigured,
+                });
+                console.log(`FUOTAManager: recovered session for ${devEui} (${row.firmware_name}, ${row.total_blocks} blocks)`);
+                recovered++;
+            }
+
+            if (recovered > 0 || failed > 0) {
+                console.log(`FUOTAManager: startup recovery — ${recovered} resumed, ${failed} failed (no binary)`);
             }
         } catch (err) {
-            console.error('FUOTAManager: startup cleanup error:', err.message);
+            console.error('FUOTAManager: startup recovery error:', err.message);
         }
     }
 
@@ -149,6 +223,7 @@ class FUOTAManager {
             name,
             size: buffer.length,
             blocks,
+            rawBuffer: buffer,   // retained so startSession() can persist it to DB
             createdAt: Date.now(),
         });
         const initPayload = makeInitPayload(buffer.length);
@@ -186,15 +261,23 @@ class FUOTAManager {
             await this._abortSessionInternal(devEui, 'superseded by new session');
         }
 
-        // Create DB record
+        // Create DB record and persist firmware binary for restart recovery
         let dbId;
         try {
             const res = await pool.query(
-                `INSERT INTO fuota_sessions (device_eui, firmware_name, firmware_size, total_blocks, status)
-                 VALUES ($1, $2, $3, $4, 'initializing') RETURNING id`,
-                [devEui, firmware.name, firmware.size, firmware.blocks.length]
+                `INSERT INTO fuota_sessions
+                     (device_eui, firmware_name, firmware_size, total_blocks, block_interval_ms, status)
+                 VALUES ($1, $2, $3, $4, $5, 'initializing') RETURNING id`,
+                [devEui, firmware.name, firmware.size, firmware.blocks.length, intervalMs]
             );
             dbId = res.rows[0].id;
+            // Persist the raw binary so the session can be recovered after a backend restart.
+            // Stored as BYTEA; Postgres TOAST-compresses values > ~2KB automatically.
+            // Cleared to NULL when the session reaches a terminal state.
+            await pool.query(
+                `UPDATE fuota_sessions SET firmware_data = $1 WHERE id = $2`,
+                [firmware.rawBuffer, dbId]
+            );
         } catch (err) {
             console.error(`FUOTAManager: DB insert failed for ${devEui}:`, err.message);
             dbId = null;
@@ -606,22 +689,42 @@ class FUOTAManager {
     async _updateDb(session, isFinal = false) {
         if (!session.dbId) return;
         try {
-            await pool.query(
-                `UPDATE fuota_sessions
-                 SET status = $1, blocks_sent = $2, verify_attempts = $3,
-                     last_missed_blocks = $4, error = $5,
-                     completed_at = $6, updated_at = NOW()
-                 WHERE id = $7`,
-                [
-                    session.state,
-                    session.blocksSent,
-                    session.verifyAttempts,
-                    JSON.stringify([]),   // cleared after each resend cycle
-                    session.error,
-                    isFinal ? new Date() : null,
-                    session.dbId,
-                ]
-            );
+            if (isFinal) {
+                // Terminal state: clear firmware_data to reclaim Postgres TOAST storage.
+                await pool.query(
+                    `UPDATE fuota_sessions
+                     SET status = $1, blocks_sent = $2, verify_attempts = $3,
+                         last_missed_blocks = $4, error = $5,
+                         completed_at = $6, updated_at = NOW(),
+                         firmware_data = NULL
+                     WHERE id = $7`,
+                    [
+                        session.state,
+                        session.blocksSent,
+                        session.verifyAttempts,
+                        JSON.stringify([]),
+                        session.error,
+                        new Date(),
+                        session.dbId,
+                    ]
+                );
+            } else {
+                await pool.query(
+                    `UPDATE fuota_sessions
+                     SET status = $1, blocks_sent = $2, verify_attempts = $3,
+                         last_missed_blocks = $4, error = $5,
+                         completed_at = NULL, updated_at = NOW()
+                     WHERE id = $6`,
+                    [
+                        session.state,
+                        session.blocksSent,
+                        session.verifyAttempts,
+                        JSON.stringify([]),
+                        session.error,
+                        session.dbId,
+                    ]
+                );
+            }
         } catch (err) {
             console.error('FUOTAManager: DB update error:', err.message);
         }
