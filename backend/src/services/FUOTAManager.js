@@ -1,7 +1,7 @@
 const { randomUUID } = require('crypto');
 const { pool } = require('../db');
 const auditLogger = require('./AuditLogger');
-const chirpStackClient = require('./ChirpStackClient');
+const networkClient = require('./networkServerClient');
 
 // ---------------------------------------------------------------------------
 // Protocol constants
@@ -232,8 +232,8 @@ class FUOTAManager {
             }
         }, FUOTA_SESSION_TIMEOUT_MS);
 
-        // Attempt Class C switch via ChirpStack API (non-blocking to session creation)
-        const csResult = await chirpStackClient.switchToClassC(devEui);
+        // Attempt Class C switch via the active network server client (non-blocking to session creation)
+        const csResult = await networkClient.switchToClassC(devEui);
         session.originalClass    = csResult?.originalClass || null;
         session.classCConfigured = !!csResult;
 
@@ -489,7 +489,7 @@ class FUOTAManager {
 
         // Restore original device class
         if (session.classCConfigured && session.originalClass) {
-            await chirpStackClient.restoreClass(devEui, session.originalClass);
+            await networkClient.restoreClass(devEui, session.originalClass);
             auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass: session.originalClass });
         }
     }
@@ -512,7 +512,7 @@ class FUOTAManager {
 
         // Restore original device class
         if (session.classCConfigured && session.originalClass) {
-            await chirpStackClient.restoreClass(devEui, session.originalClass);
+            await networkClient.restoreClass(devEui, session.originalClass);
             auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass: session.originalClass });
         }
     }
@@ -535,7 +535,7 @@ class FUOTAManager {
 
         // Restore original device class
         if (session.classCConfigured && session.originalClass) {
-            await chirpStackClient.restoreClass(devEui, session.originalClass);
+            await networkClient.restoreClass(devEui, session.originalClass);
             auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass: session.originalClass });
         }
     }

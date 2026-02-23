@@ -10,7 +10,7 @@ const pki = require('./pki');
 const { connectWithRetry, pool } = require('./db');
 const waveformManager = require('./services/WaveformManager');
 const fuotaManager = require('./services/FUOTAManager');
-const chirpStackClient = require('./services/ChirpStackClient');
+const networkClient = require('./services/networkServerClient');
 const demoSimulator = require('./services/DemoSimulator');
 const auditLogger = require('./services/AuditLogger');
 const { deinterleaveWaveform } = require('./utils/deinterleave');
@@ -490,9 +490,9 @@ app.post('/api/fuota/abort/:devEui', async (req, res) => {
     res.json({ aborted: true });
 });
 
-// ChirpStack integration status
+// Network server Class C auto-switch status
 app.get('/api/fuota/network-server-status', (req, res) => {
-    res.json({ configured: chirpStackClient.configured, type: 'chirpstack' });
+    res.json({ configured: networkClient.configured, type: networkClient.type });
 });
 
 io.on('connection', (socket) => {
