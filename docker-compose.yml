@@ -130,7 +130,7 @@ services:
     build: ./backend
     container_name: mqtt-manager-backend
     ports:
-      - "4000:4000"   # Exposed for local dev (bypasses Caddy; set NEXT_PUBLIC_API_URL=http://localhost:4000 for direct access)
+      - "127.0.0.1:4000:4000"   # Loopback-only: accessible on the host for local dev but not reachable from the internet (Docker bypasses UFW for 0.0.0.0 bindings)
     environment:
       - PORT=4000
       # In full profile this resolves to the bundled Mosquitto container.
