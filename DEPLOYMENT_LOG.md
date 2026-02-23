@@ -166,6 +166,30 @@ or upgrade the `baseline-browser-mapping` / `browserslist` package versions.
 
 ---
 
+## Session 2 — 2026-02-23: Live Data Testing
+
+### Issue 8 — TWIU retry downlinks sent too frequently ✅ Fixed
+**Severity:** Medium (wastes LoRaWAN airtime, risks duty-cycle limits)
+**File:** `backend/src/services/WaveformManager.js`
+
+The `startTWIUCheckJob` (runs every 10 s) queries for pending waveforms with
+no metadata that haven't been updated in the last 10 seconds. After sending a
+fPort 22 `request_waveform_info` downlink it updates `last_updated = NOW()`.
+With a 10-second re-arm window and a 10-second job interval, the same device
+could receive two TWIU requests ~20–30 seconds apart. Two downlinks were
+observed 30 seconds apart for device `8C1F642113000639`.
+
+LoRaWAN best practice: no more than one retry per minute for re-requesting
+waveform info.
+
+**Fix applied:** Changed the SQL filter from
+`last_updated < NOW() - INTERVAL '10 seconds'` →
+`last_updated < NOW() - INTERVAL '60 seconds'`.
+The job still polls every 10 s for responsiveness, but only re-fires for a
+given waveform once per minute.
+
+---
+
 ## Deployment Outcome — Session 1
 
 | Check | Result |
@@ -183,7 +207,7 @@ or upgrade the `baseline-browser-mapping` / `browserslist` package versions.
 | Port 1883 security fix | ✅ Bound to 127.0.0.1 (loopback-only) |
 | Port 8883 publicly accessible | ✅ UFW opened for ThingPark inbound |
 | MQTT_BROKER_URL corrected | ✅ Restored to mqtt://mqtt-broker:1883 |
-| ThingPark X IoT Flow connector | ⏳ Awaiting connector setup (see below) |
+| ThingPark X IoT Flow connector | ✅ Connected — device 8C1F642113000639 delivering uplinks |
 
 ---
 
@@ -212,3 +236,25 @@ Once connector is connected and assigned:
 ```bash
 docker compose logs -f mqtt-manager-backend | grep -E "MQTT|message|uplink"
 ```
+
+---
+
+## Future Improvements
+
+Tracked items that are not bugs but should be addressed in a future development pass.
+
+### FI-1 — Sensor configuration packet (fPort 22 read)
+
+Before sending downlinks, request the sensor's current configuration packet
+(fPort 22) to understand:
+- The device's own measurement interval / wake-up schedule — so the backend
+  can align TWIU retry timing and downlink rate to what the sensor actually
+  supports rather than using fixed hardcoded intervals.
+- Expected uplink cadence — so the backend can detect a silent device (no
+  uplink within expected window) and raise an alert or log a missed-measurement
+  event rather than simply waiting indefinitely.
+
+This would replace the current hardcoded `INTERVAL '60 seconds'` TWIU retry
+interval with a per-device value derived from the sensor config.
+
+**Relevant code:** `WaveformManager.js` — `startTWIUCheckJob`, `sendAutoDownlink`

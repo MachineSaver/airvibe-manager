@@ -348,7 +348,7 @@ class WaveformManager {
                     SELECT id, device_eui, transaction_id FROM waveforms
                     WHERE status = 'pending'
                     AND metadata IS NULL
-                    AND last_updated < NOW() - INTERVAL '10 seconds'
+                    AND last_updated < NOW() - INTERVAL '60 seconds'
                     AND created_at > NOW() - INTERVAL '5 minutes'
                 `);
 
