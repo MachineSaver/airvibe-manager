@@ -117,12 +117,12 @@ class WaveformManager {
 
         console.log(`TWIU received for ${devEui} TxID ${txId}`);
 
-        // Send ACK via codec
+        // Send ACK via codec (rate-limited — Class A can only receive one downlink per uplink)
         const ackResult = codec.encodeDownlink({
             fPort: 20,
             data: { opcode: 'waveform_info_ack', transaction_id: txId }
         });
-        this.sendDownlink(devEui, 20, Buffer.from(ackResult.bytes));
+        this.sendAutoDownlink(devEui, 20, Buffer.from(ackResult.bytes));
         auditLogger.log('waveform_manager', 'twiu_ack', devEui, { fPort: 20, txId });
     }
 
@@ -204,12 +204,12 @@ class WaveformManager {
             await this.assembleWaveform(waveformId);
             console.log(`Waveform ${devEui} TxID ${txId} Complete!`);
 
-            // Send Data ACK via codec
+            // Send Data ACK via codec (rate-limited — Class A can only receive one downlink per uplink)
             const ackResult = codec.encodeDownlink({
                 fPort: 20,
                 data: { opcode: 'waveform_data_ack', transaction_id: txId }
             });
-            this.sendDownlink(devEui, 20, Buffer.from(ackResult.bytes));
+            this.sendAutoDownlink(devEui, 20, Buffer.from(ackResult.bytes));
             auditLogger.log('waveform_manager', 'data_ack', devEui, { fPort: 20, txId });
         } else {
             console.log(`Waveform ${devEui} TxID ${txId} Missing ${missing.length} segments`);
@@ -291,7 +291,9 @@ class WaveformManager {
         // Prune timestamps older than 60s
         const recent = timestamps.filter(t => now - t < 60000);
         this.lastDownlinkTimes.set(devEui, recent);
-        return recent.length < 2;
+        // Max 1 downlink per minute per device — matches Class A constraint
+        // (device can only receive one downlink per uplink cycle)
+        return recent.length < 1;
     }
 
     recordAutoDownlink(devEui) {
@@ -302,7 +304,7 @@ class WaveformManager {
 
     sendAutoDownlink(devEui, port, payload) {
         if (!this.canSendAutoDownlink(devEui)) {
-            console.log(`Rate-limited: skipping automated downlink for ${devEui} (max 2/min)`);
+            console.log(`Rate-limited: skipping downlink to ${devEui} fPort ${port} (max 1/min — Class A queue protection)`);
             return;
         }
         this.recordAutoDownlink(devEui);
