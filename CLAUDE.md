@@ -75,14 +75,15 @@ Services marked `profiles: [full]` only start when `COMPOSE_PROFILES=full`. App-
 
 **ThingPark uplink path:**
 1. LoRaWAN gateway → Actility ThingPark cloud (decrypts payload)
-2. ThingPark publishes `DevEUI_uplink` JSON to customer MQTT endpoint
-3. Backend `mqttClient.js` connects to `MQTT_BROKER_URL`; ThingPark adapter is a passthrough (already canonical format)
-4. Same downstream processing as ChirpStack path
+2. ThingPark MQTT connector (configured in ThingPark X IoT Flow) connects TO the AirVibe Mosquitto broker on port 8883 using mTLS certificates from the Certificate Manager
+3. ThingPark publishes `DevEUI_uplink` JSON to Mosquitto on topic `mqtt/things/{devEUI}/uplink`
+4. Backend `mqttClient.js` is subscribed to `#` on the internal Mosquitto (port 1883); ThingPark adapter is a passthrough (already canonical format)
+5. Same downstream processing as ChirpStack path
 
 **Downlink path:**
-- Frontend → Socket.io `publish` → `mqttClient.publish` → active adapter translates → Mosquitto/ThingPark
+- Frontend → Socket.io `publish` → `mqttClient.publish` → active adapter translates → Mosquitto
 - ChirpStack adapter: converts `mqtt/things/{devEUI}/downlink` → `application/{appID}/device/{devEUI}/command/down` (base64 payload)
-- ThingPark adapter: passthrough — publishes `DevEUI_downlink` JSON on `mqtt/things/{devEUI}/downlink`
+- ThingPark adapter: passthrough — publishes `DevEUI_downlink` JSON on `mqtt/things/{devEUI}/downlink`; ThingPark connector picks it up from Mosquitto and delivers to the device
 
 ### Backend modules (`backend/src/`)
 - **index.js**: Express server, Socket.io setup, PKI initialization, REST endpoints. Uses `networkServerClient` for network-server status (`/api/fuota/network-server-status`) — returns `{ configured, type }`.

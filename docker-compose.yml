@@ -89,10 +89,12 @@ services:
   mqtt-broker:
     image: eclipse-mosquitto:2
     container_name: mqtt-broker
-    profiles: [full]
+    # No profile — starts in both ChirpStack (full) and ThingPark (app-only) modes.
+    # ThingPark connects to this broker on port 8883 (mTLS); the backend connects
+    # internally on port 1883. ChirpStack also publishes to this broker.
     ports:
-      - "1883:1883"   # MQTT (plain)
-      - "8883:8883"   # MQTT over TLS
+      - "127.0.0.1:1883:1883"   # MQTT plain — loopback-only (containers use Docker bridge; host-local dev tools use localhost:1883)
+      - "8883:8883"             # MQTT over TLS — publicly exposed for ThingPark inbound connections
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
