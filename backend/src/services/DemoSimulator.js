@@ -1,5 +1,7 @@
 const mqttClient = require('../mqttClient');
 
+const NETWORK_SERVER = process.env.NETWORK_SERVER || 'chirpstack';
+
 const DEV_EUIS = [
     '8C1F642113000556',
     '8C1F642113000789',
@@ -72,6 +74,23 @@ function buildChirpStackUplink(devEui, payloadHex, fPort = 8) {
                 },
             ],
             time: new Date().toISOString(),
+        }),
+    };
+}
+
+function buildThingParkUplink(devEui, payloadHex, fPort = 8) {
+    return {
+        topic: `mqtt/things/${devEui.toUpperCase()}/uplink`,
+        message: JSON.stringify({
+            DevEUI_uplink: {
+                Time:        new Date().toISOString(),
+                DevEUI:      devEui.toUpperCase(),
+                FPort:       fPort,
+                FCntUp:      Math.floor(Math.random() * 65535),
+                payload_hex: payloadHex,
+                LrrRSSI:     -80 - Math.floor(Math.random() * 30),
+                LrrSNR:       5  + Math.floor(Math.random() * 10),
+            },
         }),
     };
 }
@@ -160,7 +179,9 @@ class DemoSimulator {
     }
 
     _publish(devEui, payloadHex, fPort = 8) {
-        const { topic, message } = buildChirpStackUplink(devEui, payloadHex, fPort);
+        const { topic, message } = NETWORK_SERVER === 'thingpark'
+            ? buildThingParkUplink(devEui, payloadHex, fPort)
+            : buildChirpStackUplink(devEui, payloadHex, fPort);
         mqttClient.publish(topic, message);
     }
 
