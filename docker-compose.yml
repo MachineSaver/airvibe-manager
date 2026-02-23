@@ -152,6 +152,11 @@ services:
       - CHIRPSTACK_API_KEY=${CHIRPSTACK_API_KEY:-}
       - CHIRPSTACK_APPLICATION_ID=${CHIRPSTACK_APPLICATION_ID:-1}
       - NETWORK_SERVER=${NETWORK_SERVER:-chirpstack}
+      # ThingPark integration (enables Class C auto-switch for FUOTA in ThingPark mode)
+      - THINGPARK_BASE_URL=${THINGPARK_BASE_URL:-https://community.thingpark.io}
+      - THINGPARK_CLIENT_ID=${THINGPARK_CLIENT_ID:-}
+      - THINGPARK_CLIENT_SECRET=${THINGPARK_CLIENT_SECRET:-}
+      - THINGPARK_CLASS_C_PROFILE=${THINGPARK_CLASS_C_PROFILE:-}
     volumes:
       - ./certs:/app/certs
     depends_on:
