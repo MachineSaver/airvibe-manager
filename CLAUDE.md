@@ -85,30 +85,43 @@ Services marked `profiles: [full]` only start when `COMPOSE_PROFILES=full`. App-
 - ThingPark adapter: passthrough — publishes `DevEUI_downlink` JSON on `mqtt/things/{devEUI}/downlink`
 
 ### Backend modules (`backend/src/`)
-- **index.js**: Express server, Socket.io setup, PKI initialization, REST endpoints. Uses `ChirpStackClient` for network-server status (`/api/fuota/network-server-status`).
+- **index.js**: Express server, Socket.io setup, PKI initialization, REST endpoints. Uses `networkServerClient` for network-server status (`/api/fuota/network-server-status`) — returns `{ configured, type }`.
 - **mqttClient.js**: MQTT broker connection. Selects adapter at startup from `NETWORK_SERVER` env var. Logs `"MQTT adapter: chirpstack|thingpark"` on startup. Runs every incoming message through the adapter before dispatching; translates outgoing downlinks via adapter before publishing.
 - **adapters/chirpstack.js**: Bidirectional format adapter. `normalizeIncoming`: converts `application/+/device/+/event/up` (base64) → `mqtt/things/{devEUI}/uplink` (`DevEUI_uplink` hex). `normalizeOutgoing`: converts internal downlink → ChirpStack command format. Passes through unrecognised topics unchanged.
 - **adapters/thingpark.js**: Identity passthrough adapter. Both `normalizeIncoming` and `normalizeOutgoing` return their inputs unchanged. ThingPark already publishes/expects canonical format.
-- **services/ChirpStackClient.js**: Calls ChirpStack REST API (`/api/devices/{devEUI}`) with API-key auth to switch device class A↔C for FUOTA. Gracefully no-ops when `CHIRPSTACK_API_KEY` is absent (covers ThingPark and unauthenticated scenarios).
-- **services/FUOTAManager.js**: FUOTA firmware update state machine. Uses ChirpStackClient for Class C switching (no-op in ThingPark mode — manual switch required).
+- **services/networkServerClient.js**: Unified Class C switching selector. Reads `NETWORK_SERVER` at module-load time and exports either a ChirpStackClient or ThingParkClient wrapper with a consistent interface (`configured`, `type`, `switchToClassC`, `restoreClass`). All FUOTA code routes through this module — never imports ChirpStackClient or ThingParkClient directly.
+- **services/ChirpStackClient.js**: Calls ChirpStack REST API (`/api/devices/{devEUI}`) with API-key auth to switch device class A↔C for FUOTA. Gracefully no-ops when `CHIRPSTACK_API_KEY` is absent.
+- **services/ThingParkClient.js**: Calls ThingPark DX Core API with OAuth2 client-credentials to switch device profile A→C for FUOTA. Caches token and retries on 401. Gracefully no-ops when `THINGPARK_CLIENT_ID`/`THINGPARK_CLIENT_SECRET` are absent.
+- **services/FUOTAManager.js**: FUOTA firmware update state machine. Uses `networkServerClient` for Class C switching — automatic in both ChirpStack and ThingPark modes when credentials are configured; graceful no-op otherwise (manual switch required).
+- **services/AuditLogger.js**: Persists audit events to the `audit_log` DB table. Called by most modules with `(source, action, deviceEui, details)`.
 - **services/DemoSimulator.js**: Dual-mode demo. In ChirpStack mode emits `buildChirpStackUplink()` to ChirpStack topics so they flow through the full adapter pipeline. In ThingPark mode emits `buildThingParkUplink()` directly to canonical topics.
 - **pki.js**: X.509 certificate generation via OpenSSL (CA, server cert for Mosquitto TLS, client certs for download).
 - **db.js**: PostgreSQL connection pool (host: `postgres`, db: `airvibe`) with retry logic and schema initialization.
 - **services/WaveformManager.js**: Processes AirVibe waveform packets (TWIU 0x03, TWD 0x01, TWF 0x05), assembles segments, handles missing segment requests.
 - **services/MessageTracker.js**: Persists messages to DB, upserts device registry. Expects internal canonical topic format `mqtt/things/{devEUI}/uplink|downlink`.
+- **utils/deinterleave.js**: Splits a multi-axis waveform hex payload into per-axis arrays (`axis1`, `axis2`, `axis3`) based on the axis-mask byte from the TWIU header. Used by `index.js` REST waveform endpoints.
 
 ### Frontend structure (`frontend/src/`)
 - **app/page.tsx**: Main UI with tabs — MQTT Monitor, Waveform Manager, FUOTA Manager, Certificate Management
 - **app/SocketContext.tsx**: Socket.io context provider managing connection state and message buffer (last 500 messages)
-- **components/MQTTMessageCard.tsx**: Collapsible message cards with JSON pretty-printing
-- **components/FUOTAManager.tsx**: FUOTA UI. Shows ChirpStack/ThingPark-conditional Class C status banner. Fetches `/api/fuota/network-server-status`.
+- **components/MQTTMonitor.tsx**: Live MQTT message feed with filtering and collapsible cards.
+- **components/MQTTMessageCard.tsx**: Collapsible message cards with JSON pretty-printing.
+- **components/WaveformsView.tsx**: Waveform management tab. Renders assembled waveforms per device using `SegmentMap`, `WaveformChart`, and `WaveformTracker` sub-components.
+- **components/SegmentMap.tsx**: Visual grid showing received/missing/requested waveform segments.
+- **components/WaveformChart.tsx**: Time-series chart rendering decoded axis data.
+- **components/WaveformTracker.tsx**: Per-device waveform session state card.
+- **components/FUOTAManager.tsx**: FUOTA UI. Shows network-server-conditional Class C status banner (4 variants: ChirpStack/ThingPark × configured/not-configured). Fetches `/api/fuota/network-server-status` for `{ configured, type }`.
+- **components/DownlinkBuilder.tsx**: Manual downlink composer with command presets from `lib/commandPresets.ts`.
+- **components/CertificateManager.tsx**: Certificate download UI for MQTT TLS client certs.
+- **lib/commandPresets.ts**: Named downlink command presets (fPort + hex payload) for DownlinkBuilder.
+- **utils/waveformTracker.ts**: Client-side waveform assembly state machine — tracks segments, detects completion, requests missing segments.
 
 ### ChirpStack configuration (`chirpstack/`)
 Only loaded when `COMPOSE_PROFILES=full`.
 - **chirpstack.toml**: Main server config (PostgreSQL DSN, Redis, API bind, MQTT integration, enabled regions)
 - **chirpstack-gateway-bridge.toml**: Gateway bridge config (UDP backend, MQTT output, region topic prefix)
 - **region_eu868.toml**: EU868 channel plan (8 x 125 kHz + FSK channels)
-- **region_us915.toml**: US915 sub-band 2 channel plan
+- **region_us915_0.toml**: US915 sub-band 2 channel plan
 
 ### AirVibe waveform protocol
 Messages arrive at the backend already in canonical format (hex payload in `DevEUI_uplink.payload_hex`). Key packet types:
@@ -121,7 +134,7 @@ Downlink commands target fPorts 20-22, 25, 30-31 with hex payloads. The adapter 
 
 ## Key Conventions
 
-- **`NETWORK_SERVER`**: `chirpstack` (default) or `thingpark`. Read at module-load time in `mqttClient.js` and `DemoSimulator.js`. Drives adapter selection and Caddyfile TLS mode.
+- **`NETWORK_SERVER`**: `chirpstack` (default) or `thingpark`. Read at module-load time in `mqttClient.js`, `DemoSimulator.js`, and `networkServerClient.js`. Drives adapter selection, Class C switching client selection, and Caddyfile TLS mode.
 - **Internal canonical topic format**: All business logic uses `mqtt/things/{devEUI}/uplink|downlink` — the adapter translates to/from network-server-specific format at the MQTT client boundary.
 - **`caddy/entrypoint.sh`**: Shell script that generates `/etc/caddy/Caddyfile` at container start from `DOMAIN` and `NETWORK_SERVER`, then execs Caddy. ChirpStack/localhost → `tls internal`. ThingPark + real domain → automatic ACME. No static Caddyfile is tracked in git.
 - **`NEXT_PUBLIC_API_URL` bake-in**: Compiled into the Next.js bundle at `docker compose build` time. Changing it requires a rebuild, not just a restart.
