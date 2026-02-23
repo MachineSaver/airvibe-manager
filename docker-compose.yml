@@ -1,8 +1,11 @@
 services:
 
   # ---------------------------------------------------------------------------
-  # LoRaWAN Infrastructure
+  # LoRaWAN Infrastructure  (profile: full)
   # ---------------------------------------------------------------------------
+  # These services are only started when COMPOSE_PROFILES=full.
+  # In app-only mode (COMPOSE_PROFILES=) they are omitted; point the env vars
+  # MQTT_BROKER_URL and CHIRPSTACK_API_URL at the existing plant ChirpStack box.
 
   # Accepts UDP Packet Forwarder connections from gateways on port 1700/UDP
   # and relays them to the MQTT broker. Point your gateway's packet forwarder
@@ -10,6 +13,7 @@ services:
   chirpstack-gateway-bridge:
     image: chirpstack/chirpstack-gateway-bridge:4
     container_name: chirpstack-gateway-bridge
+    profiles: [full]
     ports:
       - "1700:1700/udp"
     volumes:
@@ -18,11 +22,38 @@ services:
       - mqtt-broker
     restart: unless-stopped
 
+  # One-shot sidecar: creates the ChirpStack database and pg_trgm extension
+  # if they don't already exist, then exits. Runs on every "docker compose up"
+  # so mode-switching (ThingPark → ChirpStack) works without volume surgery.
+  chirpstack-db-init:
+    image: postgres:16-alpine
+    container_name: chirpstack-db-init
+    profiles: [full]
+    environment:
+      - PGPASSWORD=${POSTGRES_PASSWORD:-postgres}
+    command:
+      - sh
+      - -c
+      - |
+        until pg_isready -h postgres -U ${POSTGRES_USER:-postgres}; do
+          echo 'chirpstack-db-init: waiting for postgres...'; sleep 2
+        done
+        psql -h postgres -U ${POSTGRES_USER:-postgres} -tc \
+          "SELECT 1 FROM pg_database WHERE datname='chirpstack'" | grep -q 1 \
+          || psql -h postgres -U ${POSTGRES_USER:-postgres} -c 'CREATE DATABASE chirpstack;'
+        psql -h postgres -U ${POSTGRES_USER:-postgres} -d chirpstack \
+          -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # ChirpStack Network Server + Application Server (unified v4)
   # Web UI available at http://<host>:8080  (admin / admin on first run)
   chirpstack:
     image: chirpstack/chirpstack:4
     container_name: chirpstack
+    profiles: [full]
     command: -c /etc/chirpstack
     volumes:
       - ./chirpstack:/etc/chirpstack
@@ -34,6 +65,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      chirpstack-db-init:
+        condition: service_completed_successfully
       redis:
         condition: service_started
       mqtt-broker:
@@ -44,17 +77,19 @@ services:
   redis:
     image: redis:7-alpine
     container_name: chirpstack-redis
+    profiles: [full]
     volumes:
       - redis_data:/data
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # MQTT Broker
+  # MQTT Broker  (profile: full)
   # ---------------------------------------------------------------------------
 
   mqtt-broker:
     image: eclipse-mosquitto:2
     container_name: mqtt-broker
+    profiles: [full]
     ports:
       - "1883:1883"   # MQTT (plain)
       - "8883:8883"   # MQTT over TLS
@@ -68,7 +103,7 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # Database
+  # Database  (always starts)
   # ---------------------------------------------------------------------------
 
   postgres:
@@ -80,7 +115,6 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-airvibe}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgres/init-chirpstack.sql:/docker-entrypoint-initdb.d/init-chirpstack.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
@@ -89,17 +123,21 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # AirVibe Waveform Manager (backend + frontend)
+  # AirVibe Waveform Manager (backend + frontend)  (always starts)
   # ---------------------------------------------------------------------------
 
   backend:
     build: ./backend
     container_name: mqtt-manager-backend
     ports:
-      - "4000:4000"   # Exposed for local dev (NEXT_PUBLIC_API_URL=http://localhost:4000)
+      - "4000:4000"   # Exposed for local dev (bypasses Caddy; set NEXT_PUBLIC_API_URL=http://localhost:4000 for direct access)
     environment:
       - PORT=4000
-      - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
+      # In full profile this resolves to the bundled Mosquitto container.
+      # In app-only mode override this in .env to point at the plant ChirpStack broker.
+      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://mqtt-broker:1883}
+      - MQTT_USER=${MQTT_USER:-}
+      - MQTT_PASS=${MQTT_PASS:-}
       - DOMAIN=${DOMAIN:-localhost}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
@@ -107,14 +145,14 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-airvibe}
       - POSTGRES_PORT=5432
       # ChirpStack integration (generate API key in ChirpStack UI after first run)
+      # In app-only mode override this in .env to point at the plant ChirpStack box.
       - CHIRPSTACK_API_URL=${CHIRPSTACK_API_URL:-http://chirpstack:8080}
       - CHIRPSTACK_API_KEY=${CHIRPSTACK_API_KEY:-}
       - CHIRPSTACK_APPLICATION_ID=${CHIRPSTACK_APPLICATION_ID:-1}
+      - NETWORK_SERVER=${NETWORK_SERVER:-chirpstack}
     volumes:
       - ./certs:/app/certs
     depends_on:
-      mqtt-broker:
-        condition: service_started
       postgres:
         condition: service_healthy
     restart: unless-stopped
@@ -123,18 +161,18 @@ services:
     build:
       context: ./frontend
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://localhost}
         - NEXT_PUBLIC_BUILD_HASH=${NEXT_PUBLIC_BUILD_HASH:-unknown}
         - NEXT_PUBLIC_BUILD_DATE=${NEXT_PUBLIC_BUILD_DATE:-unknown}
     container_name: mqtt-manager-frontend
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://localhost}
     depends_on:
       - backend
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # Reverse Proxy
+  # Reverse Proxy  (always starts)
   # ---------------------------------------------------------------------------
 
   caddy:
@@ -146,10 +184,12 @@ services:
       - "443:443"
     environment:
       - DOMAIN=${DOMAIN:-localhost}
+      - NETWORK_SERVER=${NETWORK_SERVER:-chirpstack}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy/entrypoint.sh:/usr/local/bin/caddy-start.sh:ro
       - caddy_data:/data
       - caddy_config:/config
+    entrypoint: ["/bin/sh", "/usr/local/bin/caddy-start.sh"]
     depends_on:
       - frontend
       - backend

@@ -1,3 +1,6 @@
+# Generated at runtime by caddy/entrypoint.sh — never commit
+Caddyfile
+
 node_modules/
 dist/
 .next/
