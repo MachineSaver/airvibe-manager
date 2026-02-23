@@ -1,6 +1,7 @@
 'use strict';
 
 const adapter = require('../src/adapters/chirpstack');
+const thingpark = require('../src/adapters/thingpark');
 
 // ---------------------------------------------------------------------------
 // normalizeIncoming — ChirpStack uplink → internal format
@@ -171,5 +172,41 @@ describe('normalizeOutgoing — internal downlink', () => {
         const result = adapter.normalizeOutgoing(topic, msg);
         expect(result.topic).toBe(topic);
         expect(result.message).toBe(msg);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// ThingPark adapter — identity passthrough (both directions)
+// ---------------------------------------------------------------------------
+
+describe('thingpark adapter — normalizeIncoming passthrough', () => {
+    const cases = [
+        ['mqtt/things/0102030405060708/uplink',   '{"DevEUI_uplink":{"DevEUI":"0102030405060708","payload_hex":"deadbeef"}}'],
+        ['mqtt/things/AABBCCDDEEFF0011/uplink',   '{"DevEUI_uplink":{"payload_hex":"0319"}}'],
+        ['application/1/device/abc/event/up',     '{"data":"base64stuff"}'],
+        ['some/arbitrary/topic',                  'raw bytes'],
+        ['eu868/gateway/abc/event/stats',         '{}'],
+    ];
+
+    it.each(cases)('returns topic and message byte-for-byte for %s', (topic, payload) => {
+        const msg = Buffer.from(payload);
+        const { topic: outTopic, message: outMsg } = thingpark.normalizeIncoming(topic, msg);
+        expect(outTopic).toBe(topic);
+        expect(outMsg).toBe(msg);
+    });
+});
+
+describe('thingpark adapter — normalizeOutgoing passthrough', () => {
+    const cases = [
+        ['mqtt/things/0102030405060708/downlink',  '{"DevEUI_downlink":{"FPort":20,"payload_hex":"deadbeef"}}'],
+        ['mqtt/things/AABBCCDDEEFF0011/downlink',  '{"DevEUI_downlink":{"FPort":8,"payload_hex":"0319"}}'],
+        ['mqtt/things/0102030405060708/uplink',    '{"DevEUI_uplink":{}}'],
+        ['some/arbitrary/topic',                   'raw bytes'],
+    ];
+
+    it.each(cases)('returns topic and message byte-for-byte for %s', (topic, payload) => {
+        const { topic: outTopic, message: outMsg } = thingpark.normalizeOutgoing(topic, payload);
+        expect(outTopic).toBe(topic);
+        expect(outMsg).toBe(payload);
     });
 });
