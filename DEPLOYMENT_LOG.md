@@ -59,29 +59,24 @@ required `THINGPARK_CLIENT_ID` / `THINGPARK_CLIENT_SECRET` env vars.
 
 ---
 
-### Issue 3 — `setup_vps.sh` not suitable for ThingPark/cloud deployment
+### Issue 3 — `setup_vps.sh` not suitable for ThingPark/cloud deployment ✅ Fixed
 **Severity:** Medium
 **File:** `scripts/setup_vps.sh`
 
-The script creates a minimal `.env` with only `DOMAIN`, `NEXT_PUBLIC_API_URL`,
-`MQTT_USER`, and `MQTT_PASS`. It does not set:
-- `NETWORK_SERVER`
-- `COMPOSE_PROFILES`
-- `MQTT_BROKER_URL`
+The script created a minimal `.env` missing `NETWORK_SERVER`, `COMPOSE_PROFILES`,
+and `MQTT_BROKER_URL`, defaulting silently to ChirpStack mode. It also called
+`docker compose up -d --build` directly (skipping `build.sh`, so footer showed
+`unknown`), opened port 1883 publicly (security issue), and used `sudo docker`
+(wrong on root-user VPS).
 
-Running it for a ThingPark deployment would produce a misconfigured `.env`
-that defaults to `NETWORK_SERVER=chirpstack` (ChirpStack mode, wrong adapter)
-and starts with the wrong MQTT broker URL. A developer following the README
-might be tempted to run this script — it would silently produce a broken
-deployment.
-
-The script also starts `docker compose up -d --build` at the end without
-prompting for credentials, and `docker compose` is called with `sudo` which
-may fail in environments where the non-root user runs Docker.
-
-**Action needed:** Either extend `setup_vps.sh` to support both modes with
-a deployment-mode prompt, or add a prominent warning in the README that
-`setup_vps.sh` is for on-premise mode only.
+**Fix applied:** Full rewrite of `setup_vps.sh`:
+- Prompts for deployment mode (ChirpStack vs ThingPark) and generates a correct
+  mode-specific `.env` with all required vars
+- Uses `./build.sh` instead of `docker compose up -d --build` directly
+- Removes `sudo` from docker commands (script targets root VPS user)
+- Does NOT open port 1883 publicly (plain MQTT is loopback-only by design)
+- Port 8883 opened for ThingPark inbound mTLS connections
+- Prints ThingPark connector setup instructions after startup in ThingPark mode
 
 ---
 
@@ -136,33 +131,35 @@ entries.
 
 ---
 
-### Issue 6 — npm audit vulnerabilities in build output
-**Severity:** Low (pre-existing, non-blocking)
+### Issue 6 — npm audit vulnerabilities in build output ✅ Partially Fixed
+**Severity:** Low — remaining issues are devDependency-only (not in production image)
 
-During `docker compose up --build`:
-- **Backend:** 3 high severity vulnerabilities reported by `npm audit`
-- **Frontend:** 1 moderate, 14 high, 1 critical vulnerabilities reported
+**Frontend — resolved:** Upgraded Next.js `16.0.3` → `^16.1.6`. This fixed 1
+critical and 6 high CVEs (RCE via React flight protocol, Server Actions source
+code exposure, DoS via Server Components, Image Optimizer DoS, HTTP
+deserialization DoS, unbounded memory consumption via PPR endpoint).
 
-These appear to be pre-existing in the dependency tree and do not block the
-build. Should be tracked and resolved in a separate dependency audit pass.
+**Frontend — remaining (8 high):** All in ESLint's transitive dependency chain
+(`minimatch < 10.2.1`). Fix requires ESLint 10.x (major breaking change). ESLint
+9.39.3 is the latest 9.x — the vulnerability has not been patched in ESLint 9.
+ESLint is a devDependency; the production Docker image uses `npm ci --omit=dev`
+so ESLint is never installed in deployed containers. No production risk.
 
-**Action needed:** Run `npm audit fix` in both `backend/` and `frontend/` and
-review what upgrades are available without breaking changes.
+**Backend — remaining (18 high):** All in Jest's transitive dependency chain
+(`minimatch < 10.2.1`). Fix requires downgrading Jest to 25.0.0 (regressive).
+Jest is a devDependency; same `--omit=dev` exclusion applies. No production risk.
+
+**Action when ESLint 10 / Jest 30 stabilise:** Upgrade both and re-run audit.
 
 ---
 
-### Issue 7 — `baseline-browser-mapping` data staleness warning during frontend build
+### Issue 7 — `baseline-browser-mapping` data staleness warning ✅ Fixed
 **Severity:** Informational
 **Observed during:** `docker compose build` frontend stage
 
-The Next.js build emitted: `warn - The browserslist data in the
-baseline-browser-mapping module is over two months old.`
-
-This is a cosmetic warning from the Browserslist package used for CSS/JS
-transpilation targeting. It does not affect functionality.
-
-**Action needed:** Update Browserslist data with `npx update-browserslist-db@latest`
-or upgrade the `baseline-browser-mapping` / `browserslist` package versions.
+**Fix applied:** Ran `npx update-browserslist-db@latest` in `frontend/`.
+Updated `caniuse-lite` from `1.0.30001756` → `1.0.30001774`. Warning will no
+longer appear during builds.
 
 ---
 

@@ -22,7 +22,7 @@
     "socket.io": "^4.7.2"
   },
   "devDependencies": {
-    "jest": "^29.7.0",
+    "jest": "^30.2.0",
     "nodemon": "^3.0.1"
   }
 }
