@@ -1,10 +1,30 @@
-# AirVibe Waveform Manager — On-Premise Edition
+# AirVibe Waveform Manager
 
-A fully self-contained Docker stack for managing AirVibe vibration sensors over LoRaWAN — **no cloud account, no external network server, no internet required at runtime.**
+AirVibe Waveform Manager is a Docker-based platform for monitoring, managing, and firmware-updating AirVibe vibration sensors over LoRaWAN. It runs in two modes: **on-premise** (self-hosted ChirpStack LoRaWAN network server, no cloud dependency) and **cloud** (Actility ThingPark network server, AirVibe management layer only).
 
-This branch (`on_premise`) replaces Actility ThingPark with **ChirpStack v4**, an open-source LoRaWAN Network Server + Application Server that runs entirely inside Docker alongside the rest of the application. A single `docker compose up` gives you a complete edge deployment ready for an industrial LAN or VPN.
+---
 
-> **Looking for the cloud/Actility-connected version?** See the `main` branch.
+## Choosing Your Deployment Mode
+
+Read this section before anything else — picking the wrong mode means redoing your setup.
+
+| | On-Premise (ChirpStack) | Cloud (ThingPark) |
+|---|---|---|
+| LoRaWAN network server | ChirpStack v4, runs in Docker on your hardware | Actility ThingPark (SaaS, cloud-hosted) |
+| Internet required at runtime | No — fully air-gapped capable | Yes — sensor data transits Actility's cloud |
+| Data sovereignty | All sensor data stays on your hardware | Sensor payload data transits Actility infrastructure |
+| Cost | Free and open-source (hardware + hosting costs only) | Actility ThingPark subscription required |
+| Gateway setup | Point packet forwarder at your LAN IP (UDP 1700) | Point packet forwarder at Actility's network server |
+| Hardware required | Linux host (x86-64 or ARM64, ≥ 2 GB RAM) | Any host with Docker (≥ 512 MB RAM) |
+| Initial setup complexity | Higher — ChirpStack UI, device provisioning, gateway config | Lower — ThingPark handles LoRaWAN provisioning |
+| FUOTA Class C auto-switch | Automatic via ChirpStack API (optional API key) | Manual — switch profile in ThingPark portal before each session |
+| LoRaWAN stack control | Full — ADR, channels, join server all configurable | Managed by Actility |
+
+**Choose on-premise if** your facility has no reliable internet, you have data-residency or compliance requirements that prohibit cloud transit, or you are building a new deployment from scratch and want full control of the LoRaWAN stack.
+
+**Choose ThingPark if** you are already a ThingPark subscriber with devices provisioned on that network, you want Actility to manage LoRaWAN infrastructure, or your deployment has limited on-site IT capability for server management.
+
+**Not sure?** The on-premise mode is the default — it requires more initial setup but gives you complete independence from any external service.
 
 ---
 
@@ -12,98 +32,210 @@ This branch (`on_premise`) replaces Actility ThingPark with **ChirpStack v4**, a
 
 | Feature | Description |
 |---|---|
-| **MQTT Monitor** | Real-time view of all MQTT traffic on the broker — uplinks, downlinks, gateway stats |
-| **Waveform Manager** | Captures, assembles, and exports AirVibe waveform captures (JSON + CSV download) |
-| **FUOTA Manager** | Firmware-over-the-air updates with block transmission, verify/retry, and Class A↔C auto-switching via ChirpStack API |
+| **MQTT Monitor** | Real-time view of all MQTT traffic — uplinks, downlinks, gateway stats |
+| **Waveform Manager** | Captures, assembles, and exports AirVibe waveform captures (JSON + CSV) |
+| **FUOTA Manager** | Firmware-over-the-air updates with block transmission, verify/retry loop, and missed-block map. Class A↔C auto-switching via ChirpStack API (on-premise) or manual switch via ThingPark portal (cloud). |
 | **Certificate Manager** | Generates CA, server, and client X.509 certificates for MQTT TLS |
-| **ChirpStack UI** | Full LoRaWAN network management: gateways, devices, applications, live frame log |
+| **ChirpStack UI** | *(On-premise only)* Full LoRaWAN network management: gateways, devices, applications, live frame log |
 | **Demo Mode** | Built-in simulator for testing the full UI without real hardware |
 
 ---
 
 ## Architecture
 
+### On-Premise Architecture
+
 ```
-LoRaWAN Gateway  ─── UDP:1700 ──▶  chirpstack-gateway-bridge
-                                           │  MQTT (internal)
-                                           ▼
-                                  mqtt-broker (Mosquitto)
-                                 ╱                        ╲
-                       chirpstack (LNS+AS)         backend (Express + Socket.io)
-                            │                             │
-                          postgres  ◀────────────────▶  postgres
-                          redis                          │  WebSocket
-                                                         ▼
-                                                   frontend (Next.js)
-                                                         │
-                                           Caddy (TLS — tls internal)
-                                                         │
-                                                  Browser / UI
+AirVibe sensors (LoRa RF)
+    │
+LoRaWAN Gateways (1..N)
+    │  UDP port 1700
+    ▼
+┌──────────────────── One Linux box ────────────────────────┐
+│  chirpstack-gateway-bridge  (UDP:1700 → MQTT internal)    │
+│  chirpstack LNS + AS        (port 8080)                   │
+│  mosquitto MQTT broker      (port 1883 / 8883)            │
+│  redis                      (internal)                    │
+│  postgres                   (internal)                    │
+│  AirVibe backend            (port 4000)                   │
+│  AirVibe frontend + Caddy   (port 443)                    │
+└───────────────────────────────────────────────────────────┘
+    ▲
+Browser / Tablet (same LAN or VPN)
 ```
 
-**Data flow (uplink):**
+**On-premise data flow (uplink):**
 1. AirVibe sensor → Gateway → Gateway Bridge (UDP:1700) → Mosquitto
-2. ChirpStack subscribes to gateway topics, handles MAC layer, decrypts application payload
+2. ChirpStack subscribes to gateway topics, handles MAC layer, decrypts payload
 3. ChirpStack publishes decoded uplink to Mosquitto: `application/{id}/device/{devEUI}/event/up`
-4. Backend adapter normalizes ChirpStack message → internal canonical format
+4. AirVibe backend adapter normalizes ChirpStack message → internal canonical format
 5. WaveformManager + FUOTAManager process the canonical message
-6. Frontend receives events over Socket.io and renders them in all three management tabs
+6. Frontend receives events over Socket.io and renders them in all management tabs
 
-**Data flow (downlink):**
-Frontend → Socket.io → Backend (builds internal downlink) → Adapter (translates to ChirpStack format) → Mosquitto → ChirpStack → Gateway → AirVibe device
+**On-premise data flow (downlink):**
+Frontend → Socket.io → Backend → ChirpStack adapter (hex → base64, internal topic → ChirpStack command topic) → Mosquitto → ChirpStack → Gateway → AirVibe device
+
+---
+
+### Cloud / ThingPark Architecture
+
+```
+AirVibe sensors (LoRa RF)
+    │
+LoRaWAN Gateways (1..N)
+    │  UDP — points at Actility network server endpoints
+    ▼
+┌──────────────────── Actility ThingPark Cloud ──────────────────────┐
+│  Actility LoRaWAN Network Server + Application Server              │
+│  Decrypts payload, publishes DevEUI_uplink JSON to customer broker │
+└────────────────────────────┬───────────────────────────────────────┘
+                             │  MQTTS (customer MQTT endpoint)
+                             ▼
+┌──── Your AirVibe host ─────────────────────────────────────────────┐
+│  postgres                                                          │
+│  AirVibe backend (connects to ThingPark MQTT broker)               │
+│  AirVibe frontend + Caddy  (port 443)                              │
+└────────────────────────────────────────────────────────────────────┘
+    ▲
+Browser / Tablet
+```
+
+**ThingPark data flow (uplink):**
+1. Sensor → Gateway → Actility ThingPark (decrypts, decodes)
+2. ThingPark publishes `DevEUI_uplink` JSON to your MQTT endpoint
+3. AirVibe backend connects to your ThingPark MQTT endpoint via `MQTT_BROKER_URL`
+4. ThingPark adapter passthrough — message already in canonical internal format
+5. WaveformManager + FUOTAManager process identically to on-premise mode
+
+**ThingPark data flow (downlink):**
+Frontend → Socket.io → Backend → ThingPark adapter (passthrough, `DevEUI_downlink` JSON on internal topic) → ThingPark MQTT endpoint → ThingPark → Gateway → AirVibe device
 
 ---
 
 ## Requirements
 
-- **Docker** and **Docker Compose** v2 (`docker compose` not `docker-compose`)
-- **LoRaWAN gateway** with Semtech UDP Packet Forwarder (RAK, Dragino, Kerlink, MultiTech, Tektelic, etc.)
-- **AirVibe sensors** provisioned with DevEUI + AppKey (for OTAA join)
-- A Linux host on the same LAN as the gateway — any x86-64 machine works (PC, Intel NUC, industrial computer, Raspberry Pi 5, NAS with Docker support)
+### On-Premise
 
-No internet access is required at runtime. Internet is only needed for the initial `docker compose pull` to download container images.
+- Docker + Docker Compose v2 (`docker compose`, not `docker-compose`)
+- Linux host (x86-64 or ARM64, ≥ 2 GB RAM, ≥ 8 GB storage)
+- LoRaWAN gateway with Semtech UDP Packet Forwarder (RAK, Dragino, Kerlink, MultiTech, Tektelic, etc.)
+- AirVibe sensors provisioned with DevEUI + AppKey
+- No internet required at runtime
+
+### ThingPark / Cloud
+
+- Docker + Docker Compose v2
+- Any host with Docker support (≥ 512 MB RAM, ≥ 8 GB storage)
+- Active Actility ThingPark subscription with gateways and devices provisioned
+- ThingPark MQTT bridge URL and credentials
+- Public domain name for HTTPS (Caddy handles certificate issuance via Let's Encrypt) — or access directly via host IP with a self-signed cert
 
 ---
 
 ## Quick Start
 
-### 1. Clone and configure
+### Quick Start A — On-premise, full stack (default)
+
+Everything on one box. Zero edits required for local testing.
 
 ```bash
-git clone <repo-url>
-cd AirVibe_Waveform_Manager
-git checkout on_premise
-
+git clone <repo-url> && cd AirVibe_Waveform_Manager
 cp .env.example .env
-# Edit .env if needed — defaults work for localhost development
+# Defaults work as-is — no edits needed for localhost
+docker compose up -d --build
 ```
 
-### 2. Start the full stack
+Services started: all 8. Access: `https://localhost` (browser warning until Caddy root CA is trusted — see [TLS Setup](#tls-setup)).
+
+Then follow [ChirpStack Initial Setup](#chirpstack-initial-setup) to register your gateway and devices.
+
+---
+
+### Quick Start B — On-premise, connect to existing ChirpStack
+
+For plants that already run ChirpStack. Change four values in `.env`:
+
+```bash
+COMPOSE_PROFILES=           # empty — don't start bundled ChirpStack
+MQTT_BROKER_URL=mqtt://192.168.1.100:1883
+CHIRPSTACK_API_URL=http://192.168.1.100:8080
+DOMAIN=localhost            # or your AirVibe host's LAN hostname
+```
 
 ```bash
 docker compose up -d --build
 ```
 
-This starts all eight services. **First boot takes ~60 seconds** while ChirpStack runs its initial database migrations.
+Services started: 4 (postgres, backend, frontend, caddy).
 
-Watch startup:
+---
+
+### Quick Start C — Cloud / ThingPark
+
+Change these values in `.env`:
+
 ```bash
-docker compose logs -f chirpstack
-# Wait for: "starting api server" — then ChirpStack is ready
+NETWORK_SERVER=thingpark
+COMPOSE_PROFILES=           # empty — no bundled LoRaWAN infrastructure needed
+DOMAIN=airvibe.yourcompany.com
+MQTT_BROKER_URL=mqtts://lora-eu868-devices.thingpark.com:8883
+MQTT_USER=your-thingpark-username
+MQTT_PASS=your-thingpark-password
+NEXT_PUBLIC_API_URL=https://airvibe.yourcompany.com
 ```
 
-### 3. Access the services
+```bash
+docker compose up -d --build
+```
 
-| Service | URL | Credentials |
+Services started: 4 (postgres, backend, frontend, caddy).
+
+TLS: Caddy requests a Let's Encrypt certificate automatically for `DOMAIN`. Port 80 and 443 must be reachable from the internet for the ACME HTTP-01 challenge.
+
+Then follow [ThingPark Initial Setup](#thingpark-initial-setup) for credential and device verification steps.
+
+---
+
+## Deployment Profiles & Network Architecture
+
+### What profile do I need?
+
+| | Full profile | App-only / ThingPark profile |
 |---|---|---|
-| **AirVibe UI** | `https://localhost` | — |
-| **ChirpStack UI** | `http://localhost:8080` | `admin` / `admin` (change immediately) |
+| **`COMPOSE_PROFILES`** | `full` | _(empty)_ |
+| **`NETWORK_SERVER`** | `chirpstack` (default) | `chirpstack` or `thingpark` |
+| **Services started** | 8 | 4 (postgres, backend, frontend, caddy) |
+| **MQTT broker** | Bundled Mosquitto | External (plant ChirpStack or ThingPark) |
+| **Use when** | Greenfield setup, testing, local dev | Plant with existing ChirpStack, or ThingPark |
 
-The AirVibe UI uses a self-signed certificate from Caddy's built-in CA. See [TLS Setup](#tls-setup) to trust it in your browser.
+### LoRaWAN in one paragraph
+
+AirVibe sensors transmit over LoRa radio to **LoRaWAN gateways** — antenna hardware that simply forwards raw radio frames over UDP to a **network server**. The network server (ChirpStack or ThingPark) handles the MAC layer: device authentication, frame counting, deduplication, payload decryption, and delivery to the application layer. AirVibe is the application layer. Gateways are "dumb" forwarders — one network server instance handles as many gateways as needed. In on-premise mode, the Linux box is where ChirpStack and AirVibe both run; gateways just need network reachability to UDP port 1700. In ThingPark mode, the network server is in Actility's cloud; your Linux box runs only the AirVibe application layer.
+
+### Network access requirements
+
+| Source | Destination | Protocol | Port | Required by |
+|---|---|---|---|---|
+| LoRaWAN gateways | Linux box | UDP | 1700 | On-premise full only |
+| Browser / tablet | Linux box (Caddy) | TCP | 443 | Always |
+| AirVibe backend | Plant ChirpStack box | TCP | 1883, 8080 | On-premise app-only |
+| AirVibe backend | ThingPark MQTT endpoint | TCP | 8883 | ThingPark mode |
+| Internet (ACME) | Linux box | TCP | 80, 443 | ThingPark mode (Let's Encrypt) |
+
+### Hardware sizing
+
+| Deployment | CPU | RAM | Storage |
+|---|---|---|---|
+| Full stack (ChirpStack + AirVibe) | ≥ 2 cores | ≥ 2 GB | ≥ 8 GB |
+| App-only / ThingPark (AirVibe only) | ≥ 1 core | ≥ 512 MB | ≥ 8 GB |
+
+Storage grows as waveform captures accumulate. Plan accordingly for long-running deployments.
 
 ---
 
 ## ChirpStack Initial Setup
+
+> **On-premise mode only.** ThingPark users skip this section — see [ThingPark Initial Setup](#thingpark-initial-setup).
 
 Open `http://localhost:8080` (or `http://<host-ip>:8080` from another machine on the LAN).
 
@@ -135,7 +267,7 @@ Enter your gateway's EUI (usually printed on the hardware or in its web UI).
 **On the gateway hardware**, set the packet forwarder server to:
 ```
 Server address: <this-host-LAN-IP>
-Port up: 1700
+Port up:   1700
 Port down: 1700
 ```
 
@@ -154,12 +286,52 @@ After creating the device, go to **Keys (OTAA)** and enter the **Application Key
 
 ---
 
+## ThingPark Initial Setup
+
+> **Cloud / ThingPark mode only.** On-premise users skip this section — see [ChirpStack Initial Setup](#chirpstack-initial-setup).
+
+### 1. Find your MQTT endpoint
+ThingPark portal → Network → MQTT API → copy the broker URL.
+
+Common formats:
+- EU: `mqtts://lora-eu868-devices.thingpark.com:8883`
+- US: `mqtts://lora-us915-devices.thingpark.com:8883`
+
+### 2. Create MQTT credentials
+ThingPark portal → Users → your user → MQTT credentials → Create.
+
+Copy the username and password — you'll set them as `MQTT_USER` and `MQTT_PASS` in `.env`.
+
+### 3. Verify device provisioning
+Confirm that your AirVibe DevEUIs and AppKeys are registered in the ThingPark portal before starting AirVibe. Devices must have an active device profile assigned.
+
+### 4. Configure `.env`
+```bash
+NETWORK_SERVER=thingpark
+COMPOSE_PROFILES=
+DOMAIN=airvibe.yourcompany.com       # your public domain, or localhost for local testing
+MQTT_BROKER_URL=mqtts://lora-eu868-devices.thingpark.com:8883
+MQTT_USER=your-thingpark-username
+MQTT_PASS=your-thingpark-password
+NEXT_PUBLIC_API_URL=https://airvibe.yourcompany.com
+```
+
+### 5. FUOTA note
+Class C switching is not automated in the current release. Before starting a FUOTA session:
+- ThingPark portal → Devices → your device → Device Profile → assign a Class C profile.
+- Start the FUOTA session in AirVibe — the "Class C auto-switch not configured" banner in the UI is expected.
+- After the session completes or is aborted, restore the original Class A device profile in ThingPark.
+
+### 6. Domain and TLS
+For HTTPS, point your domain's DNS A record at the AirVibe host. Caddy handles certificate issuance via Let's Encrypt automatically on first request — no manual certificate management required. Port 80 and 443 must be reachable from the internet during the initial ACME challenge.
+
+---
+
 ## Enabling FUOTA Class C Auto-Switch
 
-Without this, FUOTA still works — you just manually set class to C in ChirpStack before each session and back to A after.
+### On-Premise (ChirpStack)
 
 **Generate an API key in ChirpStack:**
-
 API Keys → Create API Key → copy the token
 
 **Add to `.env`:**
@@ -173,18 +345,29 @@ CHIRPSTACK_APPLICATION_ID=1   # from the ChirpStack application URL
 docker compose restart backend
 ```
 
-The FUOTA Manager tab will now show a green "ChirpStack Class C auto-switch enabled" banner.
+The FUOTA Manager tab will show a green "ChirpStack Class C auto-switch enabled" banner.
+
+### Cloud (ThingPark)
+
+Automatic Class C switching is not available in the current release. Manual steps before each FUOTA session:
+
+1. ThingPark portal → Devices → your device → Device Profile → assign a Class C profile
+2. Start the FUOTA session in AirVibe — the "Class C auto-switch not configured" banner is expected
+3. After the session completes or is aborted, restore the original Class A device profile in ThingPark
+
+The FUOTA state machine, block transmission, verify/retry loop, and missed-blocks map all function identically in both modes.
 
 ---
 
 ## TLS Setup
 
-Caddy uses `tls internal` — it is its own certificate authority and issues a certificate for `DOMAIN` without requiring any public DNS or internet access.
+### On-Premise — `tls internal` (LAN self-signed)
+
+Caddy is its own certificate authority and issues a certificate for `DOMAIN` without requiring any public DNS or internet access.
 
 **To eliminate the browser warning (one-time per machine):**
 
 ```bash
-# Export Caddy's root CA
 docker exec mqtt-manager-caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root-ca.crt
 ```
 
@@ -197,6 +380,38 @@ Import `caddy-root-ca.crt` into your OS trust store:
 | **Ubuntu/Debian** | `sudo cp caddy-root-ca.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates` |
 | **Firefox** | Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import |
 
+### Cloud — Automatic ACME / Let's Encrypt
+
+When `DOMAIN` is set to a public domain and `NETWORK_SERVER=thingpark`, Caddy's entrypoint detects it is not localhost and omits the `tls internal` directive. Caddy automatically requests a certificate from Let's Encrypt — no manual configuration required.
+
+Requirements:
+- Port 80 and 443 must be reachable from the internet (for the ACME HTTP-01 challenge)
+- `DOMAIN` DNS A record must point at the AirVibe host before first startup
+- No browser warning — certificate is publicly trusted
+
+---
+
+## Switching Modes
+
+To switch between on-premise and ThingPark (or vice versa) on an existing deployment:
+
+```bash
+# 1. Stop the stack
+docker compose down
+
+# 2. Edit .env — change NETWORK_SERVER, COMPOSE_PROFILES, DOMAIN,
+#    MQTT_BROKER_URL, NEXT_PUBLIC_API_URL as needed
+
+# 3. Rebuild and restart
+#    NEXT_PUBLIC_API_URL is baked into the frontend bundle at build time —
+#    a rebuild is always required when it changes.
+docker compose up -d --build
+```
+
+**Data:** Your PostgreSQL `airvibe` database (waveform history, device registry, FUOTA sessions) is preserved across mode switches — it lives on the `postgres_data` Docker volume. The `chirpstack` database (device provisioning, gateway config) is only relevant in on-premise mode.
+
+**Important:** `NEXT_PUBLIC_API_URL` is compiled into the Next.js bundle at `docker compose build` time. Restarting the frontend container after changing this variable has no effect. Always run `docker compose up -d --build` after changing any `NEXT_PUBLIC_*` variable.
+
 ---
 
 ## Remote Access Options
@@ -205,9 +420,9 @@ For access from outside the local network without exposing ports to the internet
 
 | Option | Effort | Notes |
 |---|---|---|
-| **Tailscale** | Very low | Install on the host (`curl -fsSL https://tailscale.com/install.sh \| sh && sudo tailscale up`). Access via Tailscale IP or MagicDNS. No firewall changes needed. **Recommended.** |
-| **WireGuard** | Medium | Full control. Can be added as an additional Docker service (`linuxserver/wireguard`). |
-| **Cloudflare Tunnel** | Low | Routes through Cloudflare's edge. Free tier available. Requires Cloudflare account. |
+| **Tailscale** | Very low | Install on the host. Access via Tailscale IP or MagicDNS. No firewall changes needed. **Recommended.** |
+| **WireGuard** | Medium | Full control. Can be added as an additional Docker service. |
+| **Cloudflare Tunnel** | Low | Routes through Cloudflare's edge. Free tier available. |
 
 ---
 
@@ -228,22 +443,14 @@ To use Basics Station instead of UDP, update `chirpstack/chirpstack-gateway-brid
 
 ### Local development (without Docker)
 
-Requirements: Node.js 20+, PostgreSQL, Mosquitto, and a running ChirpStack instance.
+Requirements: Node.js 20+, PostgreSQL, Mosquitto (or ThingPark MQTT access), and a running ChirpStack instance (on-premise mode).
 
 ```bash
 # Terminal 1 — Backend
-cd backend
-npm install
-# Set these in your shell or a local .env:
-#   POSTGRES_HOST=localhost  POSTGRES_PASSWORD=postgres
-#   MQTT_BROKER_URL=mqtt://localhost:1883
-#   CHIRPSTACK_API_URL=http://localhost:8080  CHIRPSTACK_API_KEY=...
-npm run dev    # nodemon auto-reload on port 4000
+cd backend && npm install && npm run dev    # nodemon auto-reload on port 4000
 
 # Terminal 2 — Frontend
-cd frontend
-npm install
-npm run dev    # Next.js dev server on port 3000
+cd frontend && npm install && npm run dev   # Next.js dev server on port 3000
 ```
 
 ### Lint and build
@@ -254,12 +461,16 @@ npm run lint    # ESLint 9 flat config, next/core-web-vitals
 npm run build   # Production Next.js build
 ```
 
-### Running only ChirpStack locally (for development)
-
-You can run just the LoRaWAN infrastructure in Docker and develop the app locally:
+### Running backend unit tests
 
 ```bash
-docker compose up -d chirpstack-gateway-bridge chirpstack redis mqtt-broker postgres
+cd backend && npm test    # Jest — adapter and waveform tests
+```
+
+### Running only ChirpStack locally (for development)
+
+```bash
+COMPOSE_PROFILES=full docker compose up -d chirpstack-gateway-bridge chirpstack redis mqtt-broker postgres
 ```
 
 Then run the backend and frontend with `npm run dev` as above.
@@ -268,48 +479,56 @@ Then run the backend and frontend with `npm run dev` as above.
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|---|---|---|
-| `DOMAIN` | `localhost` | Hostname for Caddy TLS and CORS |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:4000` | Browser-accessible backend URL |
-| `POSTGRES_USER` | `postgres` | PostgreSQL username |
-| `POSTGRES_PASSWORD` | `postgres` | PostgreSQL password |
-| `POSTGRES_DB` | `airvibe` | AirVibe application database |
-| `MQTT_USER` | _(none)_ | Optional Mosquitto username |
-| `MQTT_PASS` | _(none)_ | Optional Mosquitto password |
-| `CHIRPSTACK_API_URL` | `http://chirpstack:8080` | ChirpStack internal REST API URL |
-| `CHIRPSTACK_API_KEY` | _(none)_ | API key for FUOTA Class C auto-switch |
-| `CHIRPSTACK_APPLICATION_ID` | `1` | ChirpStack application ID |
+| Variable | Default | Mode | Description |
+|---|---|---|---|
+| `NETWORK_SERVER` | `chirpstack` | Both | `chirpstack` or `thingpark` — selects MQTT adapter and Caddyfile TLS mode |
+| `COMPOSE_PROFILES` | _(none)_ | Both | Set `full` to start bundled ChirpStack + Mosquitto + Redis |
+| `DOMAIN` | `localhost` | Both | Hostname for Caddy TLS and CORS |
+| `NEXT_PUBLIC_API_URL` | `https://localhost` | Both | Browser-accessible backend URL — baked into frontend at build time |
+| `MQTT_BROKER_URL` | `mqtt://mqtt-broker:1883` | Both | Override in app-only or ThingPark mode |
+| `MQTT_USER` | _(none)_ | Both | Optional MQTT username |
+| `MQTT_PASS` | _(none)_ | Both | Optional MQTT password |
+| `POSTGRES_USER` | `postgres` | Both | PostgreSQL username |
+| `POSTGRES_PASSWORD` | `postgres` | Both | Change in production |
+| `POSTGRES_DB` | `airvibe` | Both | AirVibe application database |
+| `CHIRPSTACK_API_URL` | `http://chirpstack:8080` | On-premise | Override in app-only mode |
+| `CHIRPSTACK_API_KEY` | _(none)_ | On-premise | Enables Class C auto-switch for FUOTA |
+| `CHIRPSTACK_APPLICATION_ID` | `1` | On-premise | App ID from ChirpStack UI |
 
 ---
 
 ## Project Structure
 
 ```
-├── Caddyfile                       # Reverse proxy (tls internal for LAN)
-├── docker-compose.yml              # 8-service stack
-├── .env.example                    # Environment template
-├── ON_PREMISE_SWITCHOVER.md        # Architecture decision record
+├── caddy/
+│   └── entrypoint.sh               # Generates Caddyfile at runtime from NETWORK_SERVER + DOMAIN
+├── docker-compose.yml              # 8-service stack (profiles: full / app-only)
+├── .env.example                    # Unified template — covers both deployment modes
+├── scripts/
+│   └── smoke-test.sh               # End-to-end profile smoke tests (full, app-only, ThingPark)
 ├── chirpstack/
 │   ├── chirpstack.toml             # ChirpStack main config
-│   ├── chirpstack-gateway-bridge.toml  # Gateway bridge config
+│   ├── chirpstack-gateway-bridge.toml
 │   ├── region_eu868.toml           # EU868 channel plan
 │   └── region_us915.toml           # US915 sub-band 2 channel plan
 ├── backend/
+│   ├── test/
+│   │   ├── adapter.test.js         # Jest unit tests — ChirpStack + ThingPark adapters
+│   │   └── waveform.test.js        # Jest unit tests — WaveformManager
 │   └── src/
 │       ├── index.js                # Express server, Socket.io, REST API
-│       ├── mqttClient.js           # MQTT broker connection + adapter wiring
+│       ├── mqttClient.js           # MQTT connection; selects adapter from NETWORK_SERVER
 │       ├── pki.js                  # X.509 certificate generation
 │       ├── db.js                   # PostgreSQL connection pool
-│       ├── db/schema.sql           # Database schema
 │       ├── adapters/
-│       │   └── chirpstack.js       # ChirpStack ↔ internal format adapter
+│       │   ├── chirpstack.js       # ChirpStack ↔ internal format adapter
+│       │   └── thingpark.js        # ThingPark passthrough adapter (identity)
 │       └── services/
 │           ├── ChirpStackClient.js # Class A↔C switching via ChirpStack REST API
 │           ├── WaveformManager.js  # Waveform packet processing and assembly
 │           ├── FUOTAManager.js     # Firmware update state machine
 │           ├── MessageTracker.js   # Message persistence and device registry
-│           ├── DemoSimulator.js    # Demo mode (emits ChirpStack-format messages)
+│           ├── DemoSimulator.js    # Dual-mode demo (ChirpStack or ThingPark format)
 │           └── AuditLogger.js      # Audit log persistence
 ├── frontend/
 │   └── src/
@@ -317,34 +536,33 @@ Then run the backend and frontend with `npm run dev` as above.
 │       │   ├── page.tsx            # Main tabbed UI
 │       │   └── SocketContext.tsx   # Socket.io React context
 │       └── components/
-│           ├── MQTTMessageCard.tsx # Collapsible message display
-│           ├── DownlinkBuilder.tsx # Downlink command builder
-│           ├── FUOTAManager.tsx    # FUOTA UI
-│           ├── WaveformsView.tsx   # Waveform list and viewer
-│           └── WaveformChart.tsx   # Tri-axial chart
+│           ├── MQTTMessageCard.tsx
+│           ├── DownlinkBuilder.tsx
+│           ├── FUOTAManager.tsx
+│           ├── WaveformsView.tsx
+│           └── WaveformChart.tsx
 ├── mosquitto/
 │   ├── config/mosquitto.conf       # Broker config (1883 plain + 8883 TLS)
 │   └── watcher.sh                  # Auto-restart on cert changes
-└── certs/                          # Generated X.509 certificates
+└── certs/                          # Generated X.509 certificates (gitignored)
 ```
 
 ---
 
 ## Troubleshooting
 
+### On-Premise (ChirpStack)
+
 **Gateway not appearing in ChirpStack**
 ```bash
-# Check gateway bridge is receiving UDP frames
 docker logs chirpstack-gateway-bridge
-# Verify port 1700/UDP is open from gateway
-nc -u <host-ip> 1700   # should not refuse connection
+# Verify UDP port 1700 is reachable from the gateway
 ```
 
 **No uplinks in MQTT Monitor after join**
 ```bash
-# Check ChirpStack event log for the device
 # ChirpStack UI → Applications → device → Event Log
-docker logs chirpstack   # look for errors
+docker logs chirpstack
 ```
 
 **FUOTA Class C switch not happening**
@@ -353,18 +571,47 @@ docker logs mqtt-manager-backend | grep ChirpStack
 # If "not configured" — add CHIRPSTACK_API_KEY to .env and restart backend
 ```
 
-**Browser certificate warning**
-Follow the [TLS Setup](#tls-setup) section to import Caddy's root CA, or access via HTTP on port 80 for development.
-
 **ChirpStack login fails**
-- Default: `admin` / `admin`
-- If changed and forgotten: `docker compose exec chirpstack /usr/bin/chirpstack user set-password --username admin --password newpassword`
+Default: `admin` / `admin`. To reset: `docker compose exec chirpstack /usr/bin/chirpstack user set-password --username admin --password newpassword`
 
 **Mosquitto port 8883 (TLS) fails to start**
-Generate certificates via the AirVibe UI (Certificate Management tab) first, then:
+Generate certificates via the AirVibe UI (Certificate Management tab) first, then `docker compose restart mqtt-broker`.
+
+---
+
+### ThingPark (Cloud)
+
+**Backend not receiving messages**
 ```bash
-docker compose restart mqtt-broker
+docker logs mqtt-manager-backend | grep -E "MQTT|adapter"
+# Confirm: "MQTT adapter: thingpark" — if not, check NETWORK_SERVER in .env
+# Confirm: "Connected to MQTT Broker" — if not, check MQTT_BROKER_URL/credentials
 ```
+
+**Downlinks not reaching devices**
+```bash
+docker logs mqtt-manager-backend | grep downlink
+# Verify messages are published to mqtt/things/{devEUI}/downlink (not ChirpStack topic format)
+# If ChirpStack topic format appears, NETWORK_SERVER is set to chirpstack — fix .env and rebuild
+```
+
+**FUOTA "Class C not configured" warning**
+Expected in ThingPark mode. Switch the device profile manually in the ThingPark portal before starting a FUOTA session. See [ThingPark Initial Setup](#thingpark-initial-setup).
+
+**Let's Encrypt certificate not issued**
+- Confirm `DOMAIN` DNS A record points at this host
+- Confirm ports 80 and 443 are reachable from the internet
+- `docker logs mqtt-manager-caddy`
+
+---
+
+### Both Modes
+
+**Browser certificate warning**
+Follow [TLS Setup](#tls-setup) to import Caddy's root CA (on-premise), or wait for Let's Encrypt issuance (ThingPark).
+
+**Backend shows "MQTT Error" on startup**
+Expected in app-only or ThingPark mode if the broker is not yet reachable. The client reconnects automatically every second. Check `MQTT_BROKER_URL` in `.env`.
 
 ---
 
@@ -376,19 +623,20 @@ docker compose pull
 docker compose up -d --build
 ```
 
-ChirpStack runs database migrations automatically on startup.
+ChirpStack runs database migrations automatically on startup. The `chirpstack-db-init` sidecar ensures the ChirpStack database exists before migrations run.
 
 ---
 
 ## Docker Services Reference
 
-| Container | Image | Exposed Port(s) | Purpose |
-|---|---|---|---|
-| `chirpstack-gateway-bridge` | `chirpstack/chirpstack-gateway-bridge:4` | 1700/UDP | Translates gateway UDP frames to MQTT |
-| `chirpstack` | `chirpstack/chirpstack:4` | 8080 (web UI + REST API) | LoRaWAN Network + Application Server |
-| `chirpstack-redis` | `redis:7-alpine` | internal | ChirpStack session state |
-| `mqtt-broker` | `eclipse-mosquitto:2` | 1883, 8883 | MQTT broker |
-| `mqtt-manager-postgres` | `postgres:16-alpine` | internal | AirVibe + ChirpStack databases |
-| `mqtt-manager-backend` | (built) | internal | Express API + Socket.io |
-| `mqtt-manager-frontend` | (built) | internal | Next.js UI |
-| `mqtt-manager-caddy` | `caddy:alpine` | 80, 443 | HTTPS reverse proxy |
+| Container | Image | Profile | Exposed Port(s) | Purpose |
+|---|---|---|---|---|
+| `chirpstack-gateway-bridge` | `chirpstack/chirpstack-gateway-bridge:4` | full | 1700/UDP | Translates gateway UDP frames to MQTT |
+| `chirpstack-db-init` | `postgres:16-alpine` | full | — | One-shot: creates chirpstack DB + pg_trgm extension, then exits |
+| `chirpstack` | `chirpstack/chirpstack:4` | full | 8080 | LoRaWAN Network + Application Server |
+| `chirpstack-redis` | `redis:7-alpine` | full | internal | ChirpStack session state |
+| `mqtt-broker` | `eclipse-mosquitto:2` | full | 1883, 8883 | MQTT broker |
+| `mqtt-manager-postgres` | `postgres:16-alpine` | always | internal | AirVibe + ChirpStack databases |
+| `mqtt-manager-backend` | (built) | always | internal | Express API + Socket.io |
+| `mqtt-manager-frontend` | (built) | always | internal | Next.js UI |
+| `mqtt-manager-caddy` | `caddy:alpine` | always | 80, 443 | HTTPS reverse proxy (generates Caddyfile at runtime) |
