@@ -143,7 +143,7 @@ Everything on one box. Zero edits required for local testing.
 git clone <repo-url> && cd AirVibe_Waveform_Manager
 cp .env.example .env
 # Defaults work as-is — no edits needed for localhost
-docker compose up -d --build
+./build.sh
 ```
 
 Services started: all 8. Access: `https://localhost` (browser warning until Caddy root CA is trusted — see [TLS Setup](#tls-setup)).
@@ -164,7 +164,7 @@ DOMAIN=localhost            # or your AirVibe host's LAN hostname
 ```
 
 ```bash
-docker compose up -d --build
+./build.sh
 ```
 
 Services started: 4 (postgres, backend, frontend, caddy).
@@ -185,7 +185,7 @@ NEXT_PUBLIC_API_URL=https://airvibe.yourcompany.com
 Everything else stays at its default — `MQTT_BROKER_URL` defaults to `mqtt://mqtt-broker:1883`, pointing at the bundled Mosquitto broker that ThingPark will connect to.
 
 ```bash
-docker compose up -d --build
+./build.sh
 ```
 
 Services started: 5 (postgres, backend, frontend, caddy, mosquitto).
@@ -193,6 +193,34 @@ Services started: 5 (postgres, backend, frontend, caddy, mosquitto).
 TLS: Caddy requests a Let's Encrypt certificate automatically for `DOMAIN`. Ports 80 and 443 must be reachable from the internet for the ACME HTTP-01 challenge. Port 8883 must also be reachable for the ThingPark MQTT connector.
 
 Then follow [ThingPark Initial Setup](#thingpark-initial-setup) to generate certificates and configure the ThingPark MQTT connector.
+
+---
+
+## Build Script (`build.sh`)
+
+Always use `./build.sh` instead of calling `docker compose up -d --build` directly. The script stamps two values into the Next.js frontend bundle at build time:
+
+```bash
+./build.sh
+```
+
+What it does:
+1. Reads the current git commit hash (`git rev-parse --short HEAD`)
+2. Captures the UTC timestamp at the moment the build runs (`date -u`)
+3. Exports both as `NEXT_PUBLIC_BUILD_HASH` and `NEXT_PUBLIC_BUILD_DATE`
+4. Calls `docker compose up -d --build`
+
+These values are baked into the frontend bundle and displayed in the footer of the UI:
+
+```
+build a1b2c3d • 2026-02-23T19:30:00Z
+```
+
+This makes it easy to confirm which version and build is running during troubleshooting without needing SSH access to the server.
+
+**Important:** If you run `docker compose up -d --build` directly (without `./build.sh`), the footer will show `build unknown • unknown`. This applies to all full-stack rebuilds including initial deployment, mode switches, and updates after `git pull`.
+
+Backend-only rebuilds (e.g. `docker compose up -d --build backend`) do not require `./build.sh` since the build info is only baked into the frontend.
 
 ---
 
@@ -304,7 +332,7 @@ NEXT_PUBLIC_API_URL=https://airvibe.yourcompany.com
 `MQTT_BROKER_URL`, `MQTT_USER`, and `MQTT_PASS` do **not** need to be changed — the backend connects to the bundled Mosquitto on the internal Docker network automatically.
 
 ```bash
-docker compose up -d --build
+./build.sh
 ```
 
 ### 2. Verify device provisioning
@@ -466,12 +494,12 @@ docker compose down
 # 3. Rebuild and restart
 #    NEXT_PUBLIC_API_URL is baked into the frontend bundle at build time —
 #    a rebuild is always required when it changes.
-docker compose up -d --build
+./build.sh
 ```
 
 **Data:** Your PostgreSQL `airvibe` database (waveform history, device registry, FUOTA sessions) is preserved across mode switches — it lives on the `postgres_data` Docker volume. The `chirpstack` database (device provisioning, gateway config) is only relevant in on-premise mode.
 
-**Important:** `NEXT_PUBLIC_API_URL` is compiled into the Next.js bundle at `docker compose build` time. Restarting the frontend container after changing this variable has no effect. Always run `docker compose up -d --build` after changing any `NEXT_PUBLIC_*` variable.
+**Important:** `NEXT_PUBLIC_API_URL` is compiled into the Next.js bundle at build time. Restarting the frontend container after changing this variable has no effect. Always use `./build.sh` (not `docker compose up -d --build` directly) after changing any `NEXT_PUBLIC_*` variable or after a `git pull` — this ensures the build hash and timestamp in the UI footer are correct.
 
 ---
 
@@ -685,7 +713,7 @@ Expected in app-only or ThingPark mode if the broker is not yet reachable. The c
 ```bash
 git pull
 docker compose pull
-docker compose up -d --build
+./build.sh
 ```
 
 ChirpStack runs database migrations automatically on startup. The `chirpstack-db-init` sidecar ensures the ChirpStack database exists before migrations run.

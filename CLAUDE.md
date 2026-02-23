@@ -16,10 +16,13 @@ Both modes share the same codebase. The adapter layer in `backend/src/adapters/`
 ### Docker (primary method)
 ```bash
 cp .env.example .env
-docker compose up -d --build        # Start stack (8 services full, 4 app-only)
+./build.sh                           # Build and start the full stack (preferred over docker compose up -d --build directly)
+docker compose up -d --build backend # Rebuild backend only (no frontend bake-in needed)
 docker compose restart mqtt-broker   # Restart broker (e.g. after cert changes)
 docker compose logs -f chirpstack    # Watch ChirpStack startup (full profile)
 ```
+
+**Always use `./build.sh` for full-stack builds.** It exports `NEXT_PUBLIC_BUILD_HASH` (current git short SHA) and `NEXT_PUBLIC_BUILD_DATE` (UTC timestamp) before calling `docker compose up -d --build`, so those values are baked into the Next.js bundle and displayed in the UI footer (`build <hash> • <date>`). Running `docker compose up -d --build` directly leaves the footer showing `build unknown • unknown`.
 
 ### Local development (without Docker)
 ```bash
