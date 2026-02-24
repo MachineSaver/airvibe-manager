@@ -72,6 +72,18 @@ interface Props {
 }
 
 // ---------------------------------------------------------------------------
+// ISM Band options
+// ---------------------------------------------------------------------------
+
+const ISM_BAND_OPTIONS = [
+  { value: 'EU868', label: 'EU868 — Europe (ETSI, 863–870 MHz)' },
+  { value: 'US915', label: 'US915 — N. America (FCC, 902–928 MHz)' },
+  { value: 'AU915', label: 'AU915 — Australia (FCC, 915–928 MHz)' },
+  { value: 'CN470', label: 'CN470 — China (FCC, 470–510 MHz)' },
+  { value: 'EU433', label: 'EU433 — Europe 433 MHz (ETSI)' },
+] as const;
+
+// ---------------------------------------------------------------------------
 // Firmware Catalog
 // ---------------------------------------------------------------------------
 
@@ -178,6 +190,7 @@ export default function FUOTAManager({ socket }: Props) {
   const [catalogLoading, setCatalogLoading] = useState('');
 
   const [blockIntervalMs, setBlockIntervalMs] = useState(10000);
+  const [selectedIsmBand, setSelectedIsmBand] = useState('');
 
   const [devices, setDevices] = useState<Device[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(true);
@@ -274,6 +287,17 @@ export default function FUOTAManager({ socket }: Props) {
     return () => { socket.off('fuota:progress', handler); };
   }, [socket, apiUrl]);
 
+  // Auto-populate ISM band when all selected devices share the same known band
+  useEffect(() => {
+    if (selectedDevEuis.size === 0) return;
+    const bands = new Set(
+      [...selectedDevEuis]
+        .map(eui => devices.find(d => d.dev_eui === eui)?.metadata?.ism_band)
+        .filter((b): b is string => !!b)
+    );
+    if (bands.size === 1) setSelectedIsmBand([...bands][0]);
+  }, [selectedDevEuis, devices]);
+
   // -------------------------------------------------------------------------
   // Firmware catalog quick-select
   // -------------------------------------------------------------------------
@@ -336,6 +360,7 @@ export default function FUOTAManager({ socket }: Props) {
     setUploadErr('');
     setSelectedDevEuis(new Set());
     setBlockIntervalMs(10000);
+    setSelectedIsmBand('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -363,6 +388,12 @@ export default function FUOTAManager({ socket }: Props) {
 
   // Only start for selected devices that aren't already active
   const eligibleSelected = [...selectedDevEuis].filter(e => !activeDevEuis.has(e));
+
+  // Devices with no known ISM band in metadata — need user to select one manually
+  const devicesWithoutBand = eligibleSelected.filter(
+    eui => !devices.find(d => d.dev_eui === eui)?.metadata?.ism_band
+  );
+  const needsBandSelection = devicesWithoutBand.length > 0 && !selectedIsmBand;
 
   async function handleStart() {
     if (!firmwareInfo || eligibleSelected.length === 0) return;
@@ -396,6 +427,7 @@ export default function FUOTAManager({ socket }: Props) {
           sessionId: firmwareInfo.sessionId,
           devEuis: eligibleSelected,
           blockIntervalMs,
+          ...(selectedIsmBand ? { ismBand: selectedIsmBand } : {}),
         }),
       });
       const json = await res.json();
@@ -561,6 +593,21 @@ export default function FUOTAManager({ socket }: Props) {
               className="w-24 px-2 py-1 rounded border border-[#444] bg-[#3c3c3c] text-xs text-gray-200 font-mono focus:outline-none focus:border-blue-500"
             />
           </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-400 whitespace-nowrap">ISM Band</label>
+            <select
+              value={selectedIsmBand}
+              onChange={e => setSelectedIsmBand(e.target.value)}
+              className="px-2 py-1 rounded border border-[#444] bg-[#3c3c3c] text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+            >
+              <option value="">Select band…</option>
+              {ISM_BAND_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
           {firmwareInfo && (
             <div className="text-xs text-gray-400">
               ETA: <span className="text-gray-200 font-mono">{formatEta(firmwareInfo.totalBlocks, blockIntervalMs)}</span>
@@ -572,6 +619,11 @@ export default function FUOTAManager({ socket }: Props) {
         {showIntervalWarning && (
           <p className="text-xs text-amber-400">
             Low interval — safe only on US915 with Class C profile confirmed. EU868 requires ≥5,000ms at DR3; use ≥10,000ms to be safe.
+          </p>
+        )}
+        {!selectedIsmBand && (
+          <p className="text-xs text-gray-500">
+            Select the ISM band for devices that have not yet sent an uplink. Devices with a known band (from prior uplinks) will use their auto-detected region regardless.
           </p>
         )}
       </div>
@@ -672,10 +724,10 @@ export default function FUOTAManager({ socket }: Props) {
         )}
 
         {/* Start button */}
-        <div className="flex items-center gap-3 pt-1">
+        <div className="flex items-center gap-3 pt-1 flex-wrap">
           <button
             onClick={handleStart}
-            disabled={!firmwareInfo || eligibleSelected.length === 0 || starting}
+            disabled={!firmwareInfo || eligibleSelected.length === 0 || starting || needsBandSelection}
             className="px-4 py-2 rounded text-sm font-medium bg-amber-600 hover:bg-amber-500
               text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -686,6 +738,15 @@ export default function FUOTAManager({ socket }: Props) {
           )}
           {firmwareInfo && eligibleSelected.length === 0 && activeDevEuis.size === 0 && (
             <span className="text-xs text-gray-500">Select target devices above</span>
+          )}
+          {needsBandSelection && (
+            <span className="text-xs text-amber-400">
+              Select an ISM band —{' '}
+              {devicesWithoutBand.length === 1
+                ? '1 selected device has'
+                : `${devicesWithoutBand.length} selected devices have`}{' '}
+              no uplinks yet
+            </span>
           )}
         </div>
 

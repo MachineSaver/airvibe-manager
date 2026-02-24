@@ -9,12 +9,15 @@
  * automatic Class C profile switch.
  *
  * Environment variables:
- *   THINGPARK_BASE_URL        — base URL  (default: https://community.thingpark.io)
- *   THINGPARK_CLIENT_ID       — OAuth2 client ID
- *   THINGPARK_CLIENT_SECRET   — OAuth2 client secret
- *   THINGPARK_CLASS_C_PROFILE — device profile ID to switch to for FUOTA
- *                               (default EU868: LORA/GenericC.1.0.4a_ETSI)
- *                               (default US915: LORA/GenericC.1.0.4a_FCC)
+ *   THINGPARK_BASE_URL       — base URL  (default: https://community.thingpark.io)
+ *   THINGPARK_CLIENT_ID      — OAuth2 client ID
+ *   THINGPARK_CLIENT_SECRET  — OAuth2 client secret
+ *
+ * The Class C device profile (ETSI vs FCC) is determined per-device from the
+ * ISM band detected in uplink Frequency fields (MessageTracker → devices.metadata),
+ * with the FUOTA UI providing an explicit band selector as a fallback for devices
+ * that have not yet sent any uplinks.  There is no global env-var default — the
+ * user must actively select the correct region.
  */
 
 class ThingParkClient {
@@ -22,7 +25,6 @@ class ThingParkClient {
         this.baseUrl = (process.env.THINGPARK_BASE_URL || 'https://community.thingpark.io').replace(/\/$/, '');
         this.clientId = process.env.THINGPARK_CLIENT_ID || '';
         this.clientSecret = process.env.THINGPARK_CLIENT_SECRET || '';
-        this.classCProfile = process.env.THINGPARK_CLASS_C_PROFILE || 'LORA/GenericC.1.0.4a_ETSI';
 
         this.configured = !!(this.clientId && this.clientSecret);
 
@@ -208,7 +210,14 @@ class ThingParkClient {
      */
     async switchToClassC(devEui, classCProfileOverride) {
         if (!this.configured) return null;
-        const targetProfile = classCProfileOverride || this.classCProfile;
+        if (!classCProfileOverride) {
+            console.warn(
+                `ThingParkClient: ${devEui} — no Class C profile specified. ` +
+                `Select the correct ISM band in the FUOTA Manager before starting the session.`
+            );
+            return null;
+        }
+        const targetProfile = classCProfileOverride;
         try {
             const deviceRef = await this.getDeviceRef(devEui);
             if (deviceRef == null) {

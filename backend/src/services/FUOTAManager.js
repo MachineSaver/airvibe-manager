@@ -55,10 +55,18 @@ function ismBandToClassCProfile(ismBand) {
 }
 
 /**
- * Look up the ISM band stored in devices.metadata for a given DevEUI and return
- * the appropriate ThingPark Class C profile string (or null on any failure).
+ * Resolve the ThingPark Class C profile for a device.
+ *
+ * Priority:
+ *   1. devices.metadata.ism_band  — auto-detected from uplink Frequency by MessageTracker
+ *   2. ismBandFallback             — user-selected in the FUOTA Manager UI (sent with start request)
+ *   3. null                        — no profile known; ThingParkClient will warn and skip Class C switch
+ *
+ * @param {string} devEui
+ * @param {string} [ismBandFallback]  Band selected by the user in the UI (e.g. 'EU868', 'US915')
  */
-async function resolveClassCProfile(devEui) {
+async function resolveClassCProfile(devEui, ismBandFallback) {
+    // 1. Auto-detected from uplink Frequency (most reliable)
     try {
         const row = await pool.query(
             `SELECT metadata->>'ism_band' AS ism_band FROM devices WHERE dev_eui = $1`,
@@ -68,14 +76,31 @@ async function resolveClassCProfile(devEui) {
         if (ismBand) {
             const profile = ismBandToClassCProfile(ismBand);
             if (profile) {
-                console.log(`FUOTAManager: ${devEui} ISM band=${ismBand} → Class C profile=${profile}`);
+                console.log(`FUOTAManager: ${devEui} ISM band=${ismBand} (auto-detected) → ${profile}`);
             }
             return profile;
         }
     } catch (err) {
         console.warn(`FUOTAManager: could not resolve ISM band for ${devEui}:`, err.message);
     }
-    return null; // ThingParkClient will use THINGPARK_CLASS_C_PROFILE env var fallback
+
+    // 2. User-selected band from the FUOTA UI start request
+    if (ismBandFallback) {
+        const profile = ismBandToClassCProfile(ismBandFallback);
+        if (profile) {
+            console.log(`FUOTAManager: ${devEui} ISM band=${ismBandFallback} (user-selected) → ${profile}`);
+        } else {
+            console.warn(`FUOTAManager: ${devEui} unrecognised ISM band '${ismBandFallback}'`);
+        }
+        return profile;
+    }
+
+    // 3. No known band — Class C switch will be skipped with a warning
+    console.warn(
+        `FUOTAManager: ${devEui} has no known ISM band and none was selected in the UI. ` +
+        `Class C switch will be skipped; FUOTA will proceed in Class A mode.`
+    );
+    return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -297,11 +322,13 @@ class FUOTAManager {
 
     /**
      * Start a FUOTA session for a single device.
-     * @param {string} sessionId       Firmware store key
-     * @param {string} devEui          Target device EUI
-     * @param {number} [blockIntervalMs]  Optional per-session interval; clamped to [1000, 60000]
+     * @param {string} sessionId         Firmware store key
+     * @param {string} devEui            Target device EUI
+     * @param {number} [blockIntervalMs] Optional per-session interval; clamped to [MIN, MAX]
+     * @param {string} [ismBand]         ISM band selected in UI ('EU868', 'US915', etc.)
+     *   Used as fallback when devices.metadata.ism_band is not yet populated.
      */
-    async startSession(sessionId, devEui, blockIntervalMs) {
+    async startSession(sessionId, devEui, blockIntervalMs, ismBand) {
         const firmware = this.firmwareStore.get(sessionId);
         if (!firmware) {
             throw new Error(`Firmware session ${sessionId} not found or expired`);
@@ -374,9 +401,8 @@ class FUOTAManager {
             }
         }, FUOTA_SESSION_TIMEOUT_MS);
 
-        // Resolve per-device Class C profile from ISM band stored in devices.metadata.
-        // Falls back to null → ThingParkClient uses its THINGPARK_CLASS_C_PROFILE env var.
-        const classCProfile = await resolveClassCProfile(devEui);
+        // Resolve per-device Class C profile: auto-detected band first, then user selection.
+        const classCProfile = await resolveClassCProfile(devEui, ismBand);
 
         // Attempt Class C switch via the active network server client (non-blocking to session creation)
         const csResult = await networkClient.switchToClassC(devEui, classCProfile);

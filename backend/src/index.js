@@ -446,7 +446,7 @@ app.post('/api/fuota/upload', (req, res) => {
 
 // Start FUOTA sessions for one or more devices
 app.post('/api/fuota/start', async (req, res) => {
-    const { sessionId, devEuis, blockIntervalMs } = req.body;
+    const { sessionId, devEuis, blockIntervalMs, ismBand } = req.body;
     if (!sessionId || !Array.isArray(devEuis) || devEuis.length === 0) {
         return res.status(400).json({ error: 'sessionId and devEuis[] are required' });
     }
@@ -454,13 +454,13 @@ app.post('/api/fuota/start', async (req, res) => {
     const errors = [];
     for (const devEui of devEuis) {
         try {
-            await fuotaManager.startSession(sessionId, devEui, blockIntervalMs);
+            await fuotaManager.startSession(sessionId, devEui, blockIntervalMs, ismBand);
             started.push(devEui);
         } catch (err) {
             errors.push({ devEui, error: err.message });
         }
     }
-    auditLogger.log('fuota', 'sessions_start', null, { sessionId, started, errors, blockIntervalMs });
+    auditLogger.log('fuota', 'sessions_start', null, { sessionId, started, errors, blockIntervalMs, ismBand });
     res.json({ started, errors });
 });
 
