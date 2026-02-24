@@ -26,7 +26,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 RUN --mount=type=cache,target=/app/.next/cache \
-    npm run build
+    NODE_OPTIONS=--max-old-space-size=3072 npm run build
 
 # ---
 
