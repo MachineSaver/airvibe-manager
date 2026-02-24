@@ -57,6 +57,11 @@ const UPLINK_TOPIC = `mqtt/things/${DEVEUI}/uplink`;
 
 beforeEach(() => {
     jest.clearAllMocks();
+    // Reset the WaveformManager rate-limiter between tests. The singleton's
+    // lastDownlinkTimes persists across tests; with fake timers Date.now() is
+    // frozen so the 60-second prune window never expires, causing sendAutoDownlink
+    // to be rate-limited from the second test onwards.
+    waveformManager.lastDownlinkTimes.clear();
     // Quiet console noise in test output
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'warn').mockImplementation(() => {});
