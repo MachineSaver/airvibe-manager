@@ -199,8 +199,16 @@ class ThingParkClient {
      * Switch device to Class C profile before starting FUOTA.
      * Returns { deviceRef, originalProfileId } on success, null on failure/unconfigured.
      */
-    async switchToClassC(devEui) {
+    /**
+     * Switch device to Class C profile before starting FUOTA.
+     * @param {string} devEui
+     * @param {string} [classCProfileOverride]  Per-device profile derived from ISM band.
+     *   Overrides THINGPARK_CLASS_C_PROFILE env var when provided.  Falls back to env var
+     *   when absent (e.g. brand-new device with no uplinks seen yet).
+     */
+    async switchToClassC(devEui, classCProfileOverride) {
         if (!this.configured) return null;
+        const targetProfile = classCProfileOverride || this.classCProfile;
         try {
             const deviceRef = await this.getDeviceRef(devEui);
             if (deviceRef == null) {
@@ -214,10 +222,10 @@ class ThingParkClient {
                 return null;
             }
 
-            const ok = await this.setProfile(deviceRef, this.classCProfile);
+            const ok = await this.setProfile(deviceRef, targetProfile);
             if (!ok) return null;
 
-            console.log(`ThingParkClient: ${devEui} (ref ${deviceRef}) switched to Class C (${this.classCProfile}), was ${originalProfileId}`);
+            console.log(`ThingParkClient: ${devEui} (ref ${deviceRef}) switched to Class C (${targetProfile}), was ${originalProfileId}`);
             return { deviceRef, originalProfileId };
         } catch (err) {
             console.warn(`ThingParkClient: switchToClassC error for ${devEui}:`, err.message);

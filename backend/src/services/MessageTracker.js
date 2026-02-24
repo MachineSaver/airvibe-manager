@@ -48,6 +48,27 @@ class MessageTracker {
             console.error('MessageTracker error:', err.message);
         }
 
+        // Persist ISM band derived from uplink Frequency on every uplink.
+        // Frequency is set by the network server from actual radio parameters —
+        // it is present on every uplink regardless of fPort/packet_type, cannot be
+        // misconfigured, and the ISM band frequency ranges are globally non-overlapping.
+        // This is used by FUOTAManager to select the correct per-device Class C profile.
+        if (direction === 'uplink' && parsed.DevEUI_uplink?.Frequency != null) {
+            const freq = parsed.DevEUI_uplink.Frequency;
+            const ismBand =
+                  (freq >= 863 && freq <= 870) ? 'EU868'   // ETSI 863-870 MHz
+                : (freq >= 433 && freq <= 435) ? 'EU433'   // ETSI 433 MHz
+                : (freq >= 902 && freq <= 928) ? 'US915'   // FCC  902-928 MHz (US915, AU915)
+                : (freq >= 470 && freq <= 510) ? 'CN470'   // China 470-510 MHz
+                : null;
+            if (ismBand) {
+                pool.query(
+                    `UPDATE devices SET metadata = metadata || $1::jsonb WHERE dev_eui = $2`,
+                    [JSON.stringify({ ism_band: ismBand }), devEui]
+                ).catch(err => console.error('MessageTracker: ism_band update error:', err.message));
+            }
+        }
+
         // Type 4 config uplink (fPort 8, packet_type 0x04): parse TPM/VSM firmware
         // versions and push period from the AirVibe payload and persist to devices.metadata.
         // Codec: VSM fw at bytes 35-36 LE, TPM fw at bytes 37-38 LE, push_period_min at 8-9 LE.

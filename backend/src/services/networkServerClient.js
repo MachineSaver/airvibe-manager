@@ -26,8 +26,8 @@ if (NETWORK_SERVER === 'thingpark') {
         get configured() { return tpClient.configured; },
         type: 'thingpark',
 
-        async switchToClassC(devEui) {
-            const result = await tpClient.switchToClassC(devEui);
+        async switchToClassC(devEui, classCProfile) {
+            const result = await tpClient.switchToClassC(devEui, classCProfile);
             if (!result) return null;
             // Wrap { deviceRef, originalProfileId } into the { originalClass }
             // envelope that FUOTAManager expects, so the restore token is opaque.

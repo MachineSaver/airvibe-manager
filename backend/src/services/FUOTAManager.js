@@ -32,6 +32,53 @@ const FUOTA_VERIFY_PRE_DELAY_MS = parseInt(process.env.FUOTA_VERIFY_PRE_DELAY_MS
 const FIRMWARE_STORE_TTL_MS = 3600000;
 
 // ---------------------------------------------------------------------------
+// ISM band → ThingPark Class C device profile mapping
+// ---------------------------------------------------------------------------
+// Derived automatically from the Frequency field in each uplink envelope
+// (written to devices.metadata.ism_band by MessageTracker).
+// ETSI regulatory domain: EU868, EU433
+// FCC  regulatory domain: US915, AU915, CN470
+const BAND_TO_CLASS_C_PROFILE = {
+    EU868: 'LORA/GenericC.1.0.4a_ETSI',
+    EU433: 'LORA/GenericC.1.0.4a_ETSI',
+    US915: 'LORA/GenericC.1.0.4a_FCC',
+    AU915: 'LORA/GenericC.1.0.4a_FCC',
+    CN470: 'LORA/GenericC.1.0.4a_FCC',
+};
+
+/**
+ * Return the ThingPark Class C profile for a known ISM band, or null if unknown.
+ * Null causes ThingParkClient to fall back to its THINGPARK_CLASS_C_PROFILE env var.
+ */
+function ismBandToClassCProfile(ismBand) {
+    return BAND_TO_CLASS_C_PROFILE[ismBand] || null;
+}
+
+/**
+ * Look up the ISM band stored in devices.metadata for a given DevEUI and return
+ * the appropriate ThingPark Class C profile string (or null on any failure).
+ */
+async function resolveClassCProfile(devEui) {
+    try {
+        const row = await pool.query(
+            `SELECT metadata->>'ism_band' AS ism_band FROM devices WHERE dev_eui = $1`,
+            [devEui]
+        );
+        const ismBand = row.rows[0]?.ism_band;
+        if (ismBand) {
+            const profile = ismBandToClassCProfile(ismBand);
+            if (profile) {
+                console.log(`FUOTAManager: ${devEui} ISM band=${ismBand} → Class C profile=${profile}`);
+            }
+            return profile;
+        }
+    } catch (err) {
+        console.warn(`FUOTAManager: could not resolve ISM band for ${devEui}:`, err.message);
+    }
+    return null; // ThingParkClient will use THINGPARK_CLASS_C_PROFILE env var fallback
+}
+
+// ---------------------------------------------------------------------------
 // Utility functions (Node.js equivalents of wiki's fuotaPayloads.ts)
 // ---------------------------------------------------------------------------
 
@@ -189,8 +236,9 @@ class FUOTAManager {
                     }
                 }, FUOTA_SESSION_TIMEOUT_MS);
 
-                // Re-attempt Class C switch (non-blocking)
-                const csResult = await networkClient.switchToClassC(devEui).catch(() => null);
+                // Re-attempt Class C switch using per-device ISM band profile
+                const classCProfile = await resolveClassCProfile(devEui).catch(() => null);
+                const csResult = await networkClient.switchToClassC(devEui, classCProfile).catch(() => null);
                 session.originalClass    = csResult?.originalClass || null;
                 session.classCConfigured = !!csResult;
 
@@ -326,8 +374,12 @@ class FUOTAManager {
             }
         }, FUOTA_SESSION_TIMEOUT_MS);
 
+        // Resolve per-device Class C profile from ISM band stored in devices.metadata.
+        // Falls back to null → ThingParkClient uses its THINGPARK_CLASS_C_PROFILE env var.
+        const classCProfile = await resolveClassCProfile(devEui);
+
         // Attempt Class C switch via the active network server client (non-blocking to session creation)
-        const csResult = await networkClient.switchToClassC(devEui);
+        const csResult = await networkClient.switchToClassC(devEui, classCProfile);
         session.originalClass    = csResult?.originalClass || null;
         session.classCConfigured = !!csResult;
 
