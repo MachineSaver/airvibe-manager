@@ -25,8 +25,8 @@ const MAX_INTERVAL_MS = 300000;
 // finish processing the last data block before checking receipt.
 // On no-response, retries up to FUOTA_VERIFY_MAX_RETRIES times (total), dividing
 // FUOTA_VERIFY_TIMEOUT_MS evenly across attempts.
-const FUOTA_VERIFY_MAX_RETRIES  = parseInt(process.env.FUOTA_VERIFY_MAX_RETRIES)  || 3;
-const FUOTA_VERIFY_PRE_DELAY_MS = parseInt(process.env.FUOTA_VERIFY_PRE_DELAY_MS) || 10000; // 10 s
+const FUOTA_VERIFY_MAX_RETRIES  = parseInt(process.env.FUOTA_VERIFY_MAX_RETRIES)  || 10;
+const FUOTA_VERIFY_PRE_DELAY_MS = parseInt(process.env.FUOTA_VERIFY_PRE_DELAY_MS) || 300000; // 5 min
 
 // Firmware store TTL (1 hour) – uploaded binaries are kept in memory this long
 const FIRMWARE_STORE_TTL_MS = 3600000;
