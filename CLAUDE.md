@@ -16,13 +16,18 @@ Both modes share the same codebase. The adapter layer in `backend/src/adapters/`
 ### Docker (primary method)
 ```bash
 cp .env.example .env
-./build.sh                           # Build and start the full stack (preferred over docker compose up -d --build directly)
+./deploy.sh                          # Pull pre-built images from ghcr.io and restart (VPS, fast — preferred)
+./build.sh                           # Build images locally and start (local dev or first-time VPS setup)
 docker compose up -d --build backend # Rebuild backend only (no frontend bake-in needed)
 docker compose restart mqtt-broker   # Restart broker (e.g. after cert changes)
 docker compose logs -f chirpstack    # Watch ChirpStack startup (full profile)
 ```
 
-**Always use `./build.sh` for full-stack builds.** It exports `NEXT_PUBLIC_BUILD_HASH` (current git short SHA) and `NEXT_PUBLIC_BUILD_DATE` (UTC timestamp) before calling `docker compose up -d --build`, so those values are baked into the Next.js bundle and displayed in the UI footer (`build <hash> • <date>`). Running `docker compose up -d --build` directly leaves the footer showing `build unknown • unknown`.
+**On the VPS, use `./deploy.sh`.** GitHub Actions builds and pushes pre-built images to ghcr.io on every push to `main`. `deploy.sh` does `git pull → docker compose pull → docker compose up -d` — no compiler on the VPS, completes in seconds.
+
+**For local dev or first-time VPS setup, use `./build.sh`.** It runs `git pull`, exports `NEXT_PUBLIC_BUILD_HASH` (current git short SHA) and `NEXT_PUBLIC_BUILD_DATE` (UTC timestamp), then calls `docker compose up -d --build`. Running `docker compose up -d --build` directly leaves the footer showing `build unknown • unknown`.
+
+**GitHub Actions secret required:** The CI workflow bakes `NEXT_PUBLIC_API_URL` into the frontend image at build time. Add `NEXT_PUBLIC_API_URL` as a repository secret in GitHub → Settings → Secrets and variables → Actions. Set it to the public URL of your deployment (e.g. `https://air.machinesaver.com`). Without this secret the CI build falls back to `https://localhost`, which only works for local deployments.
 
 ### Local development (without Docker)
 ```bash
@@ -177,8 +182,11 @@ fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /
 echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ```
 
-### Always use `./build.sh` — never `docker compose up -d --build` directly on the VPS
-`build.sh` runs `git pull` first, then exports build metadata, then calls `docker compose up -d --build`. Running `docker compose up -d --build` directly on the VPS will build from whatever code is currently checked out — if the repo hasn't been pulled, Docker's layer cache will be valid for the stale code and the image will silently not update.
+### Normal VPS deploy: use `./deploy.sh`
+`deploy.sh` runs `git pull`, then `docker compose pull frontend backend` (fetches pre-built images from ghcr.io), then `docker compose up -d`. Completes in seconds. No build tools or swap needed. This is the correct deploy path once GitHub Actions CI is pushing images.
+
+### Fallback: `./build.sh` for local builds on the VPS
+Only needed if CI is broken, the ghcr.io images are unavailable, or you're on a fresh VPS before CI has pushed any images. `build.sh` runs `git pull`, exports build metadata, then calls `docker compose up -d --build`. **Requires 4 GB swap — see above.** Running `docker compose up -d --build` directly (without `build.sh`) will build from whatever code is checked out and leave the footer showing `build unknown • unknown`.
 
 ### Docker layer cache pitfall — when to use `--no-cache`
 Under normal circumstances `./build.sh` is sufficient; Docker will invalidate the `COPY . .` layer when source files change. Only reach for `--no-cache` if the image is provably stale despite a clean `git pull`. **`--no-cache` is very expensive on a 1 GB VPS** — it bypasses the `.next/cache` BuildKit mount and forces a full Turbopack cold compile (~30 min). The `NODE_OPTIONS=--max-old-space-size=3072` in `frontend/Dockerfile` caps Node's heap at 3 GB so it spills to swap gracefully rather than trying to claim unlimited memory.

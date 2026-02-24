@@ -129,6 +129,7 @@ services:
   # ---------------------------------------------------------------------------
 
   backend:
+    image: ghcr.io/machinesaver/mqtt-manager-backend:latest
     build: ./backend
     container_name: mqtt-manager-backend
     ports:
@@ -156,7 +157,6 @@ services:
       - THINGPARK_BASE_URL=${THINGPARK_BASE_URL:-https://community.thingpark.io}
       - THINGPARK_CLIENT_ID=${THINGPARK_CLIENT_ID:-}
       - THINGPARK_CLIENT_SECRET=${THINGPARK_CLIENT_SECRET:-}
-      - THINGPARK_CLASS_C_PROFILE=${THINGPARK_CLASS_C_PROFILE:-}
     volumes:
       - ./certs:/app/certs
     depends_on:
@@ -165,6 +165,7 @@ services:
     restart: unless-stopped
 
   frontend:
+    image: ghcr.io/machinesaver/mqtt-manager-frontend:latest
     build:
       context: ./frontend
       args:
