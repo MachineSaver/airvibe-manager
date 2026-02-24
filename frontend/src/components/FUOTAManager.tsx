@@ -50,6 +50,7 @@ interface Device {
     vsm_fw?: string;
     push_period_min?: number;
     config_updated_at?: string;
+    ism_band?: string;
   };
 }
 
