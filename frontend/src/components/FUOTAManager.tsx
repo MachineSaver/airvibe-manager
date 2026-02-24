@@ -45,6 +45,12 @@ interface Device {
   dev_eui: string;
   last_seen: string;
   uplink_count: number;
+  metadata?: {
+    tpm_fw?: string;
+    vsm_fw?: string;
+    push_period_min?: number;
+    config_updated_at?: string;
+  };
 }
 
 interface DbSession {
@@ -100,17 +106,6 @@ const FIRMWARE_CATALOG = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-const STATE_LABELS: Record<FuotaState, string> = {
-  idle: 'Idle',
-  initializing: 'Initializing',
-  waiting_ack: 'Waiting for ACK',
-  sending_blocks: 'Sending Blocks',
-  verifying: 'Verifying',
-  resending: 'Resending Missed',
-  complete: 'Complete',
-  failed: 'Failed',
-  aborted: 'Aborted',
-};
 
 function stateBadgeClass(state: FuotaState | string): string {
   switch (state) {
@@ -153,8 +148,15 @@ function formatEta(totalBlocks: number, blockIntervalMs: number): string {
   const totalMs = totalBlocks * blockIntervalMs;
   const totalSec = Math.round(totalMs / 1000);
   if (totalSec < 60) return `~${totalSec}s`;
-  const m = Math.floor(totalSec / 60);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
+  if (h > 0) {
+    let str = `~${h}h`;
+    if (m > 0) str += ` ${m}m`;
+    if (s > 0) str += ` ${s}s`;
+    return str;
+  }
   return s > 0 ? `~${m}m ${s}s` : `~${m}m`;
 }
 
@@ -197,17 +199,38 @@ export default function FUOTAManager({ socket }: Props) {
       .map(p => p.devEui)
   );
 
+  // Filter history: don't show non-terminal DB rows for devices that currently have
+  // an in-memory active session (they'd show stale data until the session ends).
+  const filteredHistory = sessionHistory.filter(
+    s => !(activeDevEuis.has(s.device_eui) && !isTerminalState(s.status as FuotaState))
+  );
+
   // -------------------------------------------------------------------------
   // Load devices, ThingPark status, and restore session state on mount
   // -------------------------------------------------------------------------
 
   useEffect(() => {
-    setDevicesLoading(true);
-    fetch(`${apiUrl}/api/devices`)
-      .then(r => r.json())
-      .then((data: Device[]) => setDevices(data))
-      .catch(() => setDevices([]))
-      .finally(() => setDevicesLoading(false));
+    let mounted = true;
+
+    function fetchDevices(initial = false) {
+      if (initial) setDevicesLoading(true);
+      fetch(`${apiUrl}/api/devices`)
+        .then(r => r.json())
+        .then((data: Device[]) => {
+          if (!mounted) return;
+          setDevices(data);
+          if (initial) setDevicesLoading(false);
+        })
+        .catch(() => {
+          if (!mounted) return;
+          if (initial) { setDevices([]); setDevicesLoading(false); }
+        });
+    }
+
+    fetchDevices(true);
+    // Refresh every 30 s to pick up new firmware version metadata after config responses
+    const timer = setInterval(() => fetchDevices(false), 30000);
+    return () => { mounted = false; clearInterval(timer); };
   }, [apiUrl]);
 
   useEffect(() => {
@@ -590,33 +613,61 @@ export default function FUOTAManager({ socket }: Props) {
         )}
 
         {!devicesLoading && devices.length > 0 && (
-          <div className="space-y-1 max-h-48 overflow-y-auto">
-            {devices.map(device => {
-              const isActive = activeDevEuis.has(device.dev_eui);
-              return (
-                <div
-                  key={device.dev_eui}
-                  className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-[#2d2d2d]"
-                >
-                  {isActive ? (
-                    <span className="px-2 py-0.5 rounded text-xs bg-amber-900/50 border border-amber-600 text-amber-300">
-                      Updating…
-                    </span>
-                  ) : (
-                    <input
-                      type="checkbox"
-                      checked={selectedDevEuis.has(device.dev_eui)}
-                      onChange={() => toggleDevice(device.dev_eui)}
-                      className="accent-blue-500 cursor-pointer"
-                    />
-                  )}
-                  <span className="font-mono text-xs text-gray-300 flex-1">{device.dev_eui}</span>
-                  <span className="text-xs text-gray-500">
-                    last seen {formatDate(device.last_seen)}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="overflow-x-auto max-h-56 overflow-y-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead className="sticky top-0 bg-[#252526]">
+                <tr className="text-gray-500 border-b border-[#333]">
+                  <th className="pb-1.5 pl-2 text-left w-10">Sel.</th>
+                  <th className="pb-1.5 text-left">DevEUI</th>
+                  <th className="pb-1.5 text-left pl-3">TPMfw Ver</th>
+                  <th className="pb-1.5 text-left pl-3">VSMfw Ver</th>
+                  <th className="pb-1.5 text-left pl-3">Config Updated</th>
+                  <th className="pb-1.5 text-right pr-2">Last Seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {devices.map(device => {
+                  const isActive = activeDevEuis.has(device.dev_eui);
+                  const isSelected = selectedDevEuis.has(device.dev_eui);
+                  return (
+                    <tr
+                      key={device.dev_eui}
+                      onClick={() => toggleDevice(device.dev_eui)}
+                      className={`cursor-pointer hover:bg-[#2d2d2d] ${isSelected ? 'bg-blue-900/10' : ''}`}
+                    >
+                      <td className="py-1.5 pl-2">
+                        {isActive ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/50 border border-amber-600 text-amber-300">
+                            Upd…
+                          </span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleDevice(device.dev_eui)}
+                            onClick={e => e.stopPropagation()}
+                            className="accent-blue-500 cursor-pointer"
+                          />
+                        )}
+                      </td>
+                      <td className="py-1.5 font-mono text-gray-300">{device.dev_eui}</td>
+                      <td className="py-1.5 pl-3 font-mono text-gray-400">
+                        {device.metadata?.tpm_fw ?? <span className="text-gray-600">—</span>}
+                      </td>
+                      <td className="py-1.5 pl-3 font-mono text-gray-400">
+                        {device.metadata?.vsm_fw ?? <span className="text-gray-600">—</span>}
+                      </td>
+                      <td className="py-1.5 pl-3 text-gray-500">
+                        {device.metadata?.config_updated_at
+                          ? formatDate(device.metadata.config_updated_at)
+                          : <span className="text-gray-600">—</span>}
+                      </td>
+                      <td className="py-1.5 pr-2 text-gray-500 text-right">{formatDate(device.last_seen)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -659,19 +710,19 @@ export default function FUOTAManager({ socket }: Props) {
         </div>
       )}
 
-      {sessionHistory.length > 0 && (
+      {filteredHistory.length > 0 && (
         <div className="rounded-lg border border-[#333] bg-[#252526] p-4 space-y-2">
           <button
             className="flex items-center gap-2 w-full text-left"
             onClick={() => setHistoryExpanded(v => !v)}
           >
             <span className="text-sm font-semibold text-gray-200">Session History</span>
-            <span className="text-xs text-gray-500">({sessionHistory.length})</span>
+            <span className="text-xs text-gray-500">({filteredHistory.length})</span>
             <span className="ml-auto text-xs text-gray-500">{historyExpanded ? '▲ collapse' : '▼ expand'}</span>
           </button>
           {historyExpanded && (
             <div className="space-y-2 mt-2">
-              {sessionHistory.map(s => (
+              {filteredHistory.map(s => (
                 <SessionHistoryCard key={s.id} session={s} />
               ))}
             </div>
@@ -701,80 +752,120 @@ function DeviceProgressCard({
   const pct = totalBlocks > 0 ? Math.min(100, Math.round((blocksSent / totalBlocks) * 100)) : 0;
   const isTerminal = isTerminalState(state);
   const isActive = !isTerminal && state !== 'idle';
+  const isFailed = state === 'failed' || state === 'aborted';
+  const remaining = totalBlocks > blocksSent ? totalBlocks - blocksSent : 0;
 
-  const STEPS: { key: FuotaState; label: string }[] = [
-    { key: 'waiting_ack', label: 'Init' },
-    { key: 'sending_blocks', label: 'Blocks' },
-    { key: 'verifying', label: 'Verify' },
-    { key: 'complete', label: 'Done' },
-  ];
-  const stepOrder: FuotaState[] = ['initializing', 'waiting_ack', 'sending_blocks', 'resending', 'verifying', 'complete'];
-  const currentStepIndex = stepOrder.indexOf(state);
+  // ---- Timeline step states ----
+  const classCOk = !!classCConfigured;
+
+  // Whether each step has been completed (past)
+  const initDone   = ['sending_blocks', 'resending', 'verifying', 'complete', 'failed', 'aborted'].includes(state);
+  const blocksDone = ['verifying', 'complete'].includes(state) ||
+                     (isFailed && blocksSent > 0 && blocksSent === totalBlocks);
+  const resendDone = verifyAttempts > 1 && (state === 'verifying' || state === 'complete');
+  const verifyDone = state === 'complete';
+
+  // Whether each step is currently active
+  const initActive   = state === 'waiting_ack' || state === 'initializing';
+  const blocksActive = state === 'sending_blocks';
+  const resendActive = state === 'resending';
+  const verifyActive = state === 'verifying';
+
+  // Show resend node only when it has been (or is being) done
+  const showResend = resendActive || resendDone || lastMissedCount > 0;
+
+  // Connector color helper
+  function connCls(lit: boolean) {
+    return `h-px flex-1 min-w-[6px] ${lit ? 'bg-[#555]' : 'bg-[#2e2e2e]'}`;
+  }
+
+  // Badge class helper
+  function badgeCls(done: boolean, active: boolean, failed?: boolean, warn?: boolean) {
+    if (done && !isFailed) return 'text-gray-500 border-[#2e2e2e]';
+    if (active) return 'bg-blue-900/40 border-blue-600 text-blue-300';
+    if (failed) return 'bg-red-900/30 border-red-700 text-red-400';
+    if (warn)   return 'bg-amber-900/30 border-amber-700 text-amber-400';
+    return 'border-[#2a2a2a] text-gray-600';
+  }
 
   return (
-    <div className="rounded border border-[#3a3a3a] bg-[#1e1e1e] p-3 space-y-2">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-mono text-xs text-gray-300">{devEui}</span>
-          {firmwareName && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-[#333] border border-[#444] text-gray-400">
-              {firmwareName}
-            </span>
-          )}
-          {classCConfigured === true && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/40 border border-green-700 text-green-400">
-              Class C ✓
-            </span>
-          )}
-          {classCConfigured === false && isActive && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-amber-900/40 border border-amber-700 text-amber-400">
-              Class A mode
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs border rounded px-2 py-0.5 ${stateBadgeClass(state)}`}>
-            {STATE_LABELS[state] ?? state}
+    <div className="rounded border border-[#3a3a3a] bg-[#1e1e1e] p-3 space-y-3">
+
+      {/* Header: DevEUI + firmware name */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-mono text-xs text-gray-300">{devEui}</span>
+        {firmwareName && (
+          <span className="text-[11px] px-1.5 py-0.5 rounded bg-[#2a2a2a] border border-[#3a3a3a] text-gray-400">
+            {firmwareName}
           </span>
-          {isActive && (
-            <button
-              onClick={onAbort}
-              className="text-xs px-2 py-0.5 rounded border border-red-700 text-red-400 hover:bg-red-900/30"
-            >
-              Abort
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* Step indicator */}
+      {/* Timeline */}
       {(isActive || isTerminal) && (
-        <div className="flex items-center gap-1 text-xs">
-          {STEPS.map((step, idx) => {
-            const stepIdx = stepOrder.indexOf(step.key);
-            const isCurrentOrPast = currentStepIndex >= stepIdx;
-            const isCurrent = state === step.key || (step.key === 'sending_blocks' && state === 'resending');
-            return (
-              <div key={step.key} className="flex items-center gap-1">
-                {idx > 0 && <div className={`w-4 h-px ${isCurrentOrPast ? 'bg-blue-500' : 'bg-[#444]'}`} />}
-                <span className={`px-1.5 py-0.5 rounded transition-colors ${
-                  isCurrent
-                    ? 'bg-blue-900/50 border border-blue-500 text-blue-300'
-                    : isCurrentOrPast || isTerminal
-                    ? 'text-gray-400'
-                    : 'text-gray-600'
-                }`}>
-                  {step.label}
-                </span>
-              </div>
-            );
-          })}
+        <div className="flex items-center gap-0.5 text-[11px] overflow-x-auto">
+          {/* Class C */}
+          <span className={`px-2 py-0.5 rounded border shrink-0 ${
+            classCOk
+              ? 'bg-green-900/30 border-green-700 text-green-400'
+              : 'bg-amber-900/30 border-amber-700 text-amber-400'
+          }`}>
+            {classCOk ? 'Class C ✓' : 'Class A'}
+          </span>
+
+          <div className={connCls(initDone || initActive)} />
+
+          {/* Init */}
+          <span className={`px-2 py-0.5 rounded border shrink-0 ${badgeCls(initDone, initActive)}`}>
+            Init
+          </span>
+
+          <div className={connCls(blocksDone || blocksActive)} />
+
+          {/* Blocks */}
+          <span className={`px-2 py-0.5 rounded border shrink-0 ${badgeCls(blocksDone, blocksActive)}`}>
+            {blocksActive ? `Blocks ${pct}%` : 'Blocks'}
+          </span>
+
+          {/* Resend (conditional) */}
+          {showResend && (
+            <>
+              <div className={connCls(resendDone || resendActive)} />
+              <span className={`px-2 py-0.5 rounded border shrink-0 ${badgeCls(resendDone, resendActive)}`}>
+                {resendActive && lastMissedCount > 0 ? `Re-send ${lastMissedCount}` : 'Re-send'}
+              </span>
+            </>
+          )}
+
+          <div className={connCls(verifyDone || verifyActive || resendActive)} />
+
+          {/* Verify */}
+          <span className={`px-2 py-0.5 rounded border shrink-0 ${
+            verifyActive || resendActive
+              ? 'bg-yellow-900/40 border-yellow-700 text-yellow-300'
+              : badgeCls(verifyDone, false, isFailed && verifyAttempts > 0)
+          }`}>
+            Verify{verifyAttempts > 1 ? ` ×${verifyAttempts}` : ''}
+          </span>
+
+          <div className={connCls(verifyDone || isFailed)} />
+
+          {/* Done */}
+          <span className={`px-2 py-0.5 rounded border shrink-0 ${
+            verifyDone
+              ? 'bg-green-900/40 border-green-600 text-green-400'
+              : isFailed
+              ? 'bg-red-900/30 border-red-700 text-red-400'
+              : 'border-[#2a2a2a] text-gray-600'
+          }`}>
+            {isFailed ? (state === 'aborted' ? 'Aborted' : 'Failed') : 'Done'}
+          </span>
         </div>
       )}
 
       {/* Progress bar */}
-      {(state === 'sending_blocks' || state === 'resending' || (isTerminal && totalBlocks > 0)) && (
+      {(state === 'sending_blocks' || state === 'resending' ||
+        (isTerminal && totalBlocks > 0 && blocksSent > 0)) && (
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-gray-500">
             <span>Blocks {blocksSent.toLocaleString()} / {totalBlocks.toLocaleString()}</span>
@@ -782,48 +873,61 @@ function DeviceProgressCard({
           </div>
           <div className="h-1.5 rounded-full bg-[#333] overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all ${state === 'complete' ? 'bg-green-500' : state === 'failed' || state === 'aborted' ? 'bg-red-500' : 'bg-blue-500'}`}
+              className={`h-full rounded-full transition-all ${
+                state === 'complete' ? 'bg-green-500' :
+                isFailed ? 'bg-red-500' :
+                'bg-blue-500'
+              }`}
               style={{ width: `${pct}%` }}
             />
           </div>
         </div>
       )}
 
-      {/* Stats row */}
-      <div className="flex flex-wrap gap-4 text-xs text-gray-500">
-        {verifyAttempts > 0 && (
-          <span>Verify attempts: <span className="text-gray-300">{verifyAttempts}</span></span>
-        )}
-        {lastMissedCount > 0 && state !== 'complete' && (
-          <span>Last missed: <span className="text-yellow-400">{lastMissedCount}</span></span>
-        )}
-        {state === 'sending_blocks' && blockIntervalMs && totalBlocks > 0 && (
-          <span>
-            ETA: <span className="text-gray-300 font-mono">
-              {formatRemainingEta(totalBlocks - blocksSent, blockIntervalMs)}
-            </span>
-            {' '}remaining
-          </span>
-        )}
-        {state === 'waiting_ack' && (
-          <span className="text-blue-400">Waiting for device 0x10 ACK (Class C switch)…</span>
-        )}
-        {state === 'verifying' && (
-          <span className="text-yellow-400">Waiting for 0x11 verification uplink…</span>
-        )}
-        {state === 'complete' && (
-          <span className="text-green-400">Device confirmed all blocks received — applying update</span>
-        )}
-      </div>
-
-      {/* Missed blocks map — shown during resending or after a verify with missed blocks */}
+      {/* Missed blocks map */}
       {lastMissedBlocks && lastMissedBlocks.length > 0 && totalBlocks > 0 && state !== 'complete' && (
         <MissedBlocksMap totalBlocks={totalBlocks} missedBlocks={lastMissedBlocks} />
       )}
 
+      {/* Error */}
       {error && (
         <p className="text-xs text-red-400 font-mono break-all">{error}</p>
       )}
+
+      {/* Bottom row: status text + ETA left, Abort right */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+          {state === 'waiting_ack' && (
+            <span className="text-blue-400">Waiting for 0x10 ACK…</span>
+          )}
+          {state === 'verifying' && (
+            <span className="text-yellow-400">Waiting for 0x11 verify uplink…</span>
+          )}
+          {state === 'resending' && lastMissedCount > 0 && (
+            <span className="text-amber-400">Re-sending {lastMissedCount} missed block{lastMissedCount !== 1 ? 's' : ''}…</span>
+          )}
+          {state === 'sending_blocks' && blockIntervalMs && remaining > 0 && (
+            <span>
+              ETA: <span className="text-gray-200 font-mono">
+                {formatRemainingEta(remaining, blockIntervalMs)}
+              </span> remaining
+            </span>
+          )}
+          {state === 'complete' && (
+            <span className="text-green-400">All blocks confirmed — update applied</span>
+          )}
+        </div>
+
+        {isActive && (
+          <button
+            onClick={onAbort}
+            className="text-xs px-2.5 py-1 rounded border border-red-700 text-red-400 hover:bg-red-900/30 shrink-0"
+          >
+            Abort
+          </button>
+        )}
+      </div>
+
     </div>
   );
 }

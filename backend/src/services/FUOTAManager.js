@@ -20,6 +20,14 @@ const FUOTA_SESSION_TIMEOUT_MS= parseInt(process.env.FUOTA_SESSION_TIMEOUT_MS)||
 const MIN_INTERVAL_MS = 1000;
 const MAX_INTERVAL_MS = 300000;
 
+// Verify retry settings.
+// First verify attempt is sent after FUOTA_VERIFY_PRE_DELAY_MS to let the device
+// finish processing the last data block before checking receipt.
+// On no-response, retries up to FUOTA_VERIFY_MAX_RETRIES times (total), dividing
+// FUOTA_VERIFY_TIMEOUT_MS evenly across attempts.
+const FUOTA_VERIFY_MAX_RETRIES  = parseInt(process.env.FUOTA_VERIFY_MAX_RETRIES)  || 3;
+const FUOTA_VERIFY_PRE_DELAY_MS = parseInt(process.env.FUOTA_VERIFY_PRE_DELAY_MS) || 10000; // 10 s
+
 // Firmware store TTL (1 hour) – uploaded binaries are kept in memory this long
 const FIRMWARE_STORE_TTL_MS = 3600000;
 
@@ -338,6 +346,13 @@ class FUOTAManager {
             );
         }
 
+        // Send a config request (0x0200, fPort 22) so the device responds with a
+        // Type 4 config uplink that MessageTracker uses to capture firmware versions
+        // (TPM/VSM) before the update starts.  Fire-and-forget — we don't wait for
+        // the response.  The device will send it on the next available uplink window.
+        this._sendDownlink(devEui, 22, Buffer.from([0x02, 0x00]));
+        auditLogger.log('fuota_manager', 'config_request_sent', devEui, {});
+
         // Send init downlink then wait for 0x10 ACK
         this._sendInitDownlink(session);
         this._emitProgress(devEui);
@@ -459,9 +474,14 @@ class FUOTAManager {
             this._sendDownlink(devEui, 25, payload);
             session.blocksSent = i + 1;
 
-            // Emit progress every 25 blocks to avoid flooding socket
-            if (i % 25 === 0 || i === blocks.length - 1) {
+            // Emit progress every 5 blocks for near-real-time UI updates
+            if (i % 5 === 0 || i === blocks.length - 1) {
                 this._emitProgress(devEui);
+            }
+
+            // Flush blocks_sent to DB every 100 blocks so Session History stays current
+            if (session.blocksSent % 100 === 0) {
+                this._updateDb(session).catch(() => {});
             }
 
             if (i < blocks.length - 1) {
@@ -480,6 +500,13 @@ class FUOTAManager {
         if (session.aborted) return;
         const { devEui } = session;
 
+        // On the very first verify attempt, wait briefly so the device finishes
+        // processing the final data block before receiving the verify command.
+        if (session.verifyAttempts === 0) {
+            await sleep(FUOTA_VERIFY_PRE_DELAY_MS);
+            if (session.aborted || this.activeSessions.get(devEui) !== session) return;
+        }
+
         session.state = 'verifying';
         session.verifyAttempts += 1;
         this._updateDb(session);
@@ -488,12 +515,30 @@ class FUOTAManager {
         this._sendDownlink(devEui, 22, makeVerifyPayload());
         auditLogger.log('fuota_manager', 'verify_sent', devEui, { attempt: session.verifyAttempts });
 
-        // Timeout waiting for 0x11
+        // Each attempt gets an equal share of the total verify timeout budget.
+        // On timeout: retry if attempts remain, otherwise fail the session.
+        const attemptMs = Math.floor(FUOTA_VERIFY_TIMEOUT_MS / FUOTA_VERIFY_MAX_RETRIES);
         session._verifyTimeout = setTimeout(async () => {
-            if (this.activeSessions.get(devEui) === session && session.state === 'verifying') {
-                await this._failSession(devEui, `No 0x11 verify response within ${FUOTA_VERIFY_TIMEOUT_MS / 3600000}h`);
+            if (this.activeSessions.get(devEui) !== session || session.state !== 'verifying') return;
+
+            if (session.verifyAttempts < FUOTA_VERIFY_MAX_RETRIES) {
+                console.warn(
+                    `FUOTAManager: ${devEui} no 0x11 response ` +
+                    `(attempt ${session.verifyAttempts}/${FUOTA_VERIFY_MAX_RETRIES}), retrying verify…`
+                );
+                auditLogger.log('fuota_manager', 'verify_timeout_retry', devEui, {
+                    attempt: session.verifyAttempts,
+                });
+                clearTimeout(session._verifyTimeout);
+                session._verifyTimeout = null;
+                await this._sendVerify(session);
+            } else {
+                await this._failSession(devEui,
+                    `No 0x11 verify response after ${FUOTA_VERIFY_MAX_RETRIES} attempts ` +
+                    `(${FUOTA_VERIFY_TIMEOUT_MS / 3600000}h total)`
+                );
             }
-        }, FUOTA_VERIFY_TIMEOUT_MS);
+        }, attemptMs);
     }
 
     _handleVerifyUplink(devEui, buf) {

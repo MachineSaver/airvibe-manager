@@ -47,6 +47,29 @@ class MessageTracker {
         } catch (err) {
             console.error('MessageTracker error:', err.message);
         }
+
+        // Type 4 config uplink (fPort 8, packet_type 0x04): parse TPM/VSM firmware
+        // versions and push period from the AirVibe payload and persist to devices.metadata.
+        // Codec: VSM fw at bytes 35-36 LE, TPM fw at bytes 37-38 LE, push_period_min at 8-9 LE.
+        // fw(v) = (v >>> 8) + "." + (v & 0xFF)
+        if (direction === 'uplink' && fPort === 8 && packetType === 4 && payloadHex) {
+            const buf = Buffer.from(payloadHex, 'hex');
+            if (buf.length >= 39) {
+                const vsmRaw = buf[35] | (buf[36] << 8);
+                const tpmRaw = buf[37] | (buf[38] << 8);
+                const pushMin = buf[8]  | (buf[9]  << 8);
+                const metaPatch = {
+                    vsm_fw:           `${vsmRaw >>> 8}.${vsmRaw & 0xFF}`,
+                    tpm_fw:           `${tpmRaw >>> 8}.${tpmRaw & 0xFF}`,
+                    push_period_min:  pushMin,
+                    config_updated_at: new Date().toISOString(),
+                };
+                pool.query(
+                    `UPDATE devices SET metadata = metadata || $1::jsonb WHERE dev_eui = $2`,
+                    [JSON.stringify(metaPatch), devEui]
+                ).catch(err => console.error('MessageTracker: config metadata update error:', err.message));
+            }
+        }
     }
 
     async upsertDevice(devEui, direction) {
