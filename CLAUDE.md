@@ -160,3 +160,42 @@ Before implementing any feature or change the user asks for, always:
 ## CI/CD
 
 GitHub Actions (`.github/workflows/ci.yml`) runs `docker compose build` on pushes/PRs to `main`.
+
+## VPS Deployment — Lessons Learned
+
+### VPS specs and constraints
+The production VPS (air.machinesaver.com, Linode) has **1 GB RAM**. The Next.js Turbopack production build requires ~3–4 GB memory. A **4 GB swap file** at `/swapfile` is required and is already configured. Without it, the Node.js build process is OOM-killed mid-compile.
+
+Verify swap is active before any frontend rebuild:
+```bash
+free -h    # Swap line should show ~4.5 GiB total
+```
+
+If swap is missing (e.g. after a fresh VPS provision):
+```bash
+fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+```
+
+### Always use `./build.sh` — never `docker compose up -d --build` directly on the VPS
+`build.sh` runs `git pull` first, then exports build metadata, then calls `docker compose up -d --build`. Running `docker compose up -d --build` directly on the VPS will build from whatever code is currently checked out — if the repo hasn't been pulled, Docker's layer cache will be valid for the stale code and the image will silently not update.
+
+### Docker layer cache pitfall — when to use `--no-cache`
+Under normal circumstances `./build.sh` is sufficient; Docker will invalidate the `COPY . .` layer when source files change. Only reach for `--no-cache` if the image is provably stale despite a clean `git pull`. **`--no-cache` is very expensive on a 1 GB VPS** — it bypasses the `.next/cache` BuildKit mount and forces a full Turbopack cold compile (~30 min). The `NODE_OPTIONS=--max-old-space-size=3072` in `frontend/Dockerfile` caps Node's heap at 3 GB so it spills to swap gracefully rather than trying to claim unlimited memory.
+
+### Never start a second build if the first is still running
+Docker builds continue running on the server even after an SSH connection is dropped. If a build appears to hang and the SSH pipe breaks, **do not start another build immediately**. Check for running processes first:
+```bash
+docker ps    # look for a build container
+ps aux | grep node    # look for a live node/next build process
+```
+Starting multiple concurrent `next build` processes on a 1 GB machine will compound memory pressure, escalate to OOM-killing critical system processes (including `systemd`), and can crash the VPS entirely — requiring a hard reboot from the Linode dashboard.
+
+### Recovery procedure after OOM crash
+1. Reboot from the Linode dashboard (SSH will be unresponsive — `Connection reset by peer`)
+2. Confirm SSH access is restored
+3. Verify swap is still active (`free -h`)
+4. Pull and rebuild: `cd /root/mqtt-manager && ./build.sh`
+
+### VPS path
+The project lives at `/root/mqtt-manager` on the VPS (not `/root/AirVibe_Waveform_Manager`).
