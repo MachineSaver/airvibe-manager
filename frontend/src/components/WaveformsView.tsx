@@ -32,13 +32,6 @@ function processChartData(wf: Waveform): { axis1: number[], axis2: number[], axi
     return deinterleaveWaveform(wf.final_data.raw_hex, wf.metadata.axisMask);
 }
 
-function formatAxisLabel(axisSelection: string, axisMask: number): string {
-    const axes: string[] = [];
-    if (axisMask & 0x01) axes.push('Axis 1');
-    if (axisMask & 0x02) axes.push('Axis 2');
-    if (axisMask & 0x04) axes.push('Axis 3');
-    return `${axes.join(', ')} (${axisSelection})`;
-}
 
 interface Device {
     dev_eui: string;
@@ -242,11 +235,10 @@ export default function WaveformsView() {
                             <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                                 <div>
                                     <h1 className="text-xl font-bold text-white mb-1">
-                                        Transaction #{selectedWaveform.transaction_id}
+                                        {new Date(selectedWaveform.start_time).toLocaleString()}
                                     </h1>
                                     <div className="flex flex-wrap gap-4 text-xs text-gray-400">
-                                        <span>DevEUI: <span className="font-mono text-gray-300">{selectedWaveform.device_eui}</span></span>
-                                        <span>Started: {new Date(selectedWaveform.start_time).toLocaleTimeString()}</span>
+                                        <span>Tx #{selectedWaveform.transaction_id} · <span className="font-mono text-gray-300">{selectedWaveform.device_eui}</span></span>
                                     </div>
                                 </div>
                                 <div className="text-right">
@@ -286,19 +278,13 @@ export default function WaveformsView() {
                             </div>
 
                             {selectedWaveform.metadata && (
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-[#333]">
-                                    <div>
-                                        <div className="text-[10px] text-gray-500 mb-1">Sample Rate</div>
-                                        <div className="font-mono text-gray-300 text-sm">{selectedWaveform.metadata.sampleRate} Hz</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] text-gray-500 mb-1">Samples/Axis</div>
-                                        <div className="font-mono text-gray-300 text-sm">{selectedWaveform.metadata.samplesPerAxis}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] text-gray-500 mb-1">Axes</div>
-                                        <div className="font-mono text-gray-300 text-sm">{formatAxisLabel(selectedWaveform.metadata.axisSelection, selectedWaveform.metadata.axisMask)}</div>
-                                    </div>
+                                <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[#333]">
+                                    <span className="px-2 py-0.5 rounded text-[10px] bg-[#1e1e1e] border border-[#3e3e42] text-gray-300 font-mono">⚡ {selectedWaveform.metadata.sampleRate} Hz</span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] bg-[#1e1e1e] border border-[#3e3e42] text-gray-300 font-mono">📊 {selectedWaveform.metadata.samplesPerAxis}</span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] bg-[#1e1e1e] border border-[#3e3e42] text-gray-500 font-mono">Axis:</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${selectedWaveform.metadata.axisMask & 0x01 ? 'bg-green-900/30 border-green-700 text-green-400' : 'bg-[#1e1e1e] border-[#3e3e42] text-gray-600'}`}>1 {selectedWaveform.metadata.axisMask & 0x01 ? '✓' : '✗'}</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${selectedWaveform.metadata.axisMask & 0x02 ? 'bg-green-900/30 border-green-700 text-green-400' : 'bg-[#1e1e1e] border-[#3e3e42] text-gray-600'}`}>2 {selectedWaveform.metadata.axisMask & 0x02 ? '✓' : '✗'}</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${selectedWaveform.metadata.axisMask & 0x04 ? 'bg-green-900/30 border-green-700 text-green-400' : 'bg-[#1e1e1e] border-[#3e3e42] text-gray-600'}`}>3 {selectedWaveform.metadata.axisMask & 0x04 ? '✓' : '✗'}</span>
                                 </div>
                             )}
                         </div>

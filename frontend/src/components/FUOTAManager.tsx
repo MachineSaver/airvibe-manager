@@ -702,7 +702,7 @@ export default function FUOTAManager({ socket }: Props) {
             <table className="w-full text-xs border-collapse">
               <thead className="sticky top-0 bg-[#252526]">
                 <tr className="text-gray-500 border-b border-[#333]">
-                  <th className="pb-1.5 pl-2 text-left w-10">Sel.</th>
+                  <th className="pb-1.5 pl-2 text-left w-14">Sel.</th>
                   <th className="pb-1.5 text-left">DevEUI</th>
                   <th className="pb-1.5 text-left pl-3">TPMfw Ver</th>
                   <th className="pb-1.5 text-left pl-3">VSMfw Ver</th>
@@ -742,7 +742,7 @@ export default function FUOTAManager({ socket }: Props) {
                       <td className="py-1.5 pl-3 font-mono text-gray-400">
                         {device.metadata?.vsm_fw ?? <span className="text-gray-600">—</span>}
                       </td>
-                      <td className="py-1.5 pl-3 text-gray-500">
+                      <td className="py-1.5 pl-3 text-gray-500 border-r border-[#333]">
                         {device.metadata?.config_updated_at
                           ? formatDate(device.metadata.config_updated_at)
                           : <span className="text-gray-600">—</span>}
@@ -883,6 +883,13 @@ function DeviceProgressCard({
     return 'border-[#2a2a2a] text-gray-600';
   }
 
+  function initBadgeCls(done: boolean, active: boolean, failed?: boolean) {
+    if (done && !failed) return 'bg-green-900/30 border-green-700 text-green-400';
+    if (active)          return 'bg-amber-900/30 border-amber-700 text-amber-400';
+    if (failed)          return 'bg-red-900/30 border-red-700 text-red-400';
+    return 'border-[#2a2a2a] text-gray-600';
+  }
+
   return (
     <div className="rounded border border-[#3a3a3a] bg-[#1e1e1e] p-3 space-y-3">
 
@@ -911,8 +918,8 @@ function DeviceProgressCard({
           <div className={connCls(initDone || initActive)} />
 
           {/* Init */}
-          <span className={`px-2 py-0.5 rounded border shrink-0 ${badgeCls(initDone, initActive)}`}>
-            Init
+          <span className={`px-2 py-0.5 rounded border shrink-0 ${initBadgeCls(initDone, initActive)}`}>
+            {initDone ? 'Init ✓' : 'Init'}
           </span>
 
           <div className={connCls(blocksDone || blocksActive)} />

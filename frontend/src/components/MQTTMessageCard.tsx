@@ -6,11 +6,25 @@ interface MQTTMessageCardProps {
     topic: string;
     payload: string;
     timestamp: string;
+    collapseKey?: number;
+    expandKey?: number;
 }
 
-const MQTTMessageCard: React.FC<MQTTMessageCardProps> = ({ topic, payload, timestamp }) => {
+const MQTTMessageCard: React.FC<MQTTMessageCardProps> = ({ topic, payload, timestamp, collapseKey = 0, expandKey = 0 }) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [prevCollapseKey, setPrevCollapseKey] = useState(collapseKey);
+    const [prevExpandKey, setPrevExpandKey] = useState(expandKey);
     const [copied, setCopied] = useState(false);
+
+    // Derived state: sync collapse/expand from parent keys (React-approved setState-during-render pattern)
+    if (collapseKey !== prevCollapseKey) {
+        setPrevCollapseKey(collapseKey);
+        setIsCollapsed(true);
+    }
+    if (expandKey !== prevExpandKey) {
+        setPrevExpandKey(expandKey);
+        setIsCollapsed(false);
+    }
 
     let jsonPayload = null;
     try {

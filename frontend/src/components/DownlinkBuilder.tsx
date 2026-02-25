@@ -44,11 +44,14 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [flushQueue, setFlushQueue] = useState(false);
 
-  // Codec JSON editor state — tracks which preset last initialized the text
+  // Codec JSON editor state
   const [codecJsonText, setCodecJsonText] = useState('');
   const [lastCodecPreset, setLastCodecPreset] = useState<string>('');
 
-  // DevEUI Discovery — API-based with message fallback
+  // Collapsible card state — all collapsed by default
+  const [collapsed, setCollapsed] = useState({ broker: true, message: true, preview: true, command: true });
+
+  // DevEUI Discovery
   const [apiDevEuis, setApiDevEuis] = useState<string[]>([]);
 
   const fetchDevices = useCallback(async () => {
@@ -68,7 +71,6 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
     return () => { clearTimeout(timeout); clearInterval(interval); };
   }, [fetchDevices]);
 
-  // Merge API devices with message-derived EUIs for immediate discovery
   const knownDevEuis = useMemo(() => {
     const euis = new Set<string>(apiDevEuis);
     for (const msg of messages) {
@@ -98,7 +100,6 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
     COMMAND_PRESETS.find(p => p.name === selectedPresetName),
     [selectedPresetName]);
 
-  // Initialize codec JSON text when a new codec preset is selected
   if (selectedPreset?.type === 'codec' && selectedPreset.codecInput && selectedPresetName !== lastCodecPreset) {
     setCodecJsonText(JSON.stringify(selectedPreset.codecInput, null, 2));
     setLastCodecPreset(selectedPresetName);
@@ -106,10 +107,8 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
     setLastCodecPreset(selectedPresetName);
   }
 
-  // Codec encoding result (derived from codecJsonText)
   const codecResult = useMemo(() => {
     if (!selectedPreset || selectedPreset.type !== 'codec') return null;
-
     try {
       const parsed = JSON.parse(codecJsonText);
       const result = encodeDownlink({ fPort: selectedPreset.fPort, data: parsed });
@@ -124,14 +123,11 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
     }
   }, [selectedPreset, codecJsonText]);
 
-  // Missed segments validation (derived state, not an effect)
   const missedSegError = useMemo(() => {
     if (!missedSegIndices) return null;
-
     const parts = missedSegIndices.split(',').map(s => s.trim()).filter(s => s !== '');
     let hasSmall = false;
     let hasLarge = false;
-
     for (const part of parts) {
       let num = 0;
       if (inputFormat === 'hex') {
@@ -141,79 +137,51 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
         if (!/^\d+$/.test(part)) continue;
         num = parseInt(part, 10);
       }
-
       if (isNaN(num)) continue;
-
-      if (num > 65535) {
-        return `Value ${part} exceeds 2 bytes (65535)`;
-      }
-
+      if (num > 65535) return `Value ${part} exceeds 2 bytes (65535)`;
       if (num > 255) hasLarge = true;
       else hasSmall = true;
     }
-
-    if (hasSmall && hasLarge) {
-      return "Cannot mix 1-byte (<=255) and 2-byte (>255) indices.";
-    }
-    if (missedSegSize === '00' && hasLarge) {
-      return "Value > 255 requires 2-byte mode.";
-    }
-    if (missedSegSize === '01' && hasSmall) {
-      return "Value <= 255 should use 1-byte mode.";
-    }
-
+    if (hasSmall && hasLarge) return "Cannot mix 1-byte (<=255) and 2-byte (>255) indices.";
+    if (missedSegSize === '00' && hasLarge) return "Value > 255 requires 2-byte mode.";
+    if (missedSegSize === '01' && hasSmall) return "Value <= 255 should use 1-byte mode.";
     return null;
   }, [missedSegIndices, missedSegSize, inputFormat]);
 
   const currentPayloadHex = useMemo(() => {
     if (!selectedPreset) return customPayload;
-
     if (selectedPreset.type === 'codec') {
       if (codecResult && codecResult.errors.length === 0 && codecResult.bytes.length > 0) {
         return bytesToHex(codecResult.bytes);
       }
       return '';
     }
-
-    if (selectedPreset.type === 'simple') {
-      return selectedPreset.staticPayload || '';
-    }
-
+    if (selectedPreset.type === 'simple') return selectedPreset.staticPayload || '';
     if (selectedPreset.type === 'waveform_ack') {
       const cmdByte = selectedPreset.name.includes('TWI') ? '03' : '01';
       return `${cmdByte}${waveformTxId || '00'}`;
     }
-
     if (selectedPreset.type === 'missed_segments') {
-      const parts = missedSegIndices.split(',')
-        .map(s => s.trim())
-        .filter(s => s !== '');
-
+      const parts = missedSegIndices.split(',').map(s => s.trim()).filter(s => s !== '');
       const count = parts.length;
       const countHex = count.toString(16).padStart(2, '0').toUpperCase();
-
       const paddedIndices = parts.map(part => {
         let val = 0;
-        if (inputFormat === 'hex') {
-          val = parseInt(part, 16);
-        } else {
-          val = parseInt(part, 10);
-        }
+        if (inputFormat === 'hex') val = parseInt(part, 16);
+        else val = parseInt(part, 10);
         if (isNaN(val)) return '';
         const hexVal = val.toString(16).toUpperCase();
         const targetLen = missedSegSize === '00' ? 2 : 4;
         return hexVal.padStart(targetLen, '0');
       }).join('');
-
       return `${missedSegSize}${countHex}${paddedIndices}`.toUpperCase();
     }
-
     return '';
   }, [selectedPreset, customPayload, waveformTxId, missedSegSize, missedSegIndices, inputFormat, codecResult]);
 
-  const currentFPort = useMemo(() => {
-    return selectedPreset ? selectedPreset.fPort.toString() : customFPort;
-  }, [selectedPreset, customFPort]);
+  const currentFPort = useMemo(() =>
+    selectedPreset ? selectedPreset.fPort.toString() : customFPort,
+    [selectedPreset, customFPort]);
 
   const getFormattedTimestamp = () => {
     const now = new Date();
@@ -222,7 +190,6 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
     const sign = offset >= 0 ? '+' : '-';
     const offsetHours = pad(Math.floor(Math.abs(offset) / 60));
     const offsetMinutes = pad(Math.abs(offset) % 60);
-
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${String(now.getMilliseconds()).padStart(3, '0')}${sign}${offsetHours}:${offsetMinutes}`;
   };
 
@@ -235,15 +202,8 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
         payload_hex: currentPayloadHex || "0000"
       }
     };
-
-    if (isConfirmed) {
-      payload.DevEUI_downlink.Confirmed = "1";
-    }
-
-    if (flushQueue) {
-      payload.DevEUI_downlink.FlushDownlinkQueue = "1";
-    }
-
+    if (isConfirmed) payload.DevEUI_downlink.Confirmed = "1";
+    if (flushQueue) payload.DevEUI_downlink.FlushDownlinkQueue = "1";
     return JSON.stringify(payload, null, 2);
   };
 
@@ -251,10 +211,7 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
     if (!socket) return;
     const finalTopic = topic.replace('[DevEUI]', devEui || '8C1F642113000533');
     const timestamp = getFormattedTimestamp();
-    socket.emit('publish', {
-      topic: finalTopic,
-      payload: getJsonPayload(timestamp)
-    });
+    socket.emit('publish', { topic: finalTopic, payload: getJsonPayload(timestamp) });
   };
 
   const copyToClipboard = (text: string, type: 'json' | 'cmd') => {
@@ -268,288 +225,317 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
     }
   };
 
+  const toggle = (key: keyof typeof collapsed) =>
+    setCollapsed(c => ({ ...c, [key]: !c[key] }));
+
   return (
-    <div className="overflow-auto p-6 bg-[#1e1e1e]">
-      <div className="space-y-6 max-w-xl">
+    <div className="space-y-2">
 
-        {/* Broker Connection (Read Only) */}
-        <div className="bg-[#252526] p-4 rounded border border-[#333]">
-          <h3 className="text-xs font-semibold text-orange-500 uppercase mb-3">Broker Connection</h3>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-2">
-              <label className="block text-[10px] text-gray-500 mb-1">HOST</label>
-              <input type="text" readOnly value={host} className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300" suppressHydrationWarning />
-            </div>
-            <div>
-              <label className="block text-[10px] text-gray-500 mb-1">PORT</label>
-              <input type="text" readOnly value="8883" className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300" />
+      {/* Broker Connection */}
+      <div className="bg-[#252526] rounded border border-[#333]">
+        <button
+          onClick={() => toggle('broker')}
+          className="w-full flex items-center justify-between px-4 py-3 text-left"
+        >
+          <span className="text-xs font-semibold text-orange-500 uppercase">Broker Connection</span>
+          <span className="text-gray-500 text-xs">{collapsed.broker ? '▶' : '▼'}</span>
+        </button>
+        {!collapsed.broker && (
+          <div className="px-4 pb-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-2">
+                <label className="block text-[10px] text-gray-500 mb-1">HOST</label>
+                <input type="text" readOnly value={host} className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300" suppressHydrationWarning />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">PORT</label>
+                <input type="text" readOnly value="8883" className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300" />
+              </div>
             </div>
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* MQTT Message Config */}
-        <div className="bg-[#252526] p-4 rounded border border-[#333]">
-          <h3 className="text-xs font-semibold text-green-500 uppercase mb-3">MQTT Message</h3>
+      {/* MQTT Message Config */}
+      <div className="bg-[#252526] rounded border border-[#333]">
+        <button
+          onClick={() => toggle('message')}
+          className="w-full flex items-center justify-between px-4 py-3 text-left"
+        >
+          <span className="text-xs font-semibold text-orange-500 uppercase">MQTT Message</span>
+          <span className="text-gray-500 text-xs">{collapsed.message ? '▶' : '▼'}</span>
+        </button>
+        {!collapsed.message && (
+          <div className="px-4 pb-4">
+            <div className="mb-4">
+              <label className="block text-[10px] text-gray-500 mb-1">TOPIC</label>
+              <input
+                type="text"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+              />
+            </div>
 
-          <div className="mb-4">
-            <label className="block text-[10px] text-gray-500 mb-1">TOPIC</label>
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
-            />
-          </div>
+            <div className="mb-4">
+              <label className="block text-[10px] text-gray-500 mb-1">DevEUI</label>
+              {knownDevEuis.size > 0 && !isCustomMode ? (
+                <select
+                  value={devEui}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '__custom__') {
+                      setIsCustomMode(true);
+                      setDevEui('');
+                    } else {
+                      setDevEui(val);
+                    }
+                  }}
+                  className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                >
+                  <option value="">-- Select DevEUI --</option>
+                  {Array.from(knownDevEuis).map(id => (
+                    <option key={id} value={id}>{id}</option>
+                  ))}
+                  <option value="__custom__">-- Enter Custom DevEUI --</option>
+                </select>
+              ) : (
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={devEui}
+                    onChange={(e) => setDevEui(e.target.value)}
+                    placeholder="Enter DevEUI..."
+                    className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                    autoFocus={isCustomMode}
+                  />
+                  {knownDevEuis.size > 0 && (
+                    <button
+                      onClick={() => setIsCustomMode(false)}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[10px] text-blue-400 hover:text-blue-300"
+                    >
+                      List
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
 
-          <div className="mb-4">
-            <label className="block text-[10px] text-gray-500 mb-1">DevEUI</label>
-            {knownDevEuis.size > 0 && !isCustomMode ? (
+            <div className="mb-4">
+              <label className="block text-[10px] text-gray-500 mb-1">COMMAND PRESET</label>
               <select
-                value={devEui}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === '__custom__') {
-                    setIsCustomMode(true);
-                    setDevEui('');
-                  } else {
-                    setDevEui(val);
-                  }
-                }}
+                value={selectedPresetName}
+                onChange={(e) => setSelectedPresetName(e.target.value)}
                 className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
               >
-                <option value="">-- Select DevEUI --</option>
-                {Array.from(knownDevEuis).map(id => (
-                  <option key={id} value={id}>{id}</option>
+                <option value="">-- Custom Command --</option>
+                {COMMAND_PRESETS.map(p => (
+                  <option key={p.name} value={p.name}>{p.name}</option>
                 ))}
-                <option value="__custom__">-- Enter Custom DevEUI --</option>
               </select>
-            ) : (
-              <div className="relative">
-                <input
-                  type="text"
-                  value={devEui}
-                  onChange={(e) => setDevEui(e.target.value)}
-                  placeholder="Enter DevEUI..."
-                  className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
-                  autoFocus={isCustomMode}
+              {selectedPreset?.notes && (
+                <p className="text-[10px] text-gray-400 mt-1 italic">{selectedPreset.notes}</p>
+              )}
+            </div>
+
+            {selectedPreset?.type === 'codec' && (
+              <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42]">
+                <label className="block text-[10px] text-blue-400 mb-1 uppercase">Codec Input (JSON)</label>
+                <textarea
+                  value={codecJsonText}
+                  onChange={(e) => setCodecJsonText(e.target.value)}
+                  spellCheck={false}
+                  rows={Math.min(20, Math.max(4, codecJsonText.split('\n').length + 1))}
+                  className="w-full bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono resize-y"
                 />
-                {knownDevEuis.size > 0 && (
-                  <button
-                    onClick={() => setIsCustomMode(false)}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[10px] text-blue-400 hover:text-blue-300"
-                  >
-                    List
-                  </button>
+                {codecResult && codecResult.errors.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    {codecResult.errors.map((err, i) => (
+                      <p key={i} className="text-[9px] text-red-500">{err}</p>
+                    ))}
+                  </div>
+                )}
+                {codecResult && codecResult.warnings.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    {codecResult.warnings.map((warn, i) => (
+                      <p key={i} className="text-[9px] text-yellow-500">{warn}</p>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
-          </div>
 
-          <div className="mb-4">
-            <label className="block text-[10px] text-gray-500 mb-1">COMMAND PRESET</label>
-            <select
-              value={selectedPresetName}
-              onChange={(e) => setSelectedPresetName(e.target.value)}
-              className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
-            >
-              <option value="">-- Custom Command --</option>
-              {COMMAND_PRESETS.map(p => (
-                <option key={p.name} value={p.name}>{p.name}</option>
-              ))}
-            </select>
-            {selectedPreset?.notes && (
-              <p className="text-[10px] text-gray-400 mt-1 italic">{selectedPreset.notes}</p>
-            )}
-          </div>
-
-          {/* Codec JSON Editor */}
-          {selectedPreset?.type === 'codec' && (
-            <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42]">
-              <label className="block text-[10px] text-blue-400 mb-1 uppercase">Codec Input (JSON)</label>
-              <textarea
-                value={codecJsonText}
-                onChange={(e) => setCodecJsonText(e.target.value)}
-                spellCheck={false}
-                rows={Math.min(20, Math.max(4, codecJsonText.split('\n').length + 1))}
-                className="w-full bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono resize-y"
-              />
-              {codecResult && codecResult.errors.length > 0 && (
-                <div className="mt-1 space-y-0.5">
-                  {codecResult.errors.map((err, i) => (
-                    <p key={i} className="text-[9px] text-red-500">{err}</p>
-                  ))}
-                </div>
-              )}
-              {codecResult && codecResult.warnings.length > 0 && (
-                <div className="mt-1 space-y-0.5">
-                  {codecResult.warnings.map((warn, i) => (
-                    <p key={i} className="text-[9px] text-yellow-500">{warn}</p>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Dynamic Inputs based on Preset Type */}
-          {selectedPreset?.type === 'waveform_ack' && (
-            <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42]">
-              <label className="block text-[10px] text-blue-400 mb-1">Waveform TXID (Hex)</label>
-              <input
-                type="text"
-                value={waveformTxId}
-                onChange={(e) => setWaveformTxId(e.target.value)}
-                placeholder="FF"
-                maxLength={2}
-                className="w-20 bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono"
-              />
-            </div>
-          )}
-
-          {selectedPreset?.type === 'missed_segments' && (
-            <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42] space-y-3">
-              <div className="flex justify-end">
-                <div className="bg-[#252526] p-1 rounded border border-[#3e3e42] flex text-[10px]">
-                  <button
-                    onClick={() => setInputFormat('hex')}
-                    className={`px-3 py-1 rounded transition-colors ${inputFormat === 'hex' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
-                  >
-                    Hex
-                  </button>
-                  <button
-                    onClick={() => setInputFormat('decimal')}
-                    className={`px-3 py-1 rounded transition-colors ${inputFormat === 'decimal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
-                  >
-                    Decimal
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-blue-400 mb-1">Size of Values</label>
-                <select
-                  value={missedSegSize}
-                  onChange={(e) => setMissedSegSize(e.target.value as '00' | '01')}
-                  className="w-full bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
-                >
-                  <option value="00">1 Byte per Value (Indices &lt; 256)</option>
-                  <option value="01">2 Bytes per Value (Indices &gt; 255)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] text-blue-400 mb-1">
-                  Missed Segment Indices ({inputFormat === 'hex' ? 'Hex' : 'Decimal'}, comma separated)
-                </label>
+            {selectedPreset?.type === 'waveform_ack' && (
+              <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42]">
+                <label className="block text-[10px] text-blue-400 mb-1">Waveform TXID (Hex)</label>
                 <input
                   type="text"
-                  value={missedSegIndices}
-                  onChange={(e) => setMissedSegIndices(e.target.value)}
-                  placeholder={inputFormat === 'hex' ? (missedSegSize === '00' ? "01, 4C, FF" : "0105, 0A01") : "1, 76, 255"}
-                  className={`w-full bg-[#252526] border rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono ${missedSegError ? 'border-red-500' : 'border-[#3e3e42]'}`}
+                  value={waveformTxId}
+                  onChange={(e) => setWaveformTxId(e.target.value)}
+                  placeholder="FF"
+                  maxLength={2}
+                  className="w-20 bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono"
                 />
-                {missedSegError && <p className="text-[9px] text-red-500 mt-1">{missedSegError}</p>}
-                <p className="text-[9px] text-gray-500 mt-1">
-                  Number of values will be calculated automatically.
-                </p>
+              </div>
+            )}
+
+            {selectedPreset?.type === 'missed_segments' && (
+              <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42] space-y-3">
+                <div className="flex justify-end">
+                  <div className="bg-[#252526] p-1 rounded border border-[#3e3e42] flex text-[10px]">
+                    <button
+                      onClick={() => setInputFormat('hex')}
+                      className={`px-3 py-1 rounded transition-colors ${inputFormat === 'hex' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                    >Hex</button>
+                    <button
+                      onClick={() => setInputFormat('decimal')}
+                      className={`px-3 py-1 rounded transition-colors ${inputFormat === 'decimal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                    >Decimal</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-blue-400 mb-1">Size of Values</label>
+                  <select
+                    value={missedSegSize}
+                    onChange={(e) => setMissedSegSize(e.target.value as '00' | '01')}
+                    className="w-full bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                  >
+                    <option value="00">1 Byte per Value (Indices &lt; 256)</option>
+                    <option value="01">2 Bytes per Value (Indices &gt; 255)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-blue-400 mb-1">
+                    Missed Segment Indices ({inputFormat === 'hex' ? 'Hex' : 'Decimal'}, comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={missedSegIndices}
+                    onChange={(e) => setMissedSegIndices(e.target.value)}
+                    placeholder={inputFormat === 'hex' ? (missedSegSize === '00' ? "01, 4C, FF" : "0105, 0A01") : "1, 76, 255"}
+                    className={`w-full bg-[#252526] border rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono ${missedSegError ? 'border-red-500' : 'border-[#3e3e42]'}`}
+                  />
+                  {missedSegError && <p className="text-[9px] text-red-500 mt-1">{missedSegError}</p>}
+                  <p className="text-[9px] text-gray-500 mt-1">Number of values will be calculated automatically.</p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="col-span-2">
+                <label className="block text-[10px] text-gray-500 mb-1">PAYLOAD (HEX)</label>
+                <input
+                  type="text"
+                  value={currentPayloadHex}
+                  onChange={(e) => !selectedPreset && setCustomPayload(e.target.value)}
+                  readOnly={!!selectedPreset}
+                  placeholder="0002"
+                  className={`w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono ${selectedPreset ? 'opacity-75 cursor-not-allowed' : ''}`}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">FPort</label>
+                <input
+                  type="text"
+                  value={currentFPort}
+                  onChange={(e) => !selectedPreset && setCustomFPort(e.target.value)}
+                  readOnly={!!selectedPreset}
+                  className={`w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none ${selectedPreset ? 'opacity-75 cursor-not-allowed' : ''}`}
+                />
               </div>
             </div>
-          )}
 
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="col-span-2">
-              <label className="block text-[10px] text-gray-500 mb-1">PAYLOAD (HEX)</label>
-              <input
-                type="text"
-                value={currentPayloadHex}
-                onChange={(e) => !selectedPreset && setCustomPayload(e.target.value)}
-                readOnly={!!selectedPreset}
-                placeholder="0002"
-                className={`w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono ${selectedPreset ? 'opacity-75 cursor-not-allowed' : ''}`}
-              />
+            <div className="mt-4 pt-3 border-t border-[#3e3e42]">
+              <h3 className="text-[10px] text-gray-500 mb-2 uppercase">Options</h3>
+              <div className="flex gap-6">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isConfirmed}
+                    onChange={(e) => setIsConfirmed(e.target.checked)}
+                    className="h-3 w-3 accent-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded"
+                  />
+                  <span className="text-[10px] text-gray-300">Confirmed Downlink</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={flushQueue}
+                    onChange={(e) => setFlushQueue(e.target.checked)}
+                    className="h-3 w-3 accent-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded"
+                  />
+                  <span className="text-[10px] text-gray-300">Flush Downlink Queue</span>
+                </label>
+              </div>
             </div>
-            <div>
-              <label className="block text-[10px] text-gray-500 mb-1">FPort</label>
-              <input
-                type="text"
-                value={currentFPort}
-                onChange={(e) => !selectedPreset && setCustomFPort(e.target.value)}
-                readOnly={!!selectedPreset}
-                className={`w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none ${selectedPreset ? 'opacity-75 cursor-not-allowed' : ''}`}
-              />
-            </div>
-          </div>
 
-          {/* Downlink Options */}
-          <div className="mt-4 pt-3 border-t border-[#3e3e42]">
-            <h3 className="text-[10px] text-gray-500 mb-2 uppercase">Options</h3>
-            <div className="flex gap-6">
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isConfirmed}
-                  onChange={(e) => setIsConfirmed(e.target.checked)}
-                  className="h-3 w-3 accent-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded"
-                />
-                <span className="text-[10px] text-gray-300">Confirmed Downlink</span>
-              </label>
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={flushQueue}
-                  onChange={(e) => setFlushQueue(e.target.checked)}
-                  className="h-3 w-3 accent-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded"
-                />
-                <span className="text-[10px] text-gray-300">Flush Downlink Queue</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* JSON Preview */}
-        <div className="bg-[#252526] p-4 rounded border border-[#333]">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-xs font-semibold text-blue-400 uppercase">MQTT Payload Preview</h3>
             <button
-              onClick={() => copyToClipboard(getJsonPayload(), 'json')}
-              className="flex items-center space-x-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+              onClick={publishMessage}
+              className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded transition-colors font-medium text-sm"
             >
-              <span>{copiedJson ? 'Copied!' : 'Copy JSON'}</span>
-              {copiedJson ? <CheckIcon /> : <CopyIcon />}
+              Publish Downlink
             </button>
           </div>
-          <pre className="bg-[#1e1e1e] p-2 rounded border border-[#3e3e42] text-[10px] text-green-400 font-mono overflow-x-auto">
-            {mounted ? getJsonPayload() : ''}
-          </pre>
-        </div>
-
-        {/* Command Preview */}
-        <div className="bg-[#252526] p-4 rounded border border-[#333]">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-xs font-semibold text-blue-400 uppercase">Mosquitto Pub Command</h3>
-            <button
-              onClick={() => {
-                const cmd = `mosquitto_pub -h ${host} -p 8883 -t "${topic.replace('[DevEUI]', devEui || '8C1F64...')}" -m '${getJsonPayload()}'`;
-                copyToClipboard(cmd, 'cmd');
-              }}
-              className="flex items-center space-x-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
-            >
-              <span>{copiedCmd ? 'Copied!' : 'Copy Command'}</span>
-              {copiedCmd ? <CheckIcon /> : <CopyIcon />}
-            </button>
-          </div>
-          <div className="bg-[#1e1e1e] p-2 rounded border border-[#3e3e42] text-[10px] text-gray-400 font-mono break-all">
-            {mounted ? `mosquitto_pub -h ${host} -p 8883 -t "${topic.replace('[DevEUI]', devEui || '8C1F64...')}" -m '${getJsonPayload()}'` : ''}
-          </div>
-        </div>
-
-        {/* Publish Button */}
-        <button
-          onClick={publishMessage}
-          className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded transition-colors font-medium text-sm"
-        >
-          Publish Downlink
-        </button>
-
+        )}
       </div>
+
+      {/* JSON Preview */}
+      <div className="bg-[#252526] rounded border border-[#333]">
+        <div className="flex items-center justify-between px-4 py-3">
+          <button
+            onClick={() => toggle('preview')}
+            className="flex items-center gap-2 text-left"
+          >
+            <span className="text-xs font-semibold text-orange-500 uppercase">MQTT Payload Preview</span>
+            <span className="text-gray-500 text-xs">{collapsed.preview ? '▶' : '▼'}</span>
+          </button>
+          <button
+            onClick={() => copyToClipboard(getJsonPayload(), 'json')}
+            className="flex items-center space-x-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            <span>{copiedJson ? 'Copied!' : 'Copy JSON'}</span>
+            {copiedJson ? <CheckIcon /> : <CopyIcon />}
+          </button>
+        </div>
+        {!collapsed.preview && (
+          <div className="px-4 pb-4">
+            <pre className="bg-[#1e1e1e] p-2 rounded border border-[#3e3e42] text-[10px] text-green-400 font-mono overflow-x-auto">
+              {mounted ? getJsonPayload() : ''}
+            </pre>
+          </div>
+        )}
+      </div>
+
+      {/* Command Preview */}
+      <div className="bg-[#252526] rounded border border-[#333]">
+        <div className="flex items-center justify-between px-4 py-3">
+          <button
+            onClick={() => toggle('command')}
+            className="flex items-center gap-2 text-left"
+          >
+            <span className="text-xs font-semibold text-orange-500 uppercase">Mosquitto Pub Command</span>
+            <span className="text-gray-500 text-xs">{collapsed.command ? '▶' : '▼'}</span>
+          </button>
+          <button
+            onClick={() => {
+              const cmd = `mosquitto_pub -h ${host} -p 8883 -t "${topic.replace('[DevEUI]', devEui || '8C1F64...')}" -m '${getJsonPayload()}'`;
+              copyToClipboard(cmd, 'cmd');
+            }}
+            className="flex items-center space-x-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            <span>{copiedCmd ? 'Copied!' : 'Copy Command'}</span>
+            {copiedCmd ? <CheckIcon /> : <CopyIcon />}
+          </button>
+        </div>
+        {!collapsed.command && (
+          <div className="px-4 pb-4">
+            <div className="bg-[#1e1e1e] p-2 rounded border border-[#3e3e42] text-[10px] text-gray-400 font-mono break-all">
+              {mounted ? `mosquitto_pub -h ${host} -p 8883 -t "${topic.replace('[DevEUI]', devEui || '8C1F64...')}" -m '${getJsonPayload()}'` : ''}
+            </div>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
