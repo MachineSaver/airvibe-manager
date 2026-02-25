@@ -340,4 +340,16 @@ describe('requireApiKey middleware', () => {
         expect(req.apiKey).toEqual({ id: 'key-id', label: 'test-app' });
         expect(res.status).not.toHaveBeenCalled();
     });
+
+    it('returns 503 when the database throws during key validation', async () => {
+        process.env.API_KEYS_ENABLED = 'true';
+        req.headers['authorization'] = 'Bearer airvibe_somekey';
+        pool.query.mockRejectedValueOnce(new Error('DB connection refused'));
+
+        await requireApiKey(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(503);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.any(String) }));
+        expect(next).not.toHaveBeenCalled();
+    });
 });

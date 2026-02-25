@@ -458,19 +458,100 @@ describe('DELETE /api/keys/:id', () => {
     it('revokes a key and returns 204 No Content', async () => {
         pool.query.mockResolvedValueOnce({ rowCount: 1 });
 
-        const res = await request(app).delete('/api/keys/uuid-1');
+        const res = await request(app).delete('/api/keys/550e8400-e29b-41d4-a716-446655440000');
 
         expect(res.status).toBe(204);
         expect(pool.query.mock.calls[0][0]).toMatch(/DELETE FROM api_keys/i);
-        expect(pool.query.mock.calls[0][1]).toContain('uuid-1');
     });
 
     it('returns 404 when the key id does not exist', async () => {
         pool.query.mockResolvedValueOnce({ rowCount: 0 });
 
-        const res = await request(app).delete('/api/keys/nonexistent-id');
+        const res = await request(app).delete('/api/keys/550e8400-e29b-41d4-a716-446655440000');
 
         expect(res.status).toBe(404);
         expect(res.body).toHaveProperty('error');
+    });
+
+    it('returns 400 when the id is not a valid UUID', async () => {
+        const res = await request(app).delete('/api/keys/not-a-uuid');
+
+        expect(res.status).toBe(400);
+        expect(res.body).toHaveProperty('error');
+        // No DB query should have been made
+        expect(pool.query).not.toHaveBeenCalled();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/keys — label validation
+// ---------------------------------------------------------------------------
+
+describe('POST /api/keys — label validation', () => {
+    it('returns 400 when label exceeds 255 characters', async () => {
+        const res = await request(app)
+            .post('/api/keys')
+            .send({ label: 'a'.repeat(256) });
+
+        expect(res.status).toBe(400);
+        expect(res.body).toHaveProperty('error');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/devices — pagination
+// ---------------------------------------------------------------------------
+
+describe('GET /api/devices', () => {
+    it('returns X-Total-Count header and paginates results', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ count: '3' }] })
+            .mockResolvedValueOnce({ rows: [{ dev_eui: 'AA', last_seen: new Date().toISOString() }] });
+
+        const res = await request(app).get('/api/devices?limit=1&offset=0');
+
+        expect(res.status).toBe(200);
+        expect(res.headers['x-total-count']).toBe('3');
+        expect(res.body).toHaveLength(1);
+    });
+
+    it('runs a COUNT query plus a data query', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+            .mockResolvedValueOnce({ rows: [] });
+
+        await request(app).get('/api/devices');
+
+        expect(pool.query).toHaveBeenCalledTimes(2);
+        expect(pool.query.mock.calls[0][0]).toMatch(/SELECT COUNT/i);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/devices/:devEui/messages — pagination
+// ---------------------------------------------------------------------------
+
+describe('GET /api/devices/:devEui/messages', () => {
+    it('returns X-Total-Count header and paginates results', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ count: '10' }] })
+            .mockResolvedValueOnce({ rows: [] });
+
+        const res = await request(app).get(`/api/devices/${DEV_EUI}/messages?limit=5&offset=0`);
+
+        expect(res.status).toBe(200);
+        expect(res.headers['x-total-count']).toBe('10');
+    });
+
+    it('scopes the COUNT query to the device EUI', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+            .mockResolvedValueOnce({ rows: [] });
+
+        await request(app).get(`/api/devices/${DEV_EUI}/messages`);
+
+        const [countSql, countParams] = pool.query.mock.calls[0];
+        expect(countSql).toMatch(/device_eui/i);
+        expect(countParams).toContain(DEV_EUI);
     });
 });

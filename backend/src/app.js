@@ -81,10 +81,14 @@ function parsePagination(query, { maxLimit = 500, defaultLimit = 50 } = {}) {
 /**
  * Run COUNT + paginated SELECT for a list endpoint. Sets X-Total-Count header.
  *
+ * IMPORTANT: `table`, `select`, and `orderBy` are interpolated directly into the
+ * SQL string — they MUST be hardcoded constants, never derived from user input.
+ * All dynamic filter values must be passed through `params` (parameterised).
+ *
  * @param {object} opts
- * @param {string}   opts.table     Table name
- * @param {string}   opts.select    Column list for SELECT
- * @param {string}   opts.orderBy   ORDER BY clause (without the keyword)
+ * @param {string}   opts.table     Table name (hardcoded — must not be user-supplied)
+ * @param {string}   opts.select    Column list for SELECT (hardcoded — must not be user-supplied)
+ * @param {string}   opts.orderBy   ORDER BY clause (hardcoded — must not be user-supplied)
  * @param {string}   opts.where     WHERE clause string (may be empty)
  * @param {Array}    opts.params    Bind params matching the WHERE clause
  * @param {number}   opts.limit
@@ -217,6 +221,14 @@ const DEVICE_WAVEFORM_FILTER_SPEC = [
 const WAVEFORM_SELECT_COLS =
     'id, device_eui, transaction_id, start_time, status, ' +
     'expected_segments, received_segments_count, metadata, created_at';
+
+// Filter spec for GET /api/devices/:devEui/messages (device_eui is a hard-wired
+// path param, so it is intentionally absent here to avoid double-binding it).
+const DEVICE_MESSAGE_FILTER_SPEC = [
+    { param: 'direction', column: 'direction' },
+    { param: 'from',      column: 'received_at', op: '>=' },
+    { param: 'to',        column: 'received_at', op: '<=' },
+];
 
 // Filter spec for GET /api/messages
 const MESSAGE_FILTER_SPEC = [
@@ -388,8 +400,11 @@ app.get('/api/waveforms/:id', async (req, res) => {
 
 app.get('/api/devices', async (req, res) => {
     try {
-        const result = await pool.query(`SELECT * FROM devices ORDER BY last_seen DESC`);
-        res.json(result.rows);
+        const { limit, offset } = parsePagination(req.query);
+        await sendPagedList({
+            table: 'devices', select: '*',
+            orderBy: 'last_seen DESC', where: '', params: [], limit, offset, res,
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -424,14 +439,19 @@ app.get('/api/devices/:devEui/waveforms', async (req, res) => {
     }
 });
 
+// GET /api/devices/:devEui/messages?direction=&from=&to=&limit=&offset=
 app.get('/api/devices/:devEui/messages', async (req, res) => {
     try {
         const { devEui } = req.params;
-        const result = await pool.query(
-            `SELECT * FROM messages WHERE device_eui = $1 ORDER BY received_at DESC LIMIT 200`,
-            [devEui],
+        const params = [devEui];
+        const { where } = buildWhereClause(
+            DEVICE_MESSAGE_FILTER_SPEC, req.query, params, ['device_eui = $1'],
         );
-        res.json(result.rows);
+        const { limit, offset } = parsePagination(req.query, { maxLimit: 1000, defaultLimit: 100 });
+        await sendPagedList({
+            table: 'messages', select: '*',
+            orderBy: 'received_at DESC', where, params, limit, offset, res,
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -635,6 +655,9 @@ app.post('/api/keys', async (req, res) => {
     if (!label || typeof label !== 'string' || label.trim() === '') {
         return res.status(400).json({ error: 'label is required' });
     }
+    if (label.length > 255) {
+        return res.status(400).json({ error: 'label must be 255 characters or fewer' });
+    }
     try {
         const result = await apiKeyManager.createKey(label.trim());
         auditLogger.log('api_keys', 'key_created', null, { id: result.id, label: result.label });
@@ -654,8 +677,13 @@ app.get('/api/keys', async (req, res) => {
     }
 });
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // DELETE /api/keys/:id — revoke a key by UUID.
 app.delete('/api/keys/:id', async (req, res) => {
+    if (!UUID_RE.test(req.params.id)) {
+        return res.status(400).json({ error: 'id must be a valid UUID' });
+    }
     try {
         const deleted = await apiKeyManager.revokeKey(req.params.id);
         if (!deleted) return res.status(404).json({ error: 'Key not found' });

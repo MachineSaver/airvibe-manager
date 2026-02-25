@@ -31,7 +31,14 @@ async function requireApiKey(req, res, next) {
 
     const rawKey = authHeader.slice(7); // strip 'Bearer '
 
-    const record = await apiKeyManager.validateKey(rawKey);
+    let record;
+    try {
+        record = await apiKeyManager.validateKey(rawKey);
+    } catch (err) {
+        console.error('Auth: key validation failed:', err);
+        return res.status(503).json({ error: 'Authentication service temporarily unavailable.' });
+    }
+
     if (!record) {
         return res.status(401).json({ error: 'Invalid API key.' });
     }
