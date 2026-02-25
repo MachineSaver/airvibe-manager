@@ -14,6 +14,8 @@ const fuotaManager = require('./services/FUOTAManager');
 const networkClient = require('./services/networkServerClient');
 const demoSimulator = require('./services/DemoSimulator');
 const auditLogger = require('./services/AuditLogger');
+const apiKeyManager = require('./services/ApiKeyManager');
+const { requireApiKey } = require('./middleware/auth');
 const { deinterleaveWaveform } = require('./utils/deinterleave');
 
 // ---------------------------------------------------------------------------
@@ -35,6 +37,7 @@ const io = new Server(server, {
 
 app.use(cors({ origin: allowedOrigins }));
 app.use(express.json({ limit: '10mb' }));
+app.use(requireApiKey);
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -620,6 +623,47 @@ app.post('/api/fuota/abort/:devEui', async (req, res) => {
 
 app.get('/api/fuota/network-server-status', (req, res) => {
     res.json({ configured: networkClient.configured, type: networkClient.type });
+});
+
+// ---------------------------------------------------------------------------
+// Routes — API key management
+// ---------------------------------------------------------------------------
+
+// POST /api/keys — create a new key; the raw key is returned exactly once.
+app.post('/api/keys', async (req, res) => {
+    const { label } = req.body;
+    if (!label || typeof label !== 'string' || label.trim() === '') {
+        return res.status(400).json({ error: 'label is required' });
+    }
+    try {
+        const result = await apiKeyManager.createKey(label.trim());
+        auditLogger.log('api_keys', 'key_created', null, { id: result.id, label: result.label });
+        res.status(201).json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/keys — list all keys (no key_hash, no raw key).
+app.get('/api/keys', async (req, res) => {
+    try {
+        const keys = await apiKeyManager.listKeys();
+        res.json(keys);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/keys/:id — revoke a key by UUID.
+app.delete('/api/keys/:id', async (req, res) => {
+    try {
+        const deleted = await apiKeyManager.revokeKey(req.params.id);
+        if (!deleted) return res.status(404).json({ error: 'Key not found' });
+        auditLogger.log('api_keys', 'key_revoked', null, { id: req.params.id });
+        res.status(204).send();
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ---------------------------------------------------------------------------

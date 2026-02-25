@@ -104,6 +104,9 @@ const makeFuotaSession = (overrides = {}) => ({
 
 beforeEach(() => {
     jest.clearAllMocks();
+    // Default fallback so fire-and-forget calls (e.g. last_used_at UPDATE from
+    // ApiKeyManager.validateKey) don't crash when no mockResolvedValueOnce is set.
+    pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -111,6 +114,7 @@ beforeEach(() => {
 
 afterEach(() => {
     jest.restoreAllMocks();
+    delete process.env.API_KEYS_ENABLED;
 });
 
 // ---------------------------------------------------------------------------
@@ -323,5 +327,150 @@ describe('GET /api/fuota/sessions', () => {
         const [, params] = pool.query.mock.calls[0];
         expect(params).toContain(DEV_EUI);
         expect(params).toContain('complete');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Authentication — HTTP layer
+// ---------------------------------------------------------------------------
+
+describe('Authentication — HTTP layer', () => {
+    beforeEach(() => {
+        process.env.API_KEYS_ENABLED = 'true';
+    });
+
+    it('returns 401 on a protected endpoint with no Authorization header', async () => {
+        const res = await request(app).get('/api/waveforms');
+        expect(res.status).toBe(401);
+        expect(res.body).toHaveProperty('error');
+        // Auth was rejected before any DB query ran
+        expect(pool.query).not.toHaveBeenCalled();
+    });
+
+    it('returns 401 with a non-Bearer Authorization header', async () => {
+        const res = await request(app)
+            .get('/api/waveforms')
+            .set('Authorization', 'Basic dXNlcjpwYXNz');
+        expect(res.status).toBe(401);
+    });
+
+    it('returns 401 with an unrecognised API key', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [] }); // SELECT → key not found
+
+        const res = await request(app)
+            .get('/api/waveforms')
+            .set('Authorization', 'Bearer airvibe_not_a_real_key');
+
+        expect(res.status).toBe(401);
+        expect(res.body.error).toMatch(/invalid api key/i);
+    });
+
+    it('returns 200 and serves the route when the key is valid', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ id: 'key-id', label: 'test' }] }) // auth SELECT
+            .mockResolvedValueOnce({ rowCount: 1 })                              // last_used_at UPDATE (fire-and-forget)
+            .mockResolvedValueOnce({ rows: [{ count: '0' }] })                   // count
+            .mockResolvedValueOnce({ rows: [] });                                 // data
+
+        const res = await request(app)
+            .get('/api/waveforms')
+            .set('Authorization', 'Bearer airvibe_validkey123');
+
+        expect(res.status).toBe(200);
+    });
+
+    it('GET /api/health is accessible without auth (exempt path)', async () => {
+        const res = await request(app).get('/api/health');
+        expect(res.status).toBe(200);
+    });
+
+    it('GET / is accessible without auth (exempt path)', async () => {
+        const res = await request(app).get('/');
+        expect(res.status).toBe(200);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/keys — create API key
+// ---------------------------------------------------------------------------
+
+describe('POST /api/keys', () => {
+    it('creates a key, returns 201 with id, label, created_at, and the raw key', async () => {
+        const createdAt = new Date().toISOString();
+        pool.query.mockResolvedValueOnce({
+            rows: [{ id: 'new-uuid', label: 'ci-pipeline', created_at: createdAt }],
+        });
+
+        const res = await request(app)
+            .post('/api/keys')
+            .send({ label: 'ci-pipeline' });
+
+        expect(res.status).toBe(201);
+        expect(res.body.id).toBe('new-uuid');
+        expect(res.body.label).toBe('ci-pipeline');
+        expect(res.body.created_at).toBe(createdAt);
+        expect(res.body.key).toMatch(/^airvibe_[0-9a-f]{64}$/);
+        // Raw key is shown once — key_hash must never be exposed
+        expect(res.body).not.toHaveProperty('key_hash');
+    });
+
+    it('returns 400 when label is missing', async () => {
+        const res = await request(app).post('/api/keys').send({});
+        expect(res.status).toBe(400);
+        expect(res.body).toHaveProperty('error');
+    });
+
+    it('returns 400 when label is an empty string', async () => {
+        const res = await request(app).post('/api/keys').send({ label: '   ' });
+        expect(res.status).toBe(400);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/keys — list API keys
+// ---------------------------------------------------------------------------
+
+describe('GET /api/keys', () => {
+    it('returns 200 with id, label, created_at, last_used_at — no key_hash', async () => {
+        const createdAt = new Date().toISOString();
+        pool.query.mockResolvedValueOnce({
+            rows: [
+                { id: 'uuid-1', label: 'app-a', created_at: createdAt, last_used_at: null },
+                { id: 'uuid-2', label: 'app-b', created_at: createdAt, last_used_at: createdAt },
+            ],
+        });
+
+        const res = await request(app).get('/api/keys');
+
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveLength(2);
+        expect(res.body[0]).not.toHaveProperty('key_hash');
+        expect(res.body[0]).toHaveProperty('id', 'uuid-1');
+        expect(res.body[0]).toHaveProperty('label', 'app-a');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/keys/:id — revoke API key
+// ---------------------------------------------------------------------------
+
+describe('DELETE /api/keys/:id', () => {
+    it('revokes a key and returns 204 No Content', async () => {
+        pool.query.mockResolvedValueOnce({ rowCount: 1 });
+
+        const res = await request(app).delete('/api/keys/uuid-1');
+
+        expect(res.status).toBe(204);
+        expect(pool.query.mock.calls[0][0]).toMatch(/DELETE FROM api_keys/i);
+        expect(pool.query.mock.calls[0][1]).toContain('uuid-1');
+    });
+
+    it('returns 404 when the key id does not exist', async () => {
+        pool.query.mockResolvedValueOnce({ rowCount: 0 });
+
+        const res = await request(app).delete('/api/keys/nonexistent-id');
+
+        expect(res.status).toBe(404);
+        expect(res.body).toHaveProperty('error');
     });
 });

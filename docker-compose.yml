@@ -153,6 +153,10 @@ services:
       - CHIRPSTACK_API_KEY=${CHIRPSTACK_API_KEY:-}
       - CHIRPSTACK_APPLICATION_ID=${CHIRPSTACK_APPLICATION_ID:-1}
       - NETWORK_SERVER=${NETWORK_SERVER:-chirpstack}
+      # API key authentication (set API_KEYS_ENABLED=true to enforce Bearer auth on all endpoints)
+      # BOOTSTRAP_API_KEY: a known key inserted on startup so you can authenticate before creating keys via the API
+      - API_KEYS_ENABLED=${API_KEYS_ENABLED:-false}
+      - BOOTSTRAP_API_KEY=${BOOTSTRAP_API_KEY:-}
       # Message retention: rows older than this many days are purged nightly (default: 90)
       - MESSAGES_MAX_AGE_DAYS=${MESSAGES_MAX_AGE_DAYS:-90}
       # Waveform failed/aborted row retention: purged after this many days (default: 7)

@@ -587,6 +587,8 @@ Then run the backend and frontend with `npm run dev` as above.
 | `MESSAGES_MAX_AGE_DAYS` | `90` | Both | Days before old message rows are purged (nightly cleanup job) |
 | `WAVEFORMS_FAILED_TTL_DAYS` | `7` | Both | Days to retain failed/aborted waveform rows before purging (runs every 5 min) |
 | `FUOTA_MQTT_WAIT_MS` | `300000` | Both | Milliseconds FUOTA block-send loop waits for MQTT reconnect before failing the session |
+| `API_KEYS_ENABLED` | `false` | Both | Set to `true` to require `Authorization: Bearer <key>` on all API endpoints (except `/` and `/api/health`) |
+| `BOOTSTRAP_API_KEY` | _(none)_ | Both | A known `airvibe_…` key inserted idempotently at startup — solves chicken-and-egg when enabling auth for the first time |
 
 ---
 

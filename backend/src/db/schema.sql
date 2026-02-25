@@ -111,6 +111,18 @@ ALTER TABLE waveforms ADD COLUMN IF NOT EXISTS final_data_bytes BYTEA;
 ALTER TABLE fuota_sessions ADD COLUMN IF NOT EXISTS firmware_data BYTEA;
 ALTER TABLE fuota_sessions ADD COLUMN IF NOT EXISTS block_interval_ms INTEGER;
 
+-- API Keys Table
+-- Stores SHA-256 hashes of API keys — the raw key is never persisted.
+CREATE TABLE IF NOT EXISTS api_keys (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    key_hash    TEXT NOT NULL UNIQUE,
+    label       VARCHAR(255) NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_used_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+
 -- Add FK from fuota_sessions to devices (safe on existing databases).
 -- NOT VALID skips scanning historical rows; all future inserts are enforced.
 -- ON DELETE RESTRICT prevents accidentally deleting a device that has FUOTA history.
