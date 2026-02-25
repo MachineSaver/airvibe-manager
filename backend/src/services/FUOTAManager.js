@@ -211,7 +211,7 @@ class FUOTAManager {
         try {
             const orphans = await pool.query(
                 `SELECT id, device_eui, firmware_name, firmware_size, total_blocks,
-                        block_interval_ms, verify_attempts, firmware_data
+                        block_interval_ms, blocks_sent, verify_attempts, firmware_data
                  FROM fuota_sessions
                  WHERE status NOT IN ('complete','failed','aborted')`
             );

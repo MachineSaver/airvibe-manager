@@ -148,6 +148,8 @@ describe('FUOTAManager startup recovery', () => {
         const session = fuotaManager.activeSessions.get('DEAD000000000001');
         expect(session).toBeDefined();
         expect(session.state).toBe('sending_blocks');
+        // In-memory blocksSent must reflect the DB value, not be reset to 0.
+        expect(session.blocksSent).toBeGreaterThanOrEqual(1);
 
         // Only block 1 should have been published — block 0 must be skipped.
         const port25Calls = mqttClient.publish.mock.calls.filter(
