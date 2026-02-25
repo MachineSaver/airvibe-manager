@@ -129,6 +129,37 @@ describe('FUOTAManager startup recovery', () => {
         expect(port22Calls).toHaveLength(0);
     });
 
+    it('resumes from blocks_sent in DB row, not from block 0', async () => {
+        // 3-block firmware with 1 block already recorded in the DB row.
+        // _sendAllBlocks should start at block index 1 (skip block 0) and
+        // pause at the inter-block sleep, letting init() return.
+        const partialRow = {
+            ...makeRow('DEAD000000000001'),
+            firmware_size: 147,   // 3 × 49 bytes
+            total_blocks: 3,
+            blocks_sent: 1,       // block 0 already sent in a previous run
+            firmware_data: Buffer.alloc(147),
+        };
+        pool.query.mockResolvedValueOnce({ rows: [partialRow] });
+        mqttClient.publish.mockReturnValue(undefined);
+
+        await fuotaManager.init(mockIo);
+
+        const session = fuotaManager.activeSessions.get('DEAD000000000001');
+        expect(session).toBeDefined();
+        expect(session.state).toBe('sending_blocks');
+
+        // Only block 1 should have been published — block 0 must be skipped.
+        const port25Calls = mqttClient.publish.mock.calls.filter(
+            ([, msg]) => JSON.parse(msg).DevEUI_downlink.FPort === 25
+        );
+        expect(port25Calls).toHaveLength(1);
+
+        // The payload starts with block number 1 in 2-byte little-endian: 01 00
+        const payloadHex = JSON.parse(port25Calls[0][1]).DevEUI_downlink.payload_hex;
+        expect(payloadHex.startsWith('0100')).toBe(true);
+    });
+
     it('skips sessions with no firmware_data and continues to valid sessions', async () => {
         const noFirmware = { ...makeRow('DEAD000000000001'), firmware_data: null };
         pool.query.mockResolvedValueOnce({

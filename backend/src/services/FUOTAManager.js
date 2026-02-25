@@ -250,7 +250,7 @@ class FUOTAManager {
                     totalBlocks:     row.total_blocks,
                     blockIntervalMs: intervalMs,
                     state:           'initializing',
-                    blocksSent:      0,
+                    blocksSent:      row.blocks_sent || 0,
                     verifyAttempts:  row.verify_attempts || 0,
                     lastMissedCount: 0,
                     lastMissedBlocks:[],
@@ -583,7 +583,7 @@ class FUOTAManager {
     async _sendAllBlocks(session) {
         const { devEui, blocks } = session;
 
-        for (let i = 0; i < blocks.length; i++) {
+        for (let i = session.blocksSent; i < blocks.length; i++) {
             if (session.aborted) return;
             // Re-check session is still the active one
             if (this.activeSessions.get(devEui) !== session) return;
