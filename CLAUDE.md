@@ -156,6 +156,26 @@ Downlink commands target fPorts 20-22, 25, 30-31 with hex payloads. The adapter 
 - **`fuota_sessions` FK constraint**: Added as `NOT VALID` (skips historical row scan) via a DO-block in `schema.sql`. `FUOTAManager.startSession` upserts the device row (`INSERT ... ON CONFLICT DO NOTHING`) before the session INSERT to satisfy the constraint for previously-unseen devices.
 - **Configurable operational env vars**: `MESSAGES_MAX_AGE_DAYS` (default 90) — message table retention; `WAVEFORMS_FAILED_TTL_DAYS` (default 7) — failed/aborted waveform purge TTL; `FUOTA_MQTT_WAIT_MS` (default 300000) — FUOTA MQTT disconnect tolerance before session failure. All three are wired in `docker-compose.yml` and read at runtime (not build time).
 
+## Development Approach — Red / Green / Refactor (TDD)
+
+**This is the mandatory development workflow for all non-trivial backend changes.**
+
+1. **Red** — Write a failing test that precisely describes the intended behaviour *before writing any implementation code*. Run `npm test` and confirm the new test(s) fail. A "Cannot find module" error counts as red when the module does not yet exist.
+2. **Green** — Write the minimum implementation needed to make the failing test(s) pass. Run `npm test` and confirm all tests pass (new and pre-existing). Iterate until green.
+3. **Refactor** — Improve the code's structure, readability, and modularity without changing its observable behaviour. Extract helpers, remove duplication, align with existing patterns. Run `npm test` again — all tests must remain green.
+
+**Rules:**
+- Never write implementation code before a failing test exists for it.
+- Never commit code that leaves any test red.
+- The test must fail for the *right reason* (assertion failure or missing module), not due to a misconfigured mock or unrelated error.
+- Refactoring must not add new behaviour — new behaviour always starts a new red→green cycle.
+- This applies to all new REST endpoints, service methods, and utilities. Minor one-liner fixes (typo, obvious safe rename) may skip the cycle but must not break existing tests.
+
+**Test infrastructure:**
+- Unit tests (service logic): `backend/test/waveform.test.js`, `backend/test/adapter.test.js` — mock `pool` and all singletons, use `jest.useFakeTimers()` when setInterval is involved.
+- API integration tests: `backend/test/api.test.js` — mock all service singletons, use `supertest` against `require('../src/app').app`.
+- `src/app.js` exports `{ app, server, io }` (routes + middleware, no startup side effects). `src/index.js` is the entry point only (DB connect, MQTT connect, PKI init, `server.listen()`). Tests always import from `app.js`, never `index.js`.
+
 ## Decision-Making Process
 
 Before implementing any feature or change the user asks for, always:
