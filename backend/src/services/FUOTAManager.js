@@ -280,12 +280,16 @@ class FUOTAManager {
                     session.originalClass    = csResult?.originalClass || null;
                     session.classCConfigured = !!csResult;
 
-                    // Wait for MQTT before sending the init downlink — the broker may not be
+                    // Wait for MQTT before starting block send — the broker may not be
                     // connected yet if the backend restarted while MQTT was still connecting.
                     await this._waitForMqtt(devEui);
 
-                    // Re-send init downlink and wait for fresh 0x10 ACK; then restart from block 0
-                    this._sendInitDownlink(session);
+                    // Skip the init downlink on recovery. The device was already initialised
+                    // in the prior session (and may be in Class C mid-FUOTA). Re-sending the
+                    // init could reset its block-tracking state. Go straight to block 0 —
+                    // duplicates are safe and the verify phase handles any gaps.
+                    session.state = 'sending_blocks';
+                    this._updateDb(session);
                     this._emitProgress(devEui);
                     auditLogger.log('fuota_manager', 'session_resumed', devEui, {
                         dbId: row.id,
@@ -294,6 +298,11 @@ class FUOTAManager {
                         classCConfigured: session.classCConfigured,
                     });
                     console.log(`FUOTAManager: recovered session for ${devEui} (${row.firmware_name}, ${row.total_blocks} blocks)`);
+                    this._sendAllBlocks(session).catch(err => {
+                        if (this.activeSessions.get(devEui) === session) {
+                            this._failSession(devEui, err.message);
+                        }
+                    });
                     recovered++;
                 } catch (sessionErr) {
                     console.error(`FUOTAManager: startup recovery failed for ${devEui}:`, sessionErr.message);

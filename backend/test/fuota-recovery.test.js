@@ -104,6 +104,31 @@ describe('FUOTAManager startup recovery', () => {
         expect(fuotaManager.activeSessions.has('DEAD000000000002')).toBe(true);
     });
 
+    it('skips waiting_ack and starts block sending directly without an init downlink', async () => {
+        // Use 2-block firmware so _sendAllBlocks pauses on sleep() after block 0,
+        // letting init() return with session state already at 'sending_blocks'.
+        const twoBlockRow = {
+            ...makeRow('DEAD000000000001'),
+            firmware_size: 98,
+            total_blocks: 2,
+            firmware_data: Buffer.alloc(98),
+        };
+        pool.query.mockResolvedValueOnce({ rows: [twoBlockRow] });
+        mqttClient.publish.mockReturnValue(undefined);
+
+        await fuotaManager.init(mockIo);
+
+        const session = fuotaManager.activeSessions.get('DEAD000000000001');
+        expect(session).toBeDefined();
+        // Must be 'sending_blocks', not 'waiting_ack' (which would require a 0x10 ACK)
+        expect(session.state).toBe('sending_blocks');
+        // No fPort 22 init downlink should have been published
+        const port22Calls = mqttClient.publish.mock.calls.filter(
+            ([, msg]) => JSON.parse(msg).DevEUI_downlink.FPort === 22
+        );
+        expect(port22Calls).toHaveLength(0);
+    });
+
     it('skips sessions with no firmware_data and continues to valid sessions', async () => {
         const noFirmware = { ...makeRow('DEAD000000000001'), firmware_data: null };
         pool.query.mockResolvedValueOnce({
