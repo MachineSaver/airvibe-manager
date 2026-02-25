@@ -272,23 +272,35 @@ class FUOTAManager {
                     }
                 }, FUOTA_SESSION_TIMEOUT_MS);
 
-                // Re-attempt Class C switch using per-device ISM band profile
-                const classCProfile = await resolveClassCProfile(devEui).catch(() => null);
-                const csResult = await networkClient.switchToClassC(devEui, classCProfile).catch(() => null);
-                session.originalClass    = csResult?.originalClass || null;
-                session.classCConfigured = !!csResult;
+                // Per-session try-catch: one session failing must not abort recovery of others.
+                try {
+                    // Re-attempt Class C switch using per-device ISM band profile
+                    const classCProfile = await resolveClassCProfile(devEui).catch(() => null);
+                    const csResult = await networkClient.switchToClassC(devEui, classCProfile).catch(() => null);
+                    session.originalClass    = csResult?.originalClass || null;
+                    session.classCConfigured = !!csResult;
 
-                // Re-send init downlink and wait for fresh 0x10 ACK; then restart from block 0
-                this._sendInitDownlink(session);
-                this._emitProgress(devEui);
-                auditLogger.log('fuota_manager', 'session_resumed', devEui, {
-                    dbId: row.id,
-                    totalBlocks: row.total_blocks,
-                    blockIntervalMs: intervalMs,
-                    classCConfigured: session.classCConfigured,
-                });
-                console.log(`FUOTAManager: recovered session for ${devEui} (${row.firmware_name}, ${row.total_blocks} blocks)`);
-                recovered++;
+                    // Wait for MQTT before sending the init downlink — the broker may not be
+                    // connected yet if the backend restarted while MQTT was still connecting.
+                    await this._waitForMqtt(devEui);
+
+                    // Re-send init downlink and wait for fresh 0x10 ACK; then restart from block 0
+                    this._sendInitDownlink(session);
+                    this._emitProgress(devEui);
+                    auditLogger.log('fuota_manager', 'session_resumed', devEui, {
+                        dbId: row.id,
+                        totalBlocks: row.total_blocks,
+                        blockIntervalMs: intervalMs,
+                        classCConfigured: session.classCConfigured,
+                    });
+                    console.log(`FUOTAManager: recovered session for ${devEui} (${row.firmware_name}, ${row.total_blocks} blocks)`);
+                    recovered++;
+                } catch (sessionErr) {
+                    console.error(`FUOTAManager: startup recovery failed for ${devEui}:`, sessionErr.message);
+                    clearTimeout(session._sessionTimeout);
+                    session._sessionTimeout = null;
+                    this.activeSessions.delete(devEui);
+                }
             }
 
             if (recovered > 0 || failed > 0) {
