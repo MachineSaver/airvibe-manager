@@ -33,13 +33,15 @@ const domain = process.env.DOMAIN || 'localhost';
         }
     }
 
-    await fuotaManager.init(io);
-
+    // Start MQTT connection before FUOTA init so that _waitForMqtt() in the
+    // recovery loop has an active connection to poll against.
     const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
     mqttClient.connect(MQTT_BROKER_URL, io, (topic, msg) => {
         waveformManager.processPacket(topic, msg);
         fuotaManager.processPacket(topic, msg);
     });
+
+    await fuotaManager.init(io);
 
     try {
         console.log(`Checking/Initializing PKI for domain: ${domain}`);
