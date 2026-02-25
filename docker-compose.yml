@@ -153,6 +153,12 @@ services:
       - CHIRPSTACK_API_KEY=${CHIRPSTACK_API_KEY:-}
       - CHIRPSTACK_APPLICATION_ID=${CHIRPSTACK_APPLICATION_ID:-1}
       - NETWORK_SERVER=${NETWORK_SERVER:-chirpstack}
+      # Message retention: rows older than this many days are purged nightly (default: 90)
+      - MESSAGES_MAX_AGE_DAYS=${MESSAGES_MAX_AGE_DAYS:-90}
+      # Waveform failed/aborted row retention: purged after this many days (default: 7)
+      - WAVEFORMS_FAILED_TTL_DAYS=${WAVEFORMS_FAILED_TTL_DAYS:-7}
+      # FUOTA: ms to wait for MQTT reconnect before failing a block-send session (default: 300000 = 5 min)
+      - FUOTA_MQTT_WAIT_MS=${FUOTA_MQTT_WAIT_MS:-300000}
       # ThingPark integration (enables Class C auto-switch for FUOTA in ThingPark mode)
       - THINGPARK_BASE_URL=${THINGPARK_BASE_URL:-https://community.thingpark.io}
       - THINGPARK_CLIENT_ID=${THINGPARK_CLIENT_ID:-}

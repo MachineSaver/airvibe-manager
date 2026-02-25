@@ -344,6 +344,14 @@ class FUOTAManager {
             await this._abortSessionInternal(devEui, 'superseded by new session');
         }
 
+        // Ensure a devices row exists so the FK on fuota_sessions is satisfied.
+        // Devices that haven't sent an uplink yet get a placeholder row; MessageTracker
+        // will backfill last_seen, uplink_count, and metadata on first uplink.
+        await pool.query(
+            `INSERT INTO devices (dev_eui) VALUES ($1) ON CONFLICT (dev_eui) DO NOTHING`,
+            [devEui]
+        );
+
         // Create DB record and persist firmware binary for restart recovery
         let dbId;
         try {
@@ -548,6 +556,10 @@ class FUOTAManager {
             // Re-check session is still the active one
             if (this.activeSessions.get(devEui) !== session) return;
 
+            // Pause if broker is disconnected; throws after timeout → _failSession
+            await this._waitForMqtt(devEui);
+            if (session.aborted || this.activeSessions.get(devEui) !== session) return;
+
             const payload = makeBlockPayload(i, blocks[i]);
             this._sendDownlink(devEui, 25, payload);
             session.blocksSent = i + 1;
@@ -665,6 +677,10 @@ class FUOTAManager {
             if (session.aborted) return;
             if (this.activeSessions.get(devEui) !== session) return;
 
+            // Pause if broker is disconnected; throws after timeout → _failSession
+            await this._waitForMqtt(devEui);
+            if (session.aborted || this.activeSessions.get(devEui) !== session) return;
+
             const blockNum = missedBlockNums[i];
             if (blockNum >= blocks.length) {
                 console.warn(`FUOTAManager: ${devEui} missed block ${blockNum} out of range (total ${blocks.length})`);
@@ -706,10 +722,9 @@ class FUOTAManager {
             totalBlocks: session.totalBlocks,
         });
 
-        // Restore original device class
+        // Restore original device class — fire-and-forget with retry
         if (session.classCConfigured && session.originalClass) {
-            await networkClient.restoreClass(devEui, session.originalClass);
-            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass: session.originalClass });
+            this._restoreClassWithRetry(devEui, session.originalClass).catch(() => {});
         }
     }
 
@@ -729,10 +744,9 @@ class FUOTAManager {
         console.error(`FUOTAManager: ${devEui} session failed: ${reason}`);
         auditLogger.log('fuota_manager', 'session_failed', devEui, { reason });
 
-        // Restore original device class
+        // Restore original device class — fire-and-forget with retry
         if (session.classCConfigured && session.originalClass) {
-            await networkClient.restoreClass(devEui, session.originalClass);
-            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass: session.originalClass });
+            this._restoreClassWithRetry(devEui, session.originalClass).catch(() => {});
         }
     }
 
@@ -752,16 +766,40 @@ class FUOTAManager {
         console.log(`FUOTAManager: ${devEui} session aborted: ${reason}`);
         auditLogger.log('fuota_manager', 'session_aborted', devEui, { reason });
 
-        // Restore original device class
+        // Restore original device class — fire-and-forget with retry
         if (session.classCConfigured && session.originalClass) {
-            await networkClient.restoreClass(devEui, session.originalClass);
-            auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass: session.originalClass });
+            this._restoreClassWithRetry(devEui, session.originalClass).catch(() => {});
         }
     }
 
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    /**
+     * Restore a device's original class after FUOTA, with up to 3 attempts and
+     * exponential backoff (15 s, 30 s). Called fire-and-forget from terminal states
+     * so the session is never held open waiting for a network round-trip.
+     */
+    async _restoreClassWithRetry(devEui, originalClass) {
+        const delays = [15000, 30000];
+        const maxAttempts = delays.length + 1;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                await networkClient.restoreClass(devEui, originalClass);
+                console.log(`FUOTAManager: ${devEui} restored to ${originalClass} (attempt ${attempt}/${maxAttempts})`);
+                auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass, attempt });
+                return;
+            } catch (err) {
+                console.error(`FUOTAManager: ${devEui} class restore attempt ${attempt}/${maxAttempts} failed: ${err.message}`);
+                if (attempt < maxAttempts) {
+                    await sleep(delays[attempt - 1]);
+                }
+            }
+        }
+        console.error(`FUOTAManager: ${devEui} could not restore class after ${maxAttempts} attempts — device may be stuck in ${originalClass}`);
+        auditLogger.log('fuota_manager', 'class_a_restore_failed', devEui, { originalClass, maxAttempts });
+    }
 
     _clearTimeouts(session) {
         clearTimeout(session._ackTimeout);
@@ -787,6 +825,34 @@ class FUOTAManager {
         mqttClient.publish(topic, message);
     }
 
+    /**
+     * Wait for the MQTT broker to be connected before sending a block.
+     * Returns immediately if already connected.
+     * Polls every 5 s for up to FUOTA_MQTT_WAIT_MS (default 5 min), then throws —
+     * the throw propagates through _sendAllBlocks/_resendMissedBlocks to _failSession.
+     */
+    async _waitForMqtt(devEui) {
+        const mqttClient = require('../mqttClient');
+        if (mqttClient.isConnected()) return;
+
+        const maxWaitMs = parseInt(process.env.FUOTA_MQTT_WAIT_MS) || 5 * 60 * 1000;
+        const deadline = Date.now() + maxWaitMs;
+
+        console.warn(`FUOTAManager: ${devEui} MQTT broker disconnected — pausing block send`);
+        auditLogger.log('fuota_manager', 'mqtt_disconnect_pause', devEui, {});
+
+        while (Date.now() < deadline) {
+            await sleep(5000);
+            if (mqttClient.isConnected()) {
+                console.log(`FUOTAManager: ${devEui} MQTT broker reconnected — resuming`);
+                auditLogger.log('fuota_manager', 'mqtt_reconnect_resume', devEui, {});
+                return;
+            }
+        }
+
+        throw new Error(`MQTT broker unreachable for ${maxWaitMs / 60000} min — session failed`);
+    }
+
     _emitProgress(devEui) {
         if (!this.io) return;
         const session = this.activeSessions.get(devEui);
@@ -804,6 +870,7 @@ class FUOTAManager {
                   firmwareSize: session.firmwareSize,
                   blockIntervalMs: session.blockIntervalMs,
                   classCConfigured: session.classCConfigured,
+                  startedAt: session.startedAt,
               }
             : { devEui, state: 'idle' };
         this.io.emit('fuota:progress', payload);
@@ -825,7 +892,7 @@ class FUOTAManager {
                         session.state,
                         session.blocksSent,
                         session.verifyAttempts,
-                        JSON.stringify([]),
+                        JSON.stringify(session.lastMissedBlocks || []),
                         session.error,
                         new Date(),
                         session.dbId,
@@ -842,7 +909,7 @@ class FUOTAManager {
                         session.state,
                         session.blocksSent,
                         session.verifyAttempts,
-                        JSON.stringify([]),
+                        JSON.stringify(session.lastMissedBlocks || []),
                         session.error,
                         session.dbId,
                     ]

@@ -100,6 +100,9 @@ CREATE TABLE IF NOT EXISTS fuota_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_fuota_device_time ON fuota_sessions(device_eui, started_at DESC);
 
+-- Add final_data_bytes column for BYTEA waveform storage (replaces JSONB hex in final_data)
+ALTER TABLE waveforms ADD COLUMN IF NOT EXISTS final_data_bytes BYTEA;
+
 -- Add persistence columns for restart recovery (safe for existing databases)
 -- firmware_data: raw binary stored as BYTEA (TOAST-compressed by Postgres for large values).
 --   NULL after session completes/fails/aborts to reclaim storage.
@@ -107,3 +110,19 @@ CREATE INDEX IF NOT EXISTS idx_fuota_device_time ON fuota_sessions(device_eui, s
 -- block_interval_ms: per-session block interval preserved so recovery uses the same cadence.
 ALTER TABLE fuota_sessions ADD COLUMN IF NOT EXISTS firmware_data BYTEA;
 ALTER TABLE fuota_sessions ADD COLUMN IF NOT EXISTS block_interval_ms INTEGER;
+
+-- Add FK from fuota_sessions to devices (safe on existing databases).
+-- NOT VALID skips scanning historical rows; all future inserts are enforced.
+-- ON DELETE RESTRICT prevents accidentally deleting a device that has FUOTA history.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fuota_sessions_device_fk'
+    ) THEN
+        ALTER TABLE fuota_sessions
+            ADD CONSTRAINT fuota_sessions_device_fk
+            FOREIGN KEY (device_eui) REFERENCES devices(dev_eui)
+            ON DELETE RESTRICT
+            NOT VALID;
+    END IF;
+END $$;

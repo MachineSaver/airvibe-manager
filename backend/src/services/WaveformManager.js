@@ -7,6 +7,7 @@ class WaveformManager {
         this.startCleanupJob();
         this.startTWIUCheckJob();
         this.lastDownlinkTimes = new Map();
+        this.repairTimeouts = new Map(); // waveformId → timeout handle
     }
 
     async processPacket(topic, message) {
@@ -230,6 +231,9 @@ class WaveformManager {
             await pool.query(`
                 UPDATE waveforms SET requested_segments = $1 WHERE id = $2
             `, [JSON.stringify(batch), waveformId]);
+
+            // If the device never returns the full batch, re-request after 5 minutes.
+            this._scheduleRepairTimeout(devEui, txId, waveformId);
         }
     }
 
@@ -249,8 +253,13 @@ class WaveformManager {
             [waveformId, requested]
         );
         if (segRes.rows.length >= requested.length) {
-            // All segments in this batch have arrived — clear the batch record
-            // and re-run checkCompletion to either finish or request the next batch.
+            // All segments in this batch have arrived — cancel the repair timeout,
+            // clear the batch record, and re-run checkCompletion to either finish
+            // or request the next batch.
+            if (this.repairTimeouts.has(waveformId)) {
+                clearTimeout(this.repairTimeouts.get(waveformId));
+                this.repairTimeouts.delete(waveformId);
+            }
             await pool.query(
                 `UPDATE waveforms SET requested_segments = '[]' WHERE id = $1`,
                 [waveformId]
@@ -268,11 +277,14 @@ class WaveformManager {
 
         const fullBuffer = Buffer.concat(res.rows.map(r => r.data));
 
+        // Store as BYTEA (final_data_bytes) — halves storage cost vs JSONB hex string.
+        // final_data is set to NULL for new rows; old rows retain their JSONB value
+        // and are handled via fallback in the read endpoints.
         await pool.query(`
             UPDATE waveforms
-            SET status = 'complete', final_data = $1
+            SET status = 'complete', final_data_bytes = $1, final_data = NULL
             WHERE id = $2
-        `, [JSON.stringify({ raw_hex: fullBuffer.toString('hex') }), waveformId]);
+        `, [fullBuffer, waveformId]);
     }
 
     async findPendingWaveformId(devEui, txId) {
@@ -328,15 +340,71 @@ class WaveformManager {
         console.log(`Downlink sent to ${devEui} on topic ${topic}: ${message}`);
     }
 
+    _scheduleRepairTimeout(devEui, txId, waveformId) {
+        // Clear any prior timeout for this waveform before setting a fresh one.
+        if (this.repairTimeouts.has(waveformId)) {
+            clearTimeout(this.repairTimeouts.get(waveformId));
+        }
+        const handle = setTimeout(async () => {
+            this.repairTimeouts.delete(waveformId);
+            try {
+                const res = await pool.query(
+                    `SELECT requested_segments, status FROM waveforms WHERE id = $1`,
+                    [waveformId]
+                );
+                const wf = res.rows[0];
+                if (!wf || wf.status !== 'pending') return;
+                if (!wf.requested_segments || wf.requested_segments.length === 0) return;
+                // Batch still outstanding — re-run checkCompletion to re-request.
+                console.log(`Repair timeout for ${devEui} TxID ${txId} (waveform ${waveformId}), re-requesting missing segments`);
+                await this.checkCompletion(devEui, txId, waveformId);
+            } catch (err) {
+                console.error(`Repair timeout error for waveform ${waveformId}:`, err);
+            }
+        }, 5 * 60 * 1000); // 5 minutes
+        this.repairTimeouts.set(waveformId, handle);
+    }
+
     startCleanupJob() {
+        // Configurable TTL for failed/aborted rows (default 7 days).
+        // Segments are cascade-deleted. final_data_bytes (BYTEA/TOAST) is reclaimed immediately.
+        const failedTtlDays = Math.max(1, parseInt(process.env.WAVEFORMS_FAILED_TTL_DAYS) || 7);
+
         setInterval(async () => {
             try {
+                // Mark stale pending waveforms as failed
                 const res = await pool.query(`
-                    DELETE FROM waveforms
+                    UPDATE waveforms
+                    SET status = 'failed', last_updated = NOW()
                     WHERE status = 'pending'
                     AND last_updated < NOW() - INTERVAL '30 minutes'
+                    RETURNING id, device_eui, transaction_id
                 `);
-                if (res.rowCount > 0) console.log(`Cleaned up ${res.rowCount} stale waveforms`);
+                for (const row of res.rows) {
+                    console.log(`Marked stale waveform ${row.id} failed (${row.device_eui} TxID ${row.transaction_id})`);
+                    auditLogger.log('waveform_manager', 'waveform_stale_failed', row.device_eui, {
+                        waveformId: row.id,
+                        txId: row.transaction_id,
+                    });
+                }
+
+                // Purge old failed/aborted waveforms to prevent unbounded storage growth.
+                // Segments are cascade-deleted via ON DELETE CASCADE on waveform_segments.
+                const purgeRes = await pool.query(`
+                    DELETE FROM waveforms
+                    WHERE status IN ('failed', 'aborted')
+                    AND last_updated < NOW() - ($1 || ' days')::INTERVAL
+                    RETURNING id, device_eui, transaction_id, status
+                `, [failedTtlDays]);
+                for (const row of purgeRes.rows) {
+                    console.log(`Purged ${row.status} waveform ${row.id} (${row.device_eui} TxID ${row.transaction_id}) after ${failedTtlDays}d`);
+                    auditLogger.log('waveform_manager', 'waveform_purged', row.device_eui, {
+                        waveformId: row.id,
+                        txId: row.transaction_id,
+                        status: row.status,
+                        ttlDays: failedTtlDays,
+                    });
+                }
             } catch (e) {
                 console.error('Cleanup job error:', e);
             }

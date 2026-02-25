@@ -83,4 +83,8 @@ function publish(topic, message) {
     client.publish(outTopic, outMessage);
 }
 
-module.exports = { connect, publish };
+function isConnected() {
+    return client?.connected === true;
+}
+
+module.exports = { connect, publish, isConnected };

@@ -112,14 +112,33 @@ app.get('/api/certs/download/:filename', (req, res) => {
     res.download(filePath);
 });
 
-// Health check endpoint
+// Health check endpoint — checks Postgres, MQTT broker, and reports active FUOTA sessions
 app.get('/api/health', async (req, res) => {
+    const checks = {};
+    let allOk = true;
+
+    // Postgres
     try {
         await pool.query('SELECT 1');
-        res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
+        checks.postgres = { ok: true };
     } catch (err) {
-        res.status(503).json({ status: 'error', db: 'disconnected', error: err.message });
+        checks.postgres = { ok: false, error: err.message };
+        allOk = false;
     }
+
+    // MQTT broker
+    const mqttOk = mqttClient.isConnected();
+    checks.mqtt = { ok: mqttOk };
+    if (!mqttOk) allOk = false;
+
+    // Active FUOTA sessions (informational — not a failure condition)
+    checks.fuota = { activeSessions: fuotaManager.getActiveSessions().length };
+
+    res.status(allOk ? 200 : 503).json({
+        status: allOk ? 'ok' : 'degraded',
+        uptime: Math.floor(process.uptime()),
+        checks,
+    });
 });
 
 // Waveform API endpoints
@@ -145,7 +164,11 @@ app.get('/api/waveforms/:id/download', async (req, res) => {
 
         const waveform = wfRes.rows[0];
         const meta = waveform.metadata;
-        const rawHex = waveform.final_data?.raw_hex;
+        // final_data_bytes (BYTEA) for rows assembled after the migration;
+        // fall back to final_data.raw_hex for older rows.
+        const rawHex = waveform.final_data_bytes
+            ? waveform.final_data_bytes.toString('hex')
+            : waveform.final_data?.raw_hex;
         if (!meta || !rawHex) return res.status(400).json({ error: 'Missing metadata or data' });
 
         const axisMask = meta.axisMask ?? meta.axisSelection;
@@ -191,7 +214,11 @@ app.get('/api/waveforms/:id/csv', async (req, res) => {
 
         const waveform = wfRes.rows[0];
         const meta = waveform.metadata;
-        const rawHex = waveform.final_data?.raw_hex;
+        // final_data_bytes (BYTEA) for rows assembled after the migration;
+        // fall back to final_data.raw_hex for older rows.
+        const rawHex = waveform.final_data_bytes
+            ? waveform.final_data_bytes.toString('hex')
+            : waveform.final_data?.raw_hex;
         if (!meta || !rawHex) return res.status(400).json({ error: 'Missing metadata or data' });
 
         const axisMask = meta.axisMask ?? meta.axisSelection;
@@ -254,6 +281,12 @@ app.get('/api/waveforms/:id', async (req, res) => {
         );
 
         const waveform = wfRes.rows[0];
+        // Normalize storage format: synthesize final_data.raw_hex from BYTEA for new rows,
+        // then drop the binary field so it isn't serialised as a Buffer in the JSON response.
+        if (waveform.final_data_bytes) {
+            waveform.final_data = { raw_hex: waveform.final_data_bytes.toString('hex') };
+        }
+        delete waveform.final_data_bytes;
         waveform.segments = segRes.rows.map(r => r.segment_index);
         res.json(waveform);
     } catch (err) {

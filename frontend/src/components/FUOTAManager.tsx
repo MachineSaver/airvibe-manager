@@ -39,6 +39,7 @@ interface DeviceProgress {
   firmwareSize?: number;
   blockIntervalMs?: number;
   classCConfigured?: boolean;
+  startedAt?: number;
 }
 
 interface Device {
@@ -175,6 +176,28 @@ function formatEta(totalBlocks: number, blockIntervalMs: number): string {
 
 function formatRemainingEta(remaining: number, blockIntervalMs: number): string {
   return formatEta(remaining, blockIntervalMs);
+}
+
+/**
+ * ETA using observed throughput when enough blocks have been sent (≥10),
+ * falling back to the configured interval estimate before then.
+ */
+function formatObservedEta(
+  remaining: number,
+  blocksSent: number,
+  startedAt: number | undefined,
+  blockIntervalMs: number | undefined,
+): string | null {
+  if (remaining <= 0) return null;
+  if (startedAt && blocksSent >= 10) {
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs > 0) {
+      const msPerBlock = elapsedMs / blocksSent;
+      return formatEta(remaining, msPerBlock);
+    }
+  }
+  if (blockIntervalMs) return formatRemainingEta(remaining, blockIntervalMs);
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +439,7 @@ export default function FUOTAManager({ socket }: Props) {
           firmwareSize: firmwareInfo.size,
           blockIntervalMs,
           classCConfigured: false,
+          startedAt: Date.now(),
         };
       }
       return next;
@@ -810,6 +834,7 @@ function DeviceProgressCard({
   const {
     devEui, state, blocksSent, totalBlocks, verifyAttempts,
     lastMissedCount, lastMissedBlocks, error, firmwareName, blockIntervalMs, classCConfigured,
+    startedAt,
   } = progress;
   const pct = totalBlocks > 0 ? Math.min(100, Math.round((blocksSent / totalBlocks) * 100)) : 0;
   const isTerminal = isTerminalState(state);
@@ -968,13 +993,12 @@ function DeviceProgressCard({
           {state === 'resending' && lastMissedCount > 0 && (
             <span className="text-amber-400">Re-sending {lastMissedCount} missed block{lastMissedCount !== 1 ? 's' : ''}…</span>
           )}
-          {state === 'sending_blocks' && blockIntervalMs && remaining > 0 && (
-            <span>
-              ETA: <span className="text-gray-200 font-mono">
-                {formatRemainingEta(remaining, blockIntervalMs)}
-              </span> remaining
-            </span>
-          )}
+          {state === 'sending_blocks' && remaining > 0 && (() => {
+            const eta = formatObservedEta(remaining, blocksSent, startedAt, blockIntervalMs);
+            return eta ? (
+              <span>ETA: <span className="text-gray-200 font-mono">{eta}</span> remaining</span>
+            ) : null;
+          })()}
           {state === 'complete' && (
             <span className="text-green-400">All blocks confirmed — update applied</span>
           )}

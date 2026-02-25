@@ -432,8 +432,6 @@ Automatic Class C switching is available via the ThingPark DX Core API. Add thes
 THINGPARK_BASE_URL=https://community.thingpark.io   # default is correct for Community server
 THINGPARK_CLIENT_ID=your-dx-client-id
 THINGPARK_CLIENT_SECRET=your-dx-client-secret
-# Optional — override only if your Class C profile ID differs from the EU868 default:
-# THINGPARK_CLASS_C_PROFILE=LORA/GenericC.1_ETSI_Rx2-SF9
 ```
 
 Generate DX Core API credentials in the ThingPark portal → DX Admin → Applications → Add.
@@ -583,6 +581,12 @@ Then run the backend and frontend with `npm run dev` as above.
 | `CHIRPSTACK_API_URL` | `http://chirpstack:8080` | On-premise | Override in app-only mode |
 | `CHIRPSTACK_API_KEY` | _(none)_ | On-premise | Enables Class C auto-switch for FUOTA |
 | `CHIRPSTACK_APPLICATION_ID` | `1` | On-premise | App ID from ChirpStack UI |
+| `THINGPARK_BASE_URL` | `https://community.thingpark.io` | Cloud | ThingPark DX Core API base URL |
+| `THINGPARK_CLIENT_ID` | _(none)_ | Cloud | ThingPark DX Core client ID for Class C auto-switch |
+| `THINGPARK_CLIENT_SECRET` | _(none)_ | Cloud | ThingPark DX Core client secret for Class C auto-switch |
+| `MESSAGES_MAX_AGE_DAYS` | `90` | Both | Days before old message rows are purged (nightly cleanup job) |
+| `WAVEFORMS_FAILED_TTL_DAYS` | `7` | Both | Days to retain failed/aborted waveform rows before purging (runs every 5 min) |
+| `FUOTA_MQTT_WAIT_MS` | `300000` | Both | Milliseconds FUOTA block-send loop waits for MQTT reconnect before failing the session |
 
 ---
 

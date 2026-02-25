@@ -109,13 +109,16 @@ class MessageTracker {
     }
 
     startRetentionCleanup() {
+        // Retention window: default 90 days, configurable via MESSAGES_MAX_AGE_DAYS env var.
+        const maxAgeDays = Math.max(1, parseInt(process.env.MESSAGES_MAX_AGE_DAYS) || 90);
         const timer = setInterval(async () => {
             try {
                 const res = await pool.query(
-                    `DELETE FROM messages WHERE received_at < NOW() - INTERVAL '30 days'`
+                    `DELETE FROM messages WHERE received_at < NOW() - ($1 || ' days')::INTERVAL`,
+                    [maxAgeDays]
                 );
                 if (res.rowCount > 0) {
-                    console.log(`MessageTracker: cleaned up ${res.rowCount} old messages`);
+                    console.log(`MessageTracker: purged ${res.rowCount} messages older than ${maxAgeDays} days`);
                 }
             } catch (err) {
                 console.error('MessageTracker retention cleanup error:', err.message);
