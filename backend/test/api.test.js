@@ -23,6 +23,7 @@ jest.mock('../src/services/FUOTAManager', () => ({
     storeFirmware: jest.fn().mockReturnValue({ sessionId: 'test', totalBlocks: 10 }),
     startSession: jest.fn().mockResolvedValue(),
     abortSession: jest.fn().mockResolvedValue(true),
+    setVerifyMaxRetries: jest.fn(),
 }));
 
 jest.mock('../src/services/WaveformManager', () => ({
@@ -553,5 +554,142 @@ describe('GET /api/devices/:devEui/messages', () => {
         const [countSql, countParams] = pool.query.mock.calls[0];
         expect(countSql).toMatch(/device_eui/i);
         expect(countParams).toContain(DEV_EUI);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/fuota/upload — multipart
+// ---------------------------------------------------------------------------
+
+describe('POST /api/fuota/upload — multipart', () => {
+    it('uploads a valid .bin file and returns sessionId and totalBlocks', async () => {
+        const buf = Buffer.alloc(100, 0xAB);
+        const res = await request(app)
+            .post('/api/fuota/upload')
+            .attach('firmware', buf, 'v2.1.bin');
+
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveProperty('sessionId');
+        expect(res.body).toHaveProperty('totalBlocks');
+    });
+
+    it('returns 400 when no file is attached', async () => {
+        const res = await request(app)
+            .post('/api/fuota/upload');
+
+        expect(res.status).toBe(400);
+        expect(res.body).toHaveProperty('error');
+    });
+
+    it('returns 400 when the uploaded file is empty (0 bytes)', async () => {
+        const res = await request(app)
+            .post('/api/fuota/upload')
+            .attach('firmware', Buffer.alloc(0), 'empty.bin');
+
+        expect(res.status).toBe(400);
+        expect(res.body).toHaveProperty('error');
+    });
+
+    it('returns 400 when the filename contains invalid characters (e.g. angle brackets)', async () => {
+        // Note: HTTP (busboy) strips path separators, so use chars that survive the transport
+        // but still fail the server-side regex [a-zA-Z0-9._\-\s]+.
+        const res = await request(app)
+            .post('/api/fuota/upload')
+            .attach('firmware', Buffer.alloc(100, 0xAB), 'fw<bad>.bin');
+
+        expect(res.status).toBe(400);
+        expect(res.body).toHaveProperty('error');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// OpenAPI spec and Swagger UI
+// ---------------------------------------------------------------------------
+
+describe('OpenAPI spec and Swagger UI', () => {
+    it('GET /api/openapi.json returns 200 with openapi, info, and paths fields', async () => {
+        const res = await request(app).get('/api/openapi.json');
+
+        expect(res.status).toBe(200);
+        expect(res.body.openapi).toMatch(/^3\./);
+        expect(res.body).toHaveProperty('info');
+        expect(res.body).toHaveProperty('paths');
+    });
+
+    it('GET /api/openapi.json paths include /waveforms, /devices, /keys, /health, /fuota/sessions', async () => {
+        const res = await request(app).get('/api/openapi.json');
+
+        expect(res.status).toBe(200);
+        const paths = Object.keys(res.body.paths || {});
+        expect(paths).toContain('/waveforms');
+        expect(paths).toContain('/devices');
+        expect(paths).toContain('/keys');
+        expect(paths).toContain('/health');
+        expect(paths).toContain('/fuota/sessions');
+    });
+
+    it('GET /api/docs/ returns 200 HTML containing "swagger"', async () => {
+        const res = await request(app).get('/api/docs/');
+
+        expect(res.status).toBe(200);
+        expect(res.headers['content-type']).toMatch(/text\/html/i);
+        expect(res.text.toLowerCase()).toContain('swagger');
+    });
+
+    it('GET /api/openapi.json is accessible without auth when API_KEYS_ENABLED=true', async () => {
+        process.env.API_KEYS_ENABLED = 'true';
+        const res = await request(app).get('/api/openapi.json');
+        expect(res.status).toBe(200);
+    });
+
+    it('GET /api/docs/ is accessible without auth when API_KEYS_ENABLED=true', async () => {
+        process.env.API_KEYS_ENABLED = 'true';
+        const res = await request(app).get('/api/docs/');
+        expect(res.status).toBe(200);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// PUT /api/fuota/config
+// ---------------------------------------------------------------------------
+
+describe('PUT /api/fuota/config', () => {
+    const fuotaManager = require('../src/services/FUOTAManager');
+
+    it('returns 200 and echoes maxVerifyRetries when given a valid integer', async () => {
+        const res = await request(app)
+            .put('/api/fuota/config')
+            .send({ maxVerifyRetries: 100 });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ maxVerifyRetries: 100 });
+        expect(fuotaManager.setVerifyMaxRetries).toHaveBeenCalledWith(100);
+    });
+
+    it('returns 400 when maxVerifyRetries is missing', async () => {
+        const res = await request(app)
+            .put('/api/fuota/config')
+            .send({});
+
+        expect(res.status).toBe(400);
+        expect(res.body).toHaveProperty('error');
+    });
+
+    it('returns 400 when maxVerifyRetries is not an integer (string)', async () => {
+        const res = await request(app)
+            .put('/api/fuota/config')
+            .send({ maxVerifyRetries: 'lots' });
+
+        expect(res.status).toBe(400);
+        expect(res.body).toHaveProperty('error');
+    });
+
+    it('returns 400 when maxVerifyRetries is less than 1', async () => {
+        const res = await request(app)
+            .put('/api/fuota/config')
+            .send({ maxVerifyRetries: 0 });
+
+        expect(res.status).toBe(400);
+        expect(res.body).toHaveProperty('error');
     });
 });

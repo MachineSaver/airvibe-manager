@@ -3,7 +3,7 @@
 const apiKeyManager = require('../services/ApiKeyManager');
 
 // Paths that are always accessible without an API key.
-const EXEMPT_PATHS = new Set(['/', '/api/health']);
+const EXEMPT_PATHS = new Set(['/', '/api/health', '/api/openapi.json']);
 
 /**
  * Express middleware: enforce Bearer API key authentication.
@@ -21,6 +21,7 @@ const EXEMPT_PATHS = new Set(['/', '/api/health']);
 async function requireApiKey(req, res, next) {
     if (process.env.API_KEYS_ENABLED !== 'true') return next();
     if (EXEMPT_PATHS.has(req.path)) return next();
+    if (req.path === '/api/docs' || req.path.startsWith('/api/docs/')) return next();
 
     const authHeader = req.headers['authorization'];
     if (!authHeader || !authHeader.startsWith('Bearer ')) {

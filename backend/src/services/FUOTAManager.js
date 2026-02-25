@@ -185,8 +185,19 @@ class FUOTAManager {
         this.firmwareStore = new Map();
         // devEui → SessionState
         this.activeSessions = new Map();
+        // Mutable cap; defaults to the env var, can be updated live via setVerifyMaxRetries()
+        this._verifyMaxRetries = FUOTA_VERIFY_MAX_RETRIES;
 
         this._startCleanupJob();
+    }
+
+    /**
+     * Update the maximum number of verify attempts for all subsequent verify
+     * commands (including any session currently in the verify/resend cycle).
+     * @param {number} n  Must be a positive integer.
+     */
+    setVerifyMaxRetries(n) {
+        this._verifyMaxRetries = n;
     }
 
     /** Must be called once after Socket.io server is created. */
@@ -607,14 +618,15 @@ class FUOTAManager {
 
         // Each attempt gets an equal share of the total verify timeout budget.
         // On timeout: retry if attempts remain, otherwise fail the session.
-        const attemptMs = Math.floor(FUOTA_VERIFY_TIMEOUT_MS / FUOTA_VERIFY_MAX_RETRIES);
+        const maxRetries = this._verifyMaxRetries;
+        const attemptMs = Math.floor(FUOTA_VERIFY_TIMEOUT_MS / maxRetries);
         session._verifyTimeout = setTimeout(async () => {
             if (this.activeSessions.get(devEui) !== session || session.state !== 'verifying') return;
 
-            if (session.verifyAttempts < FUOTA_VERIFY_MAX_RETRIES) {
+            if (session.verifyAttempts < maxRetries) {
                 console.warn(
                     `FUOTAManager: ${devEui} no 0x11 response ` +
-                    `(attempt ${session.verifyAttempts}/${FUOTA_VERIFY_MAX_RETRIES}), retrying verify…`
+                    `(attempt ${session.verifyAttempts}/${maxRetries}), retrying verify…`
                 );
                 auditLogger.log('fuota_manager', 'verify_timeout_retry', devEui, {
                     attempt: session.verifyAttempts,
@@ -624,7 +636,7 @@ class FUOTAManager {
                 await this._sendVerify(session);
             } else {
                 await this._failSession(devEui,
-                    `No 0x11 verify response after ${FUOTA_VERIFY_MAX_RETRIES} attempts ` +
+                    `No 0x11 verify response after ${maxRetries} attempts ` +
                     `(${FUOTA_VERIFY_TIMEOUT_MS / 3600000}h total)`
                 );
             }

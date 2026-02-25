@@ -333,11 +333,13 @@ export default function FUOTAManager({ socket }: Props) {
       const res = await fetch(`/assets/firmware/${entry.filename}`);
       if (!res.ok) throw new Error(`Could not load ${entry.filename} (${res.status})`);
       const buf = await res.arrayBuffer();
-      const base64 = btoa(new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), ''));
+      const blob = new Blob([buf], { type: 'application/octet-stream' });
+      const formData = new FormData();
+      formData.append('firmware', blob, entry.filename);
       const uploadRes = await fetch(`${apiUrl}/api/fuota/upload`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: entry.filename, data: base64 }),
+        body: formData,
+        // No Content-Type header — browser sets multipart boundary automatically
       });
       const json = await uploadRes.json();
       if (!uploadRes.ok) throw new Error(json.error || 'Upload failed');
@@ -360,14 +362,12 @@ export default function FUOTAManager({ socket }: Props) {
     setUploadErr('');
     setUploading(true);
     try {
-      const buf = await f.arrayBuffer();
-      const base64 = btoa(
-        new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), '')
-      );
+      const formData = new FormData();
+      formData.append('firmware', f);
       const res = await fetch(`${apiUrl}/api/fuota/upload`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: f.name, data: base64 }),
+        body: formData,
+        // No Content-Type header — browser sets multipart boundary automatically
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Upload failed');

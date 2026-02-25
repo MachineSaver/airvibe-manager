@@ -1,0 +1,1031 @@
+'use strict';
+
+/**
+ * OpenAPI 3.1 specification for the AirVibe Waveform Manager API.
+ *
+ * Served at:
+ *   GET /api/openapi.json  — raw JSON spec
+ *   GET /api/docs/         — Swagger UI (interactive browser)
+ *
+ * Both paths are exempt from Bearer auth even when API_KEYS_ENABLED=true.
+ */
+
+const spec = {
+    openapi: '3.1.0',
+    info: {
+        title: 'AirVibe Waveform Manager API',
+        version: '1.0.0',
+        description: `
+REST API for the AirVibe Waveform Manager platform.
+
+Supports two deployment modes driven by the \`NETWORK_SERVER\` environment variable:
+- **on-premise** (\`NETWORK_SERVER=chirpstack\`): bundles ChirpStack v4 LoRaWAN Network Server
+- **cloud** (\`NETWORK_SERVER=thingpark\`): connects to Actility ThingPark
+
+Authentication is controlled by the \`API_KEYS_ENABLED\` environment variable.
+When enabled, all endpoints except \`/health\`, \`/openapi.json\`, and \`/docs\` require a
+Bearer API key in the \`Authorization\` header.
+
+Keys are created via \`POST /api/keys\`. The raw key is returned exactly once at creation time.
+`.trim(),
+        contact: {
+            name: 'AirVibe Waveform Manager',
+        },
+    },
+    servers: [
+        {
+            url: '/api',
+            description: 'Current server',
+        },
+    ],
+    security: [{ BearerAuth: [] }],
+    tags: [
+        { name: 'Health',      description: 'Liveness and readiness checks' },
+        { name: 'Waveforms',   description: 'Assembled AirVibe waveform records' },
+        { name: 'Devices',     description: 'Device registry' },
+        { name: 'Messages',    description: 'Raw uplink/downlink message log' },
+        { name: 'FUOTA',       description: 'Firmware-over-the-air update sessions' },
+        { name: 'API Keys',    description: 'Bearer key lifecycle management' },
+        { name: 'Audit Log',   description: 'Immutable audit trail' },
+        { name: 'Certificates',description: 'X.509 certificate management for MQTT TLS' },
+        { name: 'Demo',        description: 'Simulated device data for development/testing' },
+        { name: 'Stats',       description: 'Aggregate counters' },
+    ],
+    components: {
+        securitySchemes: {
+            BearerAuth: {
+                type: 'http',
+                scheme: 'bearer',
+                description:
+                    'API key in the format `airvibe_<64-hex-chars>`. ' +
+                    'Only enforced when `API_KEYS_ENABLED=true`. ' +
+                    'Create keys via `POST /api/keys`.',
+            },
+        },
+        parameters: {
+            limit: {
+                name: 'limit',
+                in: 'query',
+                schema: { type: 'integer', minimum: 1, maximum: 500, default: 50 },
+                description: 'Maximum number of results to return',
+            },
+            offset: {
+                name: 'offset',
+                in: 'query',
+                schema: { type: 'integer', minimum: 0, default: 0 },
+                description: 'Number of results to skip (for pagination)',
+            },
+            from: {
+                name: 'from',
+                in: 'query',
+                schema: { type: 'string', format: 'date-time' },
+                description: 'Filter: include records created at or after this timestamp (ISO 8601)',
+            },
+            to: {
+                name: 'to',
+                in: 'query',
+                schema: { type: 'string', format: 'date-time' },
+                description: 'Filter: include records created at or before this timestamp (ISO 8601)',
+            },
+        },
+        schemas: {
+            Error: {
+                type: 'object',
+                required: ['error'],
+                properties: {
+                    error: { type: 'string', description: 'Human-readable error message' },
+                },
+            },
+            Waveform: {
+                type: 'object',
+                properties: {
+                    id:                      { type: 'string', format: 'uuid' },
+                    device_eui:              { type: 'string', example: 'AABBCCDDEEFF0011' },
+                    transaction_id:          { type: 'integer' },
+                    start_time:              { type: 'string', format: 'date-time' },
+                    status:                  { type: 'string', enum: ['pending', 'complete', 'failed', 'aborted'] },
+                    expected_segments:       { type: 'integer' },
+                    received_segments_count: { type: 'integer' },
+                    metadata:                { type: 'object', description: 'Sample rate, axis mask, HW filter, etc.' },
+                    created_at:              { type: 'string', format: 'date-time' },
+                    segments:                {
+                        type: 'array', items: { type: 'integer' },
+                        description: 'Present only on the detail endpoint — list of received segment indices',
+                    },
+                },
+            },
+            Device: {
+                type: 'object',
+                properties: {
+                    dev_eui:      { type: 'string', example: 'AABBCCDDEEFF0011' },
+                    last_seen:    { type: 'string', format: 'date-time' },
+                    created_at:   { type: 'string', format: 'date-time' },
+                },
+            },
+            Message: {
+                type: 'object',
+                properties: {
+                    id:          { type: 'string', format: 'uuid' },
+                    device_eui:  { type: 'string' },
+                    direction:   { type: 'string', enum: ['uplink', 'downlink'] },
+                    topic:       { type: 'string' },
+                    payload:     { type: 'object' },
+                    received_at: { type: 'string', format: 'date-time' },
+                },
+            },
+            FuotaSession: {
+                type: 'object',
+                properties: {
+                    id:                { type: 'string', format: 'uuid' },
+                    device_eui:        { type: 'string' },
+                    firmware_name:     { type: 'string' },
+                    firmware_size:     { type: 'integer' },
+                    total_blocks:      { type: 'integer' },
+                    block_interval_ms: { type: 'integer' },
+                    status:            { type: 'string', enum: ['pending', 'running', 'complete', 'failed', 'aborted'] },
+                    blocks_sent:       { type: 'integer' },
+                    verify_attempts:   { type: 'integer' },
+                    last_missed_blocks:{ type: 'array', items: { type: 'integer' } },
+                    error:             { type: 'string', nullable: true },
+                    started_at:        { type: 'string', format: 'date-time' },
+                    completed_at:      { type: 'string', format: 'date-time', nullable: true },
+                    updated_at:        { type: 'string', format: 'date-time' },
+                },
+            },
+            ApiKey: {
+                type: 'object',
+                properties: {
+                    id:           { type: 'string', format: 'uuid' },
+                    label:        { type: 'string' },
+                    created_at:   { type: 'string', format: 'date-time' },
+                    last_used_at: { type: 'string', format: 'date-time', nullable: true },
+                },
+            },
+            ApiKeyCreated: {
+                allOf: [
+                    { $ref: '#/components/schemas/ApiKey' },
+                    {
+                        type: 'object',
+                        properties: {
+                            key: {
+                                type: 'string',
+                                description: 'The raw API key — shown exactly once at creation. Store it securely.',
+                                example: 'airvibe_a1b2c3d4...',
+                            },
+                        },
+                    },
+                ],
+            },
+            AuditEntry: {
+                type: 'object',
+                properties: {
+                    id:         { type: 'string', format: 'uuid' },
+                    source:     { type: 'string', example: 'fuota' },
+                    action:     { type: 'string', example: 'session_start' },
+                    device_eui: { type: 'string', nullable: true },
+                    details:    { type: 'object' },
+                    created_at: { type: 'string', format: 'date-time' },
+                },
+            },
+            HealthStatus: {
+                type: 'object',
+                properties: {
+                    status:  { type: 'string', enum: ['ok', 'degraded'] },
+                    uptime:  { type: 'integer', description: 'Process uptime in seconds' },
+                    checks:  {
+                        type: 'object',
+                        properties: {
+                            postgres: {
+                                type: 'object',
+                                properties: {
+                                    ok:    { type: 'boolean' },
+                                    error: { type: 'string' },
+                                },
+                            },
+                            mqtt: {
+                                type: 'object',
+                                properties: { ok: { type: 'boolean' } },
+                            },
+                            fuota: {
+                                type: 'object',
+                                properties: { activeSessions: { type: 'integer' } },
+                            },
+                        },
+                    },
+                },
+            },
+            Stats: {
+                type: 'object',
+                properties: {
+                    total_devices:      { type: 'integer' },
+                    total_messages:     { type: 'integer' },
+                    messages_last_hour: { type: 'integer' },
+                    total_waveforms:    { type: 'integer' },
+                },
+            },
+            NetworkServerStatus: {
+                type: 'object',
+                properties: {
+                    configured: { type: 'boolean', description: 'Whether the network server client has credentials configured' },
+                    type:       { type: 'string', enum: ['chirpstack', 'thingpark'] },
+                },
+            },
+            FirmwareUploadResult: {
+                type: 'object',
+                properties: {
+                    sessionId:   { type: 'string' },
+                    totalBlocks: { type: 'integer' },
+                },
+            },
+            FuotaStartResult: {
+                type: 'object',
+                properties: {
+                    started: { type: 'array', items: { type: 'string' }, description: 'DevEUIs for which a session was started' },
+                    errors:  {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                devEui: { type: 'string' },
+                                error:  { type: 'string' },
+                            },
+                        },
+                    },
+                },
+            },
+            DemoStatus: {
+                type: 'object',
+                properties: {
+                    running: { type: 'boolean' },
+                },
+            },
+        },
+        responses: {
+            Unauthorized: {
+                description: 'Missing or invalid Bearer API key',
+                content: {
+                    'application/json': {
+                        schema: { $ref: '#/components/schemas/Error' },
+                    },
+                },
+            },
+            NotFound: {
+                description: 'Resource not found',
+                content: {
+                    'application/json': {
+                        schema: { $ref: '#/components/schemas/Error' },
+                    },
+                },
+            },
+            ServiceUnavailable: {
+                description: 'One or more backend dependencies are unavailable',
+                content: {
+                    'application/json': {
+                        schema: { $ref: '#/components/schemas/HealthStatus' },
+                    },
+                },
+            },
+        },
+    },
+    paths: {
+        // ------------------------------------------------------------------ health
+        '/health': {
+            get: {
+                tags: ['Health'],
+                summary: 'Liveness and readiness check',
+                description: 'Checks Postgres connectivity, MQTT connection, and active FUOTA sessions.',
+                operationId: 'getHealth',
+                security: [],
+                responses: {
+                    200: {
+                        description: 'All checks passed',
+                        content: {
+                            'application/json': { schema: { $ref: '#/components/schemas/HealthStatus' } },
+                        },
+                    },
+                    503: { $ref: '#/components/responses/ServiceUnavailable' },
+                },
+            },
+        },
+
+        // ------------------------------------------------------------------ stats
+        '/stats': {
+            get: {
+                tags: ['Stats'],
+                summary: 'Aggregate counters',
+                operationId: 'getStats',
+                responses: {
+                    200: {
+                        description: 'Aggregate counts',
+                        content: {
+                            'application/json': { schema: { $ref: '#/components/schemas/Stats' } },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        // ------------------------------------------------------------------ waveforms
+        '/waveforms': {
+            get: {
+                tags: ['Waveforms'],
+                summary: 'List waveforms',
+                operationId: 'listWaveforms',
+                parameters: [
+                    { name: 'status',     in: 'query', schema: { type: 'string', enum: ['pending', 'complete', 'failed', 'aborted'] } },
+                    { name: 'device_eui', in: 'query', schema: { type: 'string' } },
+                    { $ref: '#/components/parameters/from' },
+                    { $ref: '#/components/parameters/to' },
+                    { $ref: '#/components/parameters/limit' },
+                    { $ref: '#/components/parameters/offset' },
+                ],
+                responses: {
+                    200: {
+                        description: 'Paginated waveform list. Total count is in the `X-Total-Count` header.',
+                        headers: {
+                            'X-Total-Count': { schema: { type: 'integer' }, description: 'Total matching records (ignoring pagination)' },
+                        },
+                        content: {
+                            'application/json': {
+                                schema: { type: 'array', items: { $ref: '#/components/schemas/Waveform' } },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        '/waveforms/{id}': {
+            get: {
+                tags: ['Waveforms'],
+                summary: 'Get waveform detail',
+                operationId: 'getWaveform',
+                parameters: [
+                    { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+                ],
+                responses: {
+                    200: {
+                        description: 'Waveform detail including received segment indices',
+                        content: {
+                            'application/json': { schema: { $ref: '#/components/schemas/Waveform' } },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    404: { $ref: '#/components/responses/NotFound' },
+                },
+            },
+        },
+
+        '/waveforms/{id}/download': {
+            get: {
+                tags: ['Waveforms'],
+                summary: 'Download decoded waveform as JSON',
+                operationId: 'downloadWaveform',
+                parameters: [
+                    { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+                ],
+                responses: {
+                    200: {
+                        description: 'Decoded waveform samples as JSON attachment',
+                        content: {
+                            'application/json': { schema: { type: 'object' } },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    404: { $ref: '#/components/responses/NotFound' },
+                },
+            },
+        },
+
+        '/waveforms/{id}/csv': {
+            get: {
+                tags: ['Waveforms'],
+                summary: 'Download decoded waveform as CSV',
+                operationId: 'downloadWaveformCsv',
+                parameters: [
+                    { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+                ],
+                responses: {
+                    200: {
+                        description: 'CSV file with per-sample acceleration data',
+                        content: {
+                            'text/csv': { schema: { type: 'string' } },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    404: { $ref: '#/components/responses/NotFound' },
+                },
+            },
+        },
+
+        // ------------------------------------------------------------------ devices
+        '/devices': {
+            get: {
+                tags: ['Devices'],
+                summary: 'List devices',
+                operationId: 'listDevices',
+                parameters: [
+                    { $ref: '#/components/parameters/limit' },
+                    { $ref: '#/components/parameters/offset' },
+                ],
+                responses: {
+                    200: {
+                        description: 'Paginated device list',
+                        headers: {
+                            'X-Total-Count': { schema: { type: 'integer' } },
+                        },
+                        content: {
+                            'application/json': {
+                                schema: { type: 'array', items: { $ref: '#/components/schemas/Device' } },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        '/devices/{devEui}': {
+            get: {
+                tags: ['Devices'],
+                summary: 'Get device',
+                operationId: 'getDevice',
+                parameters: [
+                    { name: 'devEui', in: 'path', required: true, schema: { type: 'string' }, example: 'AABBCCDDEEFF0011' },
+                ],
+                responses: {
+                    200: {
+                        description: 'Device record',
+                        content: {
+                            'application/json': { schema: { $ref: '#/components/schemas/Device' } },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    404: { $ref: '#/components/responses/NotFound' },
+                },
+            },
+        },
+
+        '/devices/{devEui}/waveforms': {
+            get: {
+                tags: ['Devices', 'Waveforms'],
+                summary: 'List waveforms for a device',
+                operationId: 'listDeviceWaveforms',
+                parameters: [
+                    { name: 'devEui', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'complete', 'failed', 'aborted'] } },
+                    { $ref: '#/components/parameters/from' },
+                    { $ref: '#/components/parameters/to' },
+                    { $ref: '#/components/parameters/limit' },
+                    { $ref: '#/components/parameters/offset' },
+                ],
+                responses: {
+                    200: {
+                        description: 'Paginated waveform list for the specified device',
+                        headers: {
+                            'X-Total-Count': { schema: { type: 'integer' } },
+                        },
+                        content: {
+                            'application/json': {
+                                schema: { type: 'array', items: { $ref: '#/components/schemas/Waveform' } },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        '/devices/{devEui}/messages': {
+            get: {
+                tags: ['Devices', 'Messages'],
+                summary: 'List messages for a device',
+                operationId: 'listDeviceMessages',
+                parameters: [
+                    { name: 'devEui', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'direction', in: 'query', schema: { type: 'string', enum: ['uplink', 'downlink'] } },
+                    { $ref: '#/components/parameters/from' },
+                    { $ref: '#/components/parameters/to' },
+                    { $ref: '#/components/parameters/limit' },
+                    { $ref: '#/components/parameters/offset' },
+                ],
+                responses: {
+                    200: {
+                        description: 'Paginated message list for the specified device',
+                        headers: {
+                            'X-Total-Count': { schema: { type: 'integer' } },
+                        },
+                        content: {
+                            'application/json': {
+                                schema: { type: 'array', items: { $ref: '#/components/schemas/Message' } },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        // ------------------------------------------------------------------ messages
+        '/messages': {
+            get: {
+                tags: ['Messages'],
+                summary: 'List all messages',
+                operationId: 'listMessages',
+                parameters: [
+                    { name: 'device_eui', in: 'query', schema: { type: 'string' } },
+                    { name: 'direction',  in: 'query', schema: { type: 'string', enum: ['uplink', 'downlink'] } },
+                    { $ref: '#/components/parameters/from' },
+                    { $ref: '#/components/parameters/to' },
+                    { $ref: '#/components/parameters/limit' },
+                    { $ref: '#/components/parameters/offset' },
+                ],
+                responses: {
+                    200: {
+                        description: 'Paginated message list',
+                        headers: {
+                            'X-Total-Count': { schema: { type: 'integer' } },
+                        },
+                        content: {
+                            'application/json': {
+                                schema: { type: 'array', items: { $ref: '#/components/schemas/Message' } },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        // ------------------------------------------------------------------ audit log
+        '/audit-log': {
+            get: {
+                tags: ['Audit Log'],
+                summary: 'List audit log entries',
+                operationId: 'listAuditLog',
+                parameters: [
+                    { name: 'source',     in: 'query', schema: { type: 'string' }, example: 'fuota' },
+                    { name: 'action',     in: 'query', schema: { type: 'string' }, example: 'session_start' },
+                    { name: 'device_eui', in: 'query', schema: { type: 'string' } },
+                    { $ref: '#/components/parameters/from' },
+                    { $ref: '#/components/parameters/to' },
+                    { $ref: '#/components/parameters/limit' },
+                    { $ref: '#/components/parameters/offset' },
+                ],
+                responses: {
+                    200: {
+                        description: 'Paginated audit log entries',
+                        headers: {
+                            'X-Total-Count': { schema: { type: 'integer' } },
+                        },
+                        content: {
+                            'application/json': {
+                                schema: { type: 'array', items: { $ref: '#/components/schemas/AuditEntry' } },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        // ------------------------------------------------------------------ FUOTA
+        '/fuota/sessions': {
+            get: {
+                tags: ['FUOTA'],
+                summary: 'List FUOTA sessions',
+                operationId: 'listFuotaSessions',
+                parameters: [
+                    { name: 'device_eui', in: 'query', schema: { type: 'string' } },
+                    { name: 'status',     in: 'query', schema: { type: 'string' } },
+                ],
+                responses: {
+                    200: {
+                        description: 'Historical sessions from DB plus currently active in-memory sessions',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        sessions: { type: 'array', items: { $ref: '#/components/schemas/FuotaSession' } },
+                                        active:   { type: 'array', items: { type: 'object' } },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        '/fuota/upload': {
+            post: {
+                tags: ['FUOTA'],
+                summary: 'Upload firmware binary',
+                operationId: 'uploadFirmware',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'multipart/form-data': {
+                            schema: {
+                                type: 'object',
+                                required: ['firmware'],
+                                properties: {
+                                    firmware: {
+                                        type: 'string',
+                                        format: 'binary',
+                                        description: 'Firmware binary file (max 10 MB)',
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: {
+                        description: 'Firmware stored — returns sessionId and block count',
+                        content: {
+                            'application/json': { schema: { $ref: '#/components/schemas/FirmwareUploadResult' } },
+                        },
+                    },
+                    400: { description: 'No file attached, empty file, or invalid filename', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+                    413: { description: 'File exceeds 10 MB limit', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        '/fuota/start': {
+            post: {
+                tags: ['FUOTA'],
+                summary: 'Start FUOTA sessions',
+                operationId: 'startFuotaSessions',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['sessionId', 'devEuis'],
+                                properties: {
+                                    sessionId:       { type: 'string' },
+                                    devEuis:         { type: 'array', items: { type: 'string' }, minItems: 1 },
+                                    blockIntervalMs: { type: 'integer', default: 3000 },
+                                    ismBand:         { type: 'string', default: 'EU868' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: {
+                        description: 'Per-device start result',
+                        content: {
+                            'application/json': { schema: { $ref: '#/components/schemas/FuotaStartResult' } },
+                        },
+                    },
+                    400: { description: 'Missing required fields', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        '/fuota/abort/{devEui}': {
+            post: {
+                tags: ['FUOTA'],
+                summary: 'Abort a running FUOTA session',
+                operationId: 'abortFuotaSession',
+                parameters: [
+                    { name: 'devEui', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                responses: {
+                    200: {
+                        description: 'Session aborted',
+                        content: {
+                            'application/json': {
+                                schema: { type: 'object', properties: { aborted: { type: 'boolean' } } },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    404: { $ref: '#/components/responses/NotFound' },
+                },
+            },
+        },
+
+        '/fuota/network-server-status': {
+            get: {
+                tags: ['FUOTA'],
+                summary: 'Network server configuration status',
+                description: 'Returns whether the network server client has credentials configured and which type is active.',
+                operationId: 'getFuotaNetworkServerStatus',
+                responses: {
+                    200: {
+                        description: 'Network server status',
+                        content: {
+                            'application/json': { schema: { $ref: '#/components/schemas/NetworkServerStatus' } },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        '/fuota/config': {
+            put: {
+                tags: ['FUOTA'],
+                summary: 'Update FUOTA runtime configuration',
+                description: 'Updates live configuration for the running FUOTA manager. Changes take effect immediately for any in-progress or future verify/resend cycles — no restart required.',
+                operationId: 'putFuotaConfig',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['maxVerifyRetries'],
+                                properties: {
+                                    maxVerifyRetries: {
+                                        type: 'integer',
+                                        minimum: 1,
+                                        description: 'Maximum number of Verify Upgrade commands the session may send before failing. Shared budget for no-response retries and normal verify→resend→verify cycles.',
+                                        example: 100,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: {
+                        description: 'Configuration applied',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        maxVerifyRetries: { type: 'integer', example: 100 },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    400: { $ref: '#/components/responses/BadRequest' },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        // ------------------------------------------------------------------ API keys
+        '/keys': {
+            post: {
+                tags: ['API Keys'],
+                summary: 'Create API key',
+                description: 'Returns the raw key exactly once. Store it securely — it cannot be retrieved again.',
+                operationId: 'createApiKey',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['label'],
+                                properties: {
+                                    label: { type: 'string', maxLength: 255 },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    201: {
+                        description: 'Key created — raw key shown once',
+                        content: {
+                            'application/json': { schema: { $ref: '#/components/schemas/ApiKeyCreated' } },
+                        },
+                    },
+                    400: { description: 'Invalid label', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+            get: {
+                tags: ['API Keys'],
+                summary: 'List API keys',
+                description: 'Returns metadata only — never the key hash or raw key.',
+                operationId: 'listApiKeys',
+                responses: {
+                    200: {
+                        description: 'Array of key metadata',
+                        content: {
+                            'application/json': {
+                                schema: { type: 'array', items: { $ref: '#/components/schemas/ApiKey' } },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        '/keys/{id}': {
+            delete: {
+                tags: ['API Keys'],
+                summary: 'Revoke API key',
+                operationId: 'revokeApiKey',
+                parameters: [
+                    { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+                ],
+                responses: {
+                    204: { description: 'Key revoked' },
+                    400: { description: 'Invalid UUID', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    404: { $ref: '#/components/responses/NotFound' },
+                },
+            },
+        },
+
+        // ------------------------------------------------------------------ certificates
+        '/certs/init': {
+            post: {
+                tags: ['Certificates'],
+                summary: 'Generate CA and server certificate',
+                description: 'Creates the CA and Mosquitto server certificate used for MQTT TLS.',
+                operationId: 'initCerts',
+                responses: {
+                    200: {
+                        description: 'Certificates generated',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        success: { type: 'boolean' },
+                                        message: { type: 'string' },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        '/certs/client': {
+            post: {
+                tags: ['Certificates'],
+                summary: 'Generate client certificate',
+                description: 'Creates a client certificate + private key for an MQTT client to connect with mTLS.',
+                operationId: 'createClientCert',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['clientId'],
+                                properties: {
+                                    clientId: { type: 'string', maxLength: 253, pattern: '^[a-zA-Z0-9._-]+$' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: {
+                        description: 'Client certificate and private key',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        cert: { type: 'string' },
+                                        key:  { type: 'string' },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    400: { description: 'Invalid clientId', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        '/certs/download/{filename}': {
+            get: {
+                tags: ['Certificates'],
+                summary: 'Download certificate file',
+                operationId: 'downloadCert',
+                parameters: [
+                    { name: 'filename', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-zA-Z0-9._-]+$' } },
+                ],
+                responses: {
+                    200: {
+                        description: 'Certificate file download',
+                        content: {
+                            'application/octet-stream': { schema: { type: 'string', format: 'binary' } },
+                        },
+                    },
+                    400: { description: 'Invalid filename', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    404: { $ref: '#/components/responses/NotFound' },
+                },
+            },
+        },
+
+        // ------------------------------------------------------------------ demo
+        '/demo/start': {
+            post: {
+                tags: ['Demo'],
+                summary: 'Start demo simulator',
+                operationId: 'startDemo',
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    duration: {
+                                        type: 'number',
+                                        minimum: 1,
+                                        maximum: 30,
+                                        default: 5,
+                                        description: 'Simulation duration in minutes',
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: { description: 'Demo started', content: { 'application/json': { schema: { type: 'object' } } } },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    409: { description: 'Demo already running', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+                },
+            },
+        },
+
+        '/demo/stop': {
+            post: {
+                tags: ['Demo'],
+                summary: 'Stop demo simulator',
+                operationId: 'stopDemo',
+                responses: {
+                    200: { description: 'Demo stopped', content: { 'application/json': { schema: { type: 'object' } } } },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    409: { description: 'Demo not running', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+                },
+            },
+        },
+
+        '/demo/status': {
+            get: {
+                tags: ['Demo'],
+                summary: 'Demo simulator status',
+                operationId: 'getDemoStatus',
+                responses: {
+                    200: {
+                        description: 'Current demo status',
+                        content: {
+                            'application/json': { schema: { $ref: '#/components/schemas/DemoStatus' } },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                },
+            },
+        },
+
+        '/demo/reset': {
+            post: {
+                tags: ['Demo'],
+                summary: 'Reset all demo data',
+                description: 'Truncates waveforms, messages, and devices. Demo must be stopped first.',
+                operationId: 'resetDemo',
+                responses: {
+                    200: {
+                        description: 'All data cleared',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        success: { type: 'boolean' },
+                                        message: { type: 'string' },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    409: { description: 'Demo is running — stop it first', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+                },
+            },
+        },
+    },
+};
+
+module.exports = spec;

@@ -3,9 +3,11 @@
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const { Server } = require('socket.io');
+const multer = require('multer');
 
 const { pool } = require('./db');
 const mqttClient = require('./mqttClient');
@@ -17,6 +19,8 @@ const auditLogger = require('./services/AuditLogger');
 const apiKeyManager = require('./services/ApiKeyManager');
 const { requireApiKey } = require('./middleware/auth');
 const { deinterleaveWaveform } = require('./utils/deinterleave');
+const swaggerUi = require('swagger-ui-express');
+const openApiSpec = require('./openapi');
 
 // ---------------------------------------------------------------------------
 // Express + Socket.io setup
@@ -113,6 +117,20 @@ async function sendPagedList({ table, select, orderBy, where, params, limit, off
     res.setHeader('X-Total-Count', total);
     res.json(dataResult.rows);
 }
+
+// ---------------------------------------------------------------------------
+// Multer — disk-storage upload (firmware binary)
+// ---------------------------------------------------------------------------
+
+const upload = multer({
+    preservePath: true, // keep path separators in originalname so route can detect traversal
+    storage: multer.diskStorage({
+        destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+        // Strip path from temp filename — never let a client-supplied path escape tmpdir
+        filename: (_req, file, cb) => cb(null, `fuota-${Date.now()}-${path.basename(file.originalname) || 'upload'}`),
+    }),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+});
 
 // ---------------------------------------------------------------------------
 // Routes — root
@@ -558,27 +576,37 @@ app.post('/api/demo/reset', async (req, res) => {
 // Routes — FUOTA
 // ---------------------------------------------------------------------------
 
-app.post('/api/fuota/upload', (req, res) => {
-    const { name, data } = req.body;
-    if (!name || !data) {
-        return res.status(400).json({ error: 'name and data (base64) are required' });
+app.post('/api/fuota/upload',
+    (req, res, next) => {
+        upload.single('firmware')(req, res, (err) => {
+            if (err?.code === 'LIMIT_FILE_SIZE')
+                return res.status(413).json({ error: 'File too large (max 10 MB)' });
+            if (err) return res.status(400).json({ error: err.message });
+            next();
+        });
+    },
+    async (req, res) => {
+        if (!req.file)
+            return res.status(400).json({ error: 'No firmware file attached (field name: firmware)' });
+
+        const tmpPath = req.file.path;
+        try {
+            const name = path.basename(req.file.originalname);
+            if (name !== req.file.originalname || !/^[a-zA-Z0-9._\-\s]+$/.test(name) || name.length > 255)
+                return res.status(400).json({ error: 'Invalid firmware filename' });
+
+            const buf = await fs.promises.readFile(tmpPath);
+            if (buf.length === 0)
+                return res.status(400).json({ error: 'Empty firmware file' });
+
+            const result = fuotaManager.storeFirmware(name, buf);
+            auditLogger.log('fuota', 'firmware_upload', null, { name, size: buf.length, totalBlocks: result.totalBlocks });
+            res.json(result);
+        } finally {
+            fs.unlink(tmpPath, () => {}); // fire-and-forget temp file cleanup
+        }
     }
-    if (!/^[a-zA-Z0-9._\-\s]+$/.test(name) || name.length > 255) {
-        return res.status(400).json({ error: 'Invalid firmware name' });
-    }
-    let buf;
-    try {
-        buf = Buffer.from(data, 'base64');
-    } catch {
-        return res.status(400).json({ error: 'data must be valid base64' });
-    }
-    if (buf.length === 0) {
-        return res.status(400).json({ error: 'Empty firmware file' });
-    }
-    const result = fuotaManager.storeFirmware(name, buf);
-    auditLogger.log('fuota', 'firmware_upload', null, { name, size: buf.length, totalBlocks: result.totalBlocks });
-    res.json(result);
-});
+);
 
 app.post('/api/fuota/start', async (req, res) => {
     const { sessionId, devEuis, blockIntervalMs, ismBand } = req.body;
@@ -645,6 +673,15 @@ app.get('/api/fuota/network-server-status', (req, res) => {
     res.json({ configured: networkClient.configured, type: networkClient.type });
 });
 
+app.put('/api/fuota/config', (req, res) => {
+    const { maxVerifyRetries } = req.body || {};
+    if (!Number.isInteger(maxVerifyRetries) || maxVerifyRetries < 1) {
+        return res.status(400).json({ error: 'maxVerifyRetries must be a positive integer' });
+    }
+    fuotaManager.setVerifyMaxRetries(maxVerifyRetries);
+    res.json({ maxVerifyRetries });
+});
+
 // ---------------------------------------------------------------------------
 // Routes — API key management
 // ---------------------------------------------------------------------------
@@ -693,6 +730,13 @@ app.delete('/api/keys/:id', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// ---------------------------------------------------------------------------
+// Routes — API documentation
+// ---------------------------------------------------------------------------
+
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec));
+app.get('/api/openapi.json', (req, res) => res.json(openApiSpec));
 
 // ---------------------------------------------------------------------------
 // Socket.io
