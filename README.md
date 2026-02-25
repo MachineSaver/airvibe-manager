@@ -32,12 +32,32 @@ Read this section before anything else — picking the wrong mode means redoing 
 
 | Feature | Description |
 |---|---|
-| **MQTT Monitor** | Real-time view of all MQTT traffic — uplinks, downlinks, gateway stats |
+| **MQTT Monitor** | Real-time MQTT message feed with DevEUI/direction filtering, embedded downlink builder (collapsible), and scroll anchoring |
 | **Waveform Manager** | Captures, assembles, and exports AirVibe waveform captures (JSON + CSV) |
 | **FUOTA Manager** | Firmware-over-the-air updates with block transmission, verify/retry loop, and missed-block map. Class A↔C auto-switching via ChirpStack API (on-premise) or ThingPark DX Core API (cloud, optional credentials required). |
-| **Certificate Manager** | Generates CA, server, and client X.509 certificates for MQTT TLS |
+| **Historian** | Server-side message search with DevEUI, direction, and date-range filters; paginated results |
+| **Dev Tools** | Three sub-tabs: Sensor Simulator (demo mode), Waveform Tracker (hex packet decoder/assembler), and Certificate Manager (X.509 cert generation for MQTT TLS) |
 | **ChirpStack UI** | *(On-premise only)* Full LoRaWAN network management: gateways, devices, applications, live frame log |
-| **Demo Mode** | Built-in simulator for testing the full UI without real hardware |
+
+---
+
+## REST API
+
+AirVibe exposes a full REST API documented with OpenAPI 3.1.
+
+| Path | Description |
+|---|---|
+| `GET /api/docs/` | Interactive Swagger UI — browse and test all 28 endpoints in the browser |
+| `GET /api/openapi.json` | Raw OpenAPI 3.1 spec (live, always current) |
+
+A static copy of the spec is kept at [`openapi.json`](openapi.json) in the repository root and updated on every spec change. It can be consumed directly by code generators:
+
+```bash
+# Generate a Python client from the static spec (requires openapi-generator-cli)
+openapi-generator-cli generate -i openapi.json -g python -o ./airvibe-client
+```
+
+Authentication is controlled by the `API_KEYS_ENABLED` environment variable. When enabled, all endpoints except `/`, `/api/health`, `/api/openapi.json`, and `/api/docs/` require an `Authorization: Bearer <key>` header. Create your first key by setting `BOOTSTRAP_API_KEY` in `.env`, then manage additional keys via `POST /api/keys`.
 
 ---
 
@@ -340,7 +360,7 @@ Confirm your AirVibe DevEUIs and AppKeys are registered in the ThingPark portal 
 
 ### 3. Generate MQTT TLS certificates
 
-Open the AirVibe UI at `https://airvibe.yourcompany.com` and go to the **Certificate Management** tab. Click **Generate Certificates**. Once generated, download:
+Open the AirVibe UI at `https://airvibe.yourcompany.com`, go to the **Dev Tools** tab, and click **Certificates**. Click **Generate & Sign**. Once generated, download:
 
 - **CA Certificate** (`ca.crt`) — the certificate authority that signed the server cert
 - **Client Certificate** (`client.crt`) — ThingPark will present this to authenticate
@@ -599,6 +619,7 @@ Then run the backend and frontend with `npm run dev` as above.
 │   └── entrypoint.sh               # Generates Caddyfile at runtime from NETWORK_SERVER + DOMAIN
 ├── docker-compose.yml              # 8-service stack (profiles: full / app-only)
 ├── .env.example                    # Unified template — covers both deployment modes
+├── openapi.json                        # Static OpenAPI 3.1 spec (generated — do not edit by hand)
 ├── scripts/
 │   └── smoke-test.sh               # End-to-end profile smoke tests (full, app-only, ThingPark)
 ├── chirpstack/
@@ -607,6 +628,8 @@ Then run the backend and frontend with `npm run dev` as above.
 │   ├── region_eu868.toml           # EU868 channel plan
 │   └── region_us915_0.toml         # US915 sub-band 2 channel plan
 ├── backend/
+│   ├── scripts/
+│   │   └── export-openapi.js       # Regenerates openapi.json from src/openapi.js
 │   ├── test/
 │   │   ├── adapter.test.js         # Jest unit tests — ChirpStack + ThingPark adapters
 │   │   └── waveform.test.js        # Jest unit tests — WaveformManager
@@ -674,7 +697,7 @@ docker logs mqtt-manager-backend | grep ChirpStack
 Default: `admin` / `admin`. To reset: `docker compose exec chirpstack /usr/bin/chirpstack user set-password --username admin --password newpassword`
 
 **Mosquitto port 8883 (TLS) fails to start**
-Generate certificates via the AirVibe UI (Certificate Management tab) first, then `docker compose restart mqtt-broker`.
+Generate certificates via the AirVibe UI (Dev Tools → Certificates) first, then `docker compose restart mqtt-broker`.
 
 ---
 
