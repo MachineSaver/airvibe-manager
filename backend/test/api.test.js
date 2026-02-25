@@ -329,6 +329,7 @@ describe('GET /api/fuota/sessions', () => {
         expect(params).toContain(DEV_EUI);
         expect(params).toContain('complete');
     });
+
 });
 
 // ---------------------------------------------------------------------------

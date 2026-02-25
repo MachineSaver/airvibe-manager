@@ -251,6 +251,7 @@ class FUOTAManager {
                     blockIntervalMs: intervalMs,
                     state:           'initializing',
                     blocksSent:      row.blocks_sent || 0,
+                    blocksSentAtStart: row.blocks_sent || 0,
                     verifyAttempts:  row.verify_attempts || 0,
                     lastMissedCount: 0,
                     lastMissedBlocks:[],
@@ -417,6 +418,7 @@ class FUOTAManager {
             blockIntervalMs: intervalMs,
             state: 'initializing',
             blocksSent: 0,
+            blocksSentAtStart: 0,
             verifyAttempts: 0,
             lastMissedCount: 0,
             lastMissedBlocks: [],
@@ -904,6 +906,7 @@ class FUOTAManager {
                   blockIntervalMs: session.blockIntervalMs,
                   classCConfigured: session.classCConfigured,
                   startedAt: session.startedAt,
+                  blocksSentAtStart: session.blocksSentAtStart ?? 0,
               }
             : { devEui, state: 'idle' };
         this.io.emit('fuota:progress', payload);
@@ -970,7 +973,8 @@ class FUOTAManager {
                 error: s.error,
                 blockIntervalMs: s.blockIntervalMs,
                 classCConfigured: s.classCConfigured,
-                startedAt: new Date(s.startedAt).toISOString(),
+                startedAt: s.startedAt,
+                blocksSentAtStart: s.blocksSentAtStart ?? 0,
             });
         }
         return out;

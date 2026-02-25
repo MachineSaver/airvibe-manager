@@ -40,6 +40,7 @@ interface DeviceProgress {
   blockIntervalMs?: number;
   classCConfigured?: boolean;
   startedAt?: number;
+  blocksSentAtStart?: number;
 }
 
 interface Device {
@@ -179,20 +180,27 @@ function formatRemainingEta(remaining: number, blockIntervalMs: number): string 
 }
 
 /**
- * ETA using observed throughput when enough blocks have been sent (≥10),
- * falling back to the configured interval estimate before then.
+ * ETA using observed throughput when enough blocks have been sent in this
+ * session run (≥10), falling back to the configured interval estimate before then.
+ *
+ * blocksSentAtStart is the blocksSent value at session creation (0 for a new
+ * session; row.blocks_sent for a recovered/resumed session). Only blocks sent
+ * since session start are counted so that a mid-session resume does not inflate
+ * the throughput by attributing pre-existing blocks to the current elapsed time.
  */
 function formatObservedEta(
   remaining: number,
   blocksSent: number,
   startedAt: number | undefined,
   blockIntervalMs: number | undefined,
+  blocksSentAtStart: number = 0,
 ): string | null {
   if (remaining <= 0) return null;
-  if (startedAt && blocksSent >= 10) {
+  const blocksThisRun = blocksSent - blocksSentAtStart;
+  if (startedAt && blocksThisRun >= 10) {
     const elapsedMs = Date.now() - startedAt;
     if (elapsedMs > 0) {
-      const msPerBlock = elapsedMs / blocksSent;
+      const msPerBlock = elapsedMs / blocksThisRun;
       return formatEta(remaining, msPerBlock);
     }
   }
@@ -834,7 +842,7 @@ function DeviceProgressCard({
   const {
     devEui, state, blocksSent, totalBlocks, verifyAttempts,
     lastMissedCount, lastMissedBlocks, error, firmwareName, blockIntervalMs, classCConfigured,
-    startedAt,
+    startedAt, blocksSentAtStart,
   } = progress;
   const pct = totalBlocks > 0 ? Math.min(100, Math.round((blocksSent / totalBlocks) * 100)) : 0;
   const isTerminal = isTerminalState(state);
@@ -994,7 +1002,7 @@ function DeviceProgressCard({
             <span className="text-amber-400">Re-sending {lastMissedCount} missed block{lastMissedCount !== 1 ? 's' : ''}…</span>
           )}
           {state === 'sending_blocks' && remaining > 0 && (() => {
-            const eta = formatObservedEta(remaining, blocksSent, startedAt, blockIntervalMs);
+            const eta = formatObservedEta(remaining, blocksSent, startedAt, blockIntervalMs, blocksSentAtStart);
             return eta ? (
               <span>ETA: <span className="text-gray-200 font-mono">{eta}</span> remaining</span>
             ) : null;

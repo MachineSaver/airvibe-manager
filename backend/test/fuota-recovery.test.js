@@ -174,3 +174,90 @@ describe('FUOTAManager startup recovery', () => {
         expect(fuotaManager.activeSessions.has('DEAD000000000002')).toBe(true);
     });
 });
+
+// ---------------------------------------------------------------------------
+// FUOTAManager.getActiveSessions() — ETA data contract
+// ---------------------------------------------------------------------------
+
+describe('FUOTAManager.getActiveSessions() ETA fields', () => {
+    it('returns startedAt as a ms-epoch number, not an ISO string', () => {
+        // Direct manipulation: plant a session in activeSessions and verify the
+        // shape of what getActiveSessions() serialises for the REST response.
+        const TS = 1740504126238; // arbitrary ms epoch
+        fuotaManager.activeSessions.set('DEAD000000000001', {
+            devEui: 'DEAD000000000001',
+            state: 'sending_blocks',
+            firmwareName: 'fw.bin',
+            firmwareSize: 49,
+            blocks: [],
+            blocksSent: 50,
+            blocksSentAtStart: 0,
+            totalBlocks: 3877,
+            blockIntervalMs: 21000,
+            verifyAttempts: 0,
+            lastMissedCount: 0,
+            lastMissedBlocks: [],
+            error: null,
+            aborted: false,
+            classCConfigured: false,
+            originalClass: null,
+            _ackTimeout: null,
+            _verifyTimeout: null,
+            _sessionTimeout: null,
+            startedAt: TS,
+        });
+
+        const sessions = fuotaManager.getActiveSessions();
+        expect(sessions).toHaveLength(1);
+        // Must be a number so Date.now() - startedAt works in the frontend
+        expect(typeof sessions[0].startedAt).toBe('number');
+        expect(sessions[0].startedAt).toBe(TS);
+    });
+
+    it('includes blocksSentAtStart = 0 for a fresh session', () => {
+        fuotaManager.activeSessions.set('DEAD000000000001', {
+            devEui: 'DEAD000000000001',
+            state: 'sending_blocks',
+            firmwareName: 'fw.bin',
+            firmwareSize: 49,
+            blocks: [],
+            blocksSent: 50,
+            blocksSentAtStart: 0,
+            totalBlocks: 3877,
+            blockIntervalMs: 21000,
+            verifyAttempts: 0,
+            lastMissedCount: 0,
+            lastMissedBlocks: [],
+            error: null,
+            aborted: false,
+            classCConfigured: false,
+            originalClass: null,
+            _ackTimeout: null,
+            _verifyTimeout: null,
+            _sessionTimeout: null,
+            startedAt: Date.now(),
+        });
+
+        const sessions = fuotaManager.getActiveSessions();
+        expect(typeof sessions[0].blocksSentAtStart).toBe('number');
+        expect(sessions[0].blocksSentAtStart).toBe(0);
+    });
+
+    it('includes blocksSentAtStart = resume offset for a recovered session', async () => {
+        const partialRow = {
+            ...makeRow('DEAD000000000001'),
+            firmware_size: 147,
+            total_blocks: 3,
+            blocks_sent: 2713,
+            firmware_data: Buffer.alloc(147),
+        };
+        pool.query.mockResolvedValueOnce({ rows: [partialRow] });
+        mqttClient.publish.mockReturnValue(undefined);
+
+        await fuotaManager.init(mockIo);
+
+        const sessions = fuotaManager.getActiveSessions();
+        expect(sessions).toHaveLength(1);
+        expect(sessions[0].blocksSentAtStart).toBe(2713);
+    });
+});
