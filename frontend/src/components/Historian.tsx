@@ -182,7 +182,7 @@ export default function Historian() {
                       <td className="px-3 py-2 font-mono text-gray-400 text-[10px] max-w-[200px] truncate" title={msg.topic}>
                         {msg.topic}
                       </td>
-                      <td className="px-3 py-2 font-mono text-gray-500 text-[10px] max-w-[300px] truncate" title={msg.payload}>
+                      <td className="px-3 py-2 font-mono text-gray-500 text-[10px] max-w-[300px] truncate" title={typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload)}>
                         {truncate(msg.payload)}
                       </td>
                     </tr>
