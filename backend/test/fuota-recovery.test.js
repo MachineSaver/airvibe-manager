@@ -176,6 +176,109 @@ describe('FUOTAManager startup recovery', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Bug fixes: verify-state guard (Bug A) and post-resend delay (Bug B)
+// ---------------------------------------------------------------------------
+
+describe('FUOTAManager verify-phase bug fixes', () => {
+    /** Build a minimal session for direct planting into activeSessions. */
+    function makeVerifySession(devEui, state, verifyAttempts = 1) {
+        return {
+            devEui,
+            dbId: null,                          // skip _updateDb DB round-trips
+            state,
+            blocks: [Buffer.alloc(49)],           // 1 block at index 0
+            blocksSent: 1,
+            blocksSentAtStart: 0,
+            totalBlocks: 1,
+            blockIntervalMs: 10000,
+            verifyAttempts,
+            lastMissedCount: 0,
+            lastMissedBlocks: [],
+            firmwareName: 'fw.bin',
+            firmwareSize: 49,
+            error: null,
+            aborted: false,
+            classCConfigured: false,
+            originalClass: null,
+            _ackTimeout: null,
+            _verifyTimeout: null,
+            _sessionTimeout: null,
+            startedAt: Date.now(),
+        };
+    }
+
+    /** 0x11 payload: missedFlag=0, count=1, missed block#0 (LE 16-bit). */
+    const VERIFY_UPLINK_1_MISSED = Buffer.from([0x11, 0x00, 0x01, 0x00, 0x00]);
+
+    function makeUplink(devEui, payloadBuf) {
+        return {
+            topic: `mqtt/things/${devEui}/uplink`,
+            msg: JSON.stringify({ DevEUI_uplink: { payload_hex: payloadBuf.toString('hex') } }),
+        };
+    }
+
+    beforeEach(() => { fuotaManager.io = mockIo; });
+    afterEach(() => { fuotaManager.io = null; });
+
+    // Bug A: _handleVerifyUplink must only accept 'verifying', not 'resending'
+    it('Bug A: ignores 0x11 uplink when session is already in resending state', async () => {
+        const DEV = 'DEAD000000000010';
+        fuotaManager.activeSessions.set(DEV, makeVerifySession(DEV, 'resending'));
+
+        const { topic, msg } = makeUplink(DEV, VERIFY_UPLINK_1_MISSED);
+        fuotaManager.processPacket(topic, msg);
+
+        // Flush microtasks — enough for any triggered async work to reach its first suspension
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // No FPort 25 block should be re-sent (a concurrent resend must not be spawned)
+        const port25Calls = mqttClient.publish.mock.calls.filter(
+            ([, m]) => JSON.parse(m).DevEUI_downlink.FPort === 25
+        );
+        expect(port25Calls).toHaveLength(0);
+    });
+
+    // Bug B: _resendMissedBlocks must delay FUOTA_RESEND_VERIFY_DELAY_MS before re-verifying
+    it('Bug B: sends FPort 25 resend block immediately but delays FPort 22 verify by FUOTA_RESEND_VERIFY_DELAY_MS', async () => {
+        const DEV = 'DEAD000000000011';
+        // verifyAttempts=1 so _sendVerify skips its own FUOTA_VERIFY_PRE_DELAY_MS pre-delay
+        fuotaManager.activeSessions.set(DEV, makeVerifySession(DEV, 'verifying', 1));
+
+        const { topic, msg } = makeUplink(DEV, VERIFY_UPLINK_1_MISSED);
+        fuotaManager.processPacket(topic, msg);
+
+        // Let _resendMissedBlocks run through _waitForMqtt and publish the FPort 25 block,
+        // then pause at the resend-verify delay sleep.
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // The resend block (FPort 25) must have been sent already
+        const port25Calls = mqttClient.publish.mock.calls.filter(
+            ([, m]) => JSON.parse(m).DevEUI_downlink.FPort === 25
+        );
+        expect(port25Calls).toHaveLength(1);
+
+        // FPort 22 verify must NOT yet be sent (blocked by the resend-verify delay)
+        const port22Before = mqttClient.publish.mock.calls.filter(
+            ([, m]) => JSON.parse(m).DevEUI_downlink.FPort === 22
+        );
+        expect(port22Before).toHaveLength(0);
+
+        // Advance past the default 30 s resend-verify delay
+        jest.advanceTimersByTime(30000);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // Now FPort 22 verify must be published
+        const port22After = mqttClient.publish.mock.calls.filter(
+            ([, m]) => JSON.parse(m).DevEUI_downlink.FPort === 22
+        );
+        expect(port22After).toHaveLength(1);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // FUOTAManager.getActiveSessions() — ETA data contract
 // ---------------------------------------------------------------------------
 

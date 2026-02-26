@@ -26,7 +26,11 @@ const MAX_INTERVAL_MS = 300000;
 // On no-response, retries up to FUOTA_VERIFY_MAX_RETRIES times (total), dividing
 // FUOTA_VERIFY_TIMEOUT_MS evenly across attempts.
 const FUOTA_VERIFY_MAX_RETRIES  = parseInt(process.env.FUOTA_VERIFY_MAX_RETRIES)  || 10;
-const FUOTA_VERIFY_PRE_DELAY_MS = parseInt(process.env.FUOTA_VERIFY_PRE_DELAY_MS) || 300000; // 5 min
+const FUOTA_VERIFY_PRE_DELAY_MS    = parseInt(process.env.FUOTA_VERIFY_PRE_DELAY_MS)    || 300000; // 5 min
+// After resending a missed-block batch, wait this long before issuing the next
+// 0x0600 verify command so the device has time to finish writing the blocks to
+// flash before it checks receipt (default 30 s).
+const FUOTA_RESEND_VERIFY_DELAY_MS = parseInt(process.env.FUOTA_RESEND_VERIFY_DELAY_MS) || 30000;  // 30 s
 
 // Firmware store TTL (1 hour) – uploaded binaries are kept in memory this long
 const FIRMWARE_STORE_TTL_MS = 3600000;
@@ -669,7 +673,7 @@ class FUOTAManager {
     _handleVerifyUplink(devEui, buf) {
         const session = this.activeSessions.get(devEui);
         if (!session) return;
-        if (session.state !== 'verifying' && session.state !== 'resending') return;
+        if (session.state !== 'verifying') return;
 
         clearTimeout(session._verifyTimeout);
         session._verifyTimeout = null;
@@ -731,6 +735,11 @@ class FUOTAManager {
 
         if (session.aborted) return;
         if (this.activeSessions.get(devEui) !== session) return;
+
+        // Give the device time to write the resent blocks to flash before we
+        // ask it to verify receipt again.
+        await sleep(FUOTA_RESEND_VERIFY_DELAY_MS);
+        if (session.aborted || this.activeSessions.get(devEui) !== session) return;
 
         await this._sendVerify(session);
     }
@@ -822,7 +831,8 @@ class FUOTAManager {
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 await networkClient.restoreClass(devEui, originalClass);
-                console.log(`FUOTAManager: ${devEui} restored to ${originalClass} (attempt ${attempt}/${maxAttempts})`);
+                const classDesc = typeof originalClass === 'string' ? originalClass : JSON.stringify(originalClass);
+                console.log(`FUOTAManager: ${devEui} restored to ${classDesc} (attempt ${attempt}/${maxAttempts})`);
                 auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass, attempt });
                 return;
             } catch (err) {
