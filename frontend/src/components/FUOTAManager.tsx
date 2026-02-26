@@ -986,9 +986,14 @@ function DeviceProgressCard({
         </div>
       )}
 
-      {/* Missed blocks map */}
+      {/* Missed blocks map — populated once device responds with 0x11 */}
       {lastMissedBlocks && lastMissedBlocks.length > 0 && totalBlocks > 0 && state !== 'complete' && (
         <MissedBlocksMap totalBlocks={totalBlocks} missedBlocks={lastMissedBlocks} />
+      )}
+      {(state === 'verifying' || state === 'resending') && (!lastMissedBlocks || lastMissedBlocks.length === 0) && (
+        <p className="text-[11px] text-gray-600 italic">
+          Missed block map will appear here once the device responds with a 0x11 uplink.
+        </p>
       )}
 
       {/* Error */}
@@ -1003,7 +1008,9 @@ function DeviceProgressCard({
             <span className="text-blue-400">Waiting for 0x10 ACK…</span>
           )}
           {state === 'verifying' && (
-            <span className="text-yellow-400">Waiting for 0x11 verify uplink…</span>
+            <span className="text-yellow-400">
+              Waiting for 0x11 verify uplink{verifyAttempts > 0 ? ` (attempt ${verifyAttempts})` : ''}…
+            </span>
           )}
           {state === 'resending' && lastMissedCount > 0 && (
             <span className="text-amber-400">Re-sending {lastMissedCount} missed block{lastMissedCount !== 1 ? 's' : ''}…</span>
