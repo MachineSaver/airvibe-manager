@@ -7,7 +7,7 @@ interface HistorianMessage {
   device_eui: string;
   topic: string;
   direction: string;
-  payload: string;
+  payload: unknown;
   received_at: string;
 }
 
@@ -56,8 +56,10 @@ export default function Historian() {
     search(0);
   };
 
-  const truncate = (s: string, max = 80) =>
-    s.length > max ? s.slice(0, max) + '…' : s;
+  const truncate = (s: unknown, max = 80) => {
+    const str = typeof s === 'string' ? s : JSON.stringify(s);
+    return str.length > max ? str.slice(0, max) + '…' : str;
+  };
 
   const totalPages = Math.ceil(total / limit);
   const currentPage = Math.floor(offset / limit) + 1;
