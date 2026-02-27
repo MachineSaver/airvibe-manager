@@ -1040,7 +1040,8 @@ const BLOCK_COLORS = {
 
 type BlockState = keyof typeof BLOCK_COLORS;
 
-const BLOCK_MAP_CELLS = 200;
+// Number of buckets used only for the CSS gradient bar (3877 stops would be huge)
+const GRADIENT_BUCKETS = 200;
 
 /** Binary-search range membership — confirmedRanges must be sorted. */
 function inAnyRange(b: number, ranges: [number, number][]): boolean {
@@ -1084,10 +1085,11 @@ function BlockStatusMap({
     state === 'resending' ? lastMissedBlocks.slice(blocksResentSoFar) : []
   );
 
-  const cellCount = Math.min(totalBlocks, BLOCK_MAP_CELLS);
-  const cells: BlockState[] = Array.from({ length: cellCount }, (_, i) => {
-    const lo = Math.floor(i * totalBlocks / cellCount);
-    const hi = Math.floor((i + 1) * totalBlocks / cellCount);
+  // Gradient bar: bucketed to GRADIENT_BUCKETS stops for CSS performance
+  const gradientBucketCount = Math.min(totalBlocks, GRADIENT_BUCKETS);
+  const gradientCells: BlockState[] = Array.from({ length: gradientBucketCount }, (_, i) => {
+    const lo = Math.floor(i * totalBlocks / gradientBucketCount);
+    const hi = Math.floor((i + 1) * totalBlocks / gradientBucketCount);
     let hasMissing = false, hasSent = false, hasConfirmed = false;
     for (let b = lo; b < hi; b++) {
       if (pendingMissedSet.has(b)) { hasMissing = true; break; }
@@ -1097,6 +1099,14 @@ function BlockStatusMap({
     if (hasMissing) return 'missing';
     if (hasSent)    return 'sent';
     if (hasConfirmed) return 'confirmed';
+    return 'unsent';
+  });
+
+  // Expanded grid: one circle per block (1:1)
+  const gridCells: BlockState[] = Array.from({ length: totalBlocks }, (_, i) => {
+    if (pendingMissedSet.has(i)) return 'missing';
+    if (inAnyRange(i, confirmedRanges)) return 'confirmed';
+    if (i < blocksSent) return 'sent';
     return 'unsent';
   });
 
@@ -1154,9 +1164,9 @@ function BlockStatusMap({
           <div
             className="w-full h-1.5 rounded-full"
             style={{
-              background: cells.length > 0
-                ? `linear-gradient(to right, ${cells.map((s, i) => {
-                    const n = cells.length;
+              background: gradientCells.length > 0
+                ? `linear-gradient(to right, ${gradientCells.map((s, i) => {
+                    const n = gradientCells.length;
                     const start = (i / n * 100).toFixed(2);
                     const end = ((i + 1) / n * 100).toFixed(2);
                     const bg = BLOCK_COLORS[s].bg === 'transparent' ? '#1e293b' : BLOCK_COLORS[s].bg;
@@ -1175,19 +1185,19 @@ function BlockStatusMap({
         </svg>
       </div>
 
-      {/* Expanded circle grid */}
+      {/* Expanded circle grid — one circle per block (1:1) */}
       {expanded && (
         <div className="mt-1">
-          <div className="flex flex-wrap gap-1 p-3 bg-[#1e1e1e] rounded-lg border border-[#333]">
-            {cells.map((s, i) => (
+          <div className="max-h-72 overflow-y-auto flex flex-wrap gap-0.5 p-3 bg-[#1e1e1e] rounded-lg border border-[#333]">
+            {gridCells.map((s, i) => (
               <div
                 key={i}
-                className="w-3 h-3 rounded-full transition-colors duration-200 flex-shrink-0"
+                className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{
                   background: BLOCK_COLORS[s].bg === 'transparent' ? 'transparent' : BLOCK_COLORS[s].bg,
-                  border: `1.5px solid ${BLOCK_COLORS[s].border}`,
+                  border: `1px solid ${BLOCK_COLORS[s].border}`,
                 }}
-                title={`Blocks ~${Math.floor(i * totalBlocks / cellCount)}–${Math.floor((i + 1) * totalBlocks / cellCount) - 1}: ${BLOCK_COLORS[s].label}`}
+                title={`Block ${i}: ${BLOCK_COLORS[s].label}`}
               />
             ))}
           </div>
