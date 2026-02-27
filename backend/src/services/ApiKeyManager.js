@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { pool } = require('../db');
+const log = require('../logger').child({ module: 'ApiKeyManager' });
 
 // ---------------------------------------------------------------------------
 // Key helpers
@@ -94,7 +95,7 @@ async function validateKey(rawKey) {
     pool.query(
         `UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`,
         [record.id],
-    ).catch(err => console.error('Failed to update last_used_at:', err));
+    ).catch(err => log.error({ err }, 'Failed to update last_used_at'));
 
     return record;
 }

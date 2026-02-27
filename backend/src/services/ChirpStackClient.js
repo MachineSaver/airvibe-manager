@@ -13,6 +13,8 @@
  *   CHIRPSTACK_API_KEY  — API key generated in ChirpStack UI (required to enable auto-switch)
  */
 
+const log = require('../logger').child({ module: 'ChirpStackClient' });
+
 class ChirpStackClient {
     constructor() {
         this.baseUrl = (process.env.CHIRPSTACK_API_URL || 'http://chirpstack:8080').replace(/\/$/, '');
@@ -21,9 +23,9 @@ class ChirpStackClient {
         this.configured = !!this.apiKey;
 
         if (this.configured) {
-            console.log('ChirpStackClient: configured — Class C auto-switch enabled');
+            log.info('ChirpStackClient: configured — Class C auto-switch enabled');
         } else {
-            console.log('ChirpStackClient: CHIRPSTACK_API_KEY not set — Class C auto-switch disabled');
+            log.info('ChirpStackClient: CHIRPSTACK_API_KEY not set — Class C auto-switch disabled');
         }
     }
 
@@ -48,12 +50,12 @@ class ChirpStackClient {
             const res = await fetch(url, opts);
             if (!res.ok) {
                 const text = await res.text().catch(() => '');
-                console.warn(`ChirpStackClient: ${method} ${path} failed (${res.status}): ${text}`);
+                log.warn(`ChirpStackClient: ${method} ${path} failed (${res.status}): ${text}`);
                 return null;
             }
             return await res.json();
         } catch (err) {
-            console.warn(`ChirpStackClient: ${method} ${path} error:`, err.message);
+            log.warn(`ChirpStackClient: ${method} ${path} error: ${err.message}`);
             return null;
         }
     }
@@ -86,7 +88,7 @@ class ChirpStackClient {
 
         const device = await this.getDevice(devEui);
         if (!device) {
-            console.warn(`ChirpStackClient: setDeviceClass — could not fetch device ${devEui}`);
+            log.warn(`ChirpStackClient: setDeviceClass — could not fetch device ${devEui}`);
             return false;
         }
 
@@ -109,7 +111,7 @@ class ChirpStackClient {
         try {
             const device = await this.getDevice(devEui);
             if (!device) {
-                console.warn(`ChirpStackClient: switchToClassC — could not fetch device ${devEui}`);
+                log.warn(`ChirpStackClient: switchToClassC — could not fetch device ${devEui}`);
                 return null;
             }
 
@@ -117,17 +119,17 @@ class ChirpStackClient {
             if (originalClass === 'CLASS_C') {
                 // Already Class C — nothing to do but still return a record so
                 // the session knows to "restore" on completion (restore is a no-op here).
-                console.log(`ChirpStackClient: ${devEui} is already Class C`);
+                log.info(`ChirpStackClient: ${devEui} is already Class C`);
                 return { originalClass };
             }
 
             const ok = await this.setDeviceClass(devEui, 'CLASS_C');
             if (!ok) return null;
 
-            console.log(`ChirpStackClient: ${devEui} switched to Class C (was ${originalClass})`);
+            log.info(`ChirpStackClient: ${devEui} switched to Class C (was ${originalClass})`);
             return { originalClass };
         } catch (err) {
-            console.warn(`ChirpStackClient: switchToClassC error for ${devEui}:`, err.message);
+            log.warn(`ChirpStackClient: switchToClassC error for ${devEui}: ${err.message}`);
             return null;
         }
     }
@@ -146,11 +148,11 @@ class ChirpStackClient {
             }
             const ok = await this.setDeviceClass(devEui, originalClass || 'CLASS_A');
             if (ok) {
-                console.log(`ChirpStackClient: ${devEui} restored to ${originalClass || 'CLASS_A'}`);
+                log.info(`ChirpStackClient: ${devEui} restored to ${originalClass || 'CLASS_A'}`);
             }
             return ok;
         } catch (err) {
-            console.warn(`ChirpStackClient: restoreClass error for ${devEui}:`, err.message);
+            log.warn(`ChirpStackClient: restoreClass error for ${devEui}: ${err.message}`);
             return false;
         }
     }

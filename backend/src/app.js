@@ -18,6 +18,7 @@ const demoSimulator = require('./services/DemoSimulator');
 const auditLogger = require('./services/AuditLogger');
 const apiKeyManager = require('./services/ApiKeyManager');
 const { requireApiKey } = require('./middleware/auth');
+const log = require('./logger').child({ module: 'app' });
 const { deinterleaveWaveform } = require('./utils/deinterleave');
 const swaggerUi = require('swagger-ui-express');
 const openApiSpec = require('./openapi');
@@ -743,7 +744,7 @@ app.get('/api/openapi.json', (req, res) => res.json(openApiSpec));
 // ---------------------------------------------------------------------------
 
 io.on('connection', (socket) => {
-    console.log('Frontend connected via Socket.io');
+    log.info('Frontend connected via Socket.io');
 
     socket.on('publish', (data) => {
         try {
@@ -751,7 +752,7 @@ io.on('connection', (socket) => {
             const devEuiMatch = data.topic.match(/mqtt\/things\/([^/]+)\//);
             auditLogger.log('user', 'downlink_publish', devEuiMatch?.[1] || null, { topic: data.topic, payload: data.payload });
         } catch (e) {
-            console.error('Publish error:', e);
+            log.error({ err: e }, 'Publish error');
         }
     });
 });

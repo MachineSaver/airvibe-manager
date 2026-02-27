@@ -20,6 +20,8 @@
  * user must actively select the correct region.
  */
 
+const log = require('../logger').child({ module: 'ThingParkClient' });
+
 class ThingParkClient {
     constructor() {
         this.baseUrl = (process.env.THINGPARK_BASE_URL || 'https://community.thingpark.io').replace(/\/$/, '');
@@ -33,9 +35,9 @@ class ThingParkClient {
         this._tokenExpiresAt = 0;
 
         if (this.configured) {
-            console.log('ThingParkClient: configured — Class C auto-switch enabled');
+            log.info('ThingParkClient: configured — Class C auto-switch enabled');
         } else {
-            console.log('ThingParkClient: THINGPARK_CLIENT_ID/SECRET not set — Class C auto-switch disabled');
+            log.info('ThingParkClient: THINGPARK_CLIENT_ID/SECRET not set — Class C auto-switch disabled');
         }
     }
 
@@ -128,20 +130,20 @@ class ThingParkClient {
             const res = await this._fetch(url);
             if (!res || !res.ok) {
                 const text = res ? await res.text().catch(() => '') : '';
-                console.warn(`ThingParkClient: getDeviceRef failed for ${devEui} (${res?.status}): ${text}`);
+                log.warn(`ThingParkClient: getDeviceRef failed for ${devEui} (${res?.status}): ${text}`);
                 return null;
             }
             const json = await res.json();
             // DX Core API returns { list: [ { ref, devEUI, ... } ], totalCount }
             const list = Array.isArray(json.list) ? json.list : (Array.isArray(json) ? json : []);
             if (list.length === 0) {
-                console.warn(`ThingParkClient: device ${devEui} not found via DX Core API`);
+                log.warn(`ThingParkClient: device ${devEui} not found via DX Core API`);
                 return null;
             }
             const device = list[0];
             return device.ref ?? device.id ?? null;
         } catch (err) {
-            console.warn(`ThingParkClient: getDeviceRef error for ${devEui}:`, err.message);
+            log.warn(`ThingParkClient: getDeviceRef error for ${devEui}: ${err.message}`);
             return null;
         }
     }
@@ -157,13 +159,13 @@ class ThingParkClient {
             const res = await this._fetch(url);
             if (!res || !res.ok) {
                 const text = res ? await res.text().catch(() => '') : '';
-                console.warn(`ThingParkClient: getCurrentProfile failed for ref ${deviceRef} (${res?.status}): ${text}`);
+                log.warn(`ThingParkClient: getCurrentProfile failed for ref ${deviceRef} (${res?.status}): ${text}`);
                 return null;
             }
             const json = await res.json();
             return json.deviceProfileId ?? null;
         } catch (err) {
-            console.warn(`ThingParkClient: getCurrentProfile error for ref ${deviceRef}:`, err.message);
+            log.warn(`ThingParkClient: getCurrentProfile error for ref ${deviceRef}: ${err.message}`);
             return null;
         }
     }
@@ -183,12 +185,12 @@ class ThingParkClient {
             });
             if (!res || !res.ok) {
                 const text = res ? await res.text().catch(() => '') : '';
-                console.warn(`ThingParkClient: setProfile failed for ref ${deviceRef} → ${profileId} (${res?.status}): ${text}`);
+                log.warn(`ThingParkClient: setProfile failed for ref ${deviceRef} → ${profileId} (${res?.status}): ${text}`);
                 return false;
             }
             return true;
         } catch (err) {
-            console.warn(`ThingParkClient: setProfile error for ref ${deviceRef}:`, err.message);
+            log.warn(`ThingParkClient: setProfile error for ref ${deviceRef}: ${err.message}`);
             return false;
         }
     }
@@ -211,7 +213,7 @@ class ThingParkClient {
     async switchToClassC(devEui, classCProfileOverride) {
         if (!this.configured) return null;
         if (!classCProfileOverride) {
-            console.warn(
+            log.warn(
                 `ThingParkClient: ${devEui} — no Class C profile specified. ` +
                 `Select the correct ISM band in the FUOTA Manager before starting the session.`
             );
@@ -221,23 +223,23 @@ class ThingParkClient {
         try {
             const deviceRef = await this.getDeviceRef(devEui);
             if (deviceRef == null) {
-                console.warn(`ThingParkClient: switchToClassC — could not resolve ref for ${devEui}`);
+                log.warn(`ThingParkClient: switchToClassC — could not resolve ref for ${devEui}`);
                 return null;
             }
 
             const originalProfileId = await this.getCurrentProfile(deviceRef);
             if (!originalProfileId) {
-                console.warn(`ThingParkClient: switchToClassC — could not get current profile for ref ${deviceRef}`);
+                log.warn(`ThingParkClient: switchToClassC — could not get current profile for ref ${deviceRef}`);
                 return null;
             }
 
             const ok = await this.setProfile(deviceRef, targetProfile);
             if (!ok) return null;
 
-            console.log(`ThingParkClient: ${devEui} (ref ${deviceRef}) switched to Class C (${targetProfile}), was ${originalProfileId}`);
+            log.info(`ThingParkClient: ${devEui} (ref ${deviceRef}) switched to Class C (${targetProfile}), was ${originalProfileId}`);
             return { deviceRef, originalProfileId };
         } catch (err) {
-            console.warn(`ThingParkClient: switchToClassC error for ${devEui}:`, err.message);
+            log.warn(`ThingParkClient: switchToClassC error for ${devEui}: ${err.message}`);
             return null;
         }
     }
@@ -253,11 +255,11 @@ class ThingParkClient {
         try {
             const ok = await this.setProfile(deviceRef, originalProfileId);
             if (ok) {
-                console.log(`ThingParkClient: ${devEui} (ref ${deviceRef}) restored to ${originalProfileId}`);
+                log.info(`ThingParkClient: ${devEui} (ref ${deviceRef}) restored to ${originalProfileId}`);
             }
             return ok;
         } catch (err) {
-            console.warn(`ThingParkClient: restoreClass error for ${devEui}:`, err.message);
+            log.warn(`ThingParkClient: restoreClass error for ${devEui}: ${err.message}`);
             return false;
         }
     }

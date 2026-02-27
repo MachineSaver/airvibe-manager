@@ -1,4 +1,5 @@
 const mqttClient = require('../mqttClient');
+const log = require('../logger').child({ module: 'DemoSimulator' });
 
 const NETWORK_SERVER = process.env.NETWORK_SERVER || 'chirpstack';
 
@@ -166,7 +167,7 @@ class DemoSimulator {
     _log(msg) {
         const entry = `[${this._elapsed()}] ${msg}`;
         this.log.push(entry);
-        console.log(`[DemoSim] ${entry}`);
+        log.info(`[DemoSim] ${entry}`);
         // Keep log bounded
         if (this.log.length > 200) this.log.shift();
     }

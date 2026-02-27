@@ -1,16 +1,17 @@
 const mqtt = require('mqtt');
 const messageTracker = require('./services/MessageTracker');
+const log = require('./logger').child({ module: 'mqttClient' });
 
 const NETWORK_SERVER = process.env.NETWORK_SERVER || 'chirpstack';
 const adapter = NETWORK_SERVER === 'thingpark'
     ? require('./adapters/thingpark')
     : require('./adapters/chirpstack');
-console.log(`MQTT adapter: ${NETWORK_SERVER}`);
+log.info(`MQTT adapter: ${NETWORK_SERVER}`);
 
 let client = null;
 
 function connect(brokerUrl, io, onMessage) {
-    console.log(`Connecting to MQTT Broker at ${brokerUrl}`);
+    log.info(`Connecting to MQTT Broker at ${brokerUrl}`);
 
     client = mqtt.connect(brokerUrl, {
         clientId: 'mqtt-manager-backend_' + Math.random().toString(16).substring(2, 10),
@@ -20,15 +21,15 @@ function connect(brokerUrl, io, onMessage) {
     });
 
     client.on('connect', () => {
-        console.log('Connected to MQTT Broker');
+        log.info('Connected to MQTT Broker');
         io.emit('mqtt:status', { connected: true });
 
         // Subscribe to all topics for full broker visibility
         client.subscribe('#', (err) => {
             if (err) {
-                console.error('Failed to subscribe to #', err);
+                log.error({ err }, 'Failed to subscribe to #');
             } else {
-                console.log('Subscribed to all topics (#)');
+                log.info('Subscribed to all topics (#)');
             }
         });
     });
@@ -47,23 +48,23 @@ function connect(brokerUrl, io, onMessage) {
         });
 
         messageTracker.trackMessage(topic, message).catch(e =>
-            console.error('MessageTracker error:', e)
+            log.error({ err: e }, 'MessageTracker error')
         );
 
         if (onMessage) {
             try { onMessage(topic, message); } catch (e) {
-                console.error('onMessage callback error:', e);
+                log.error({ err: e }, 'onMessage callback error');
             }
         }
     });
 
     client.on('error', (err) => {
-        console.error('MQTT Error:', err);
+        log.error({ err }, 'MQTT Error');
         io.emit('mqtt:status', { connected: false, error: err.message });
     });
 
     client.on('offline', () => {
-        console.log('MQTT Client Offline');
+        log.info('MQTT Client Offline');
         io.emit('mqtt:status', { connected: false });
     });
 }

@@ -29,6 +29,8 @@
  * ChirpStack payload: { devEui, confirmed, fPort, data (base64) }
  */
 
+const log = require('../logger').child({ module: 'chirpstack-adapter' });
+
 // Regex patterns for ChirpStack MQTT topics (v4 default template)
 const CS_UPLINK_RE  = /^application\/([^/]+)\/device\/([^/]+)\/event\/up$/;
 const CS_CMD_DOWN_RE = /^application\/([^/]+)\/device\/([^/]+)\/command\/down$/;
@@ -73,7 +75,7 @@ function normalizeIncoming(topic, message) {
                 message: Buffer.from(JSON.stringify(normalized)),
             };
         } catch (err) {
-            console.warn(`chirpstack adapter: failed to parse uplink from ${topic}:`, err.message);
+            log.warn(`chirpstack adapter: failed to parse uplink from ${topic}: ${err.message}`);
             return { topic, message };
         }
     }
@@ -99,7 +101,7 @@ function normalizeIncoming(topic, message) {
                 message: Buffer.from(JSON.stringify(normalized)),
             };
         } catch (err) {
-            console.warn(`chirpstack adapter: failed to parse command/down from ${topic}:`, err.message);
+            log.warn(`chirpstack adapter: failed to parse command/down from ${topic}: ${err.message}`);
             return { topic, message };
         }
     }
@@ -143,7 +145,7 @@ function normalizeOutgoing(topic, message) {
             message: JSON.stringify(csPayload),
         };
     } catch (err) {
-        console.warn(`chirpstack adapter: failed to translate downlink for ${topic}:`, err.message);
+        log.warn(`chirpstack adapter: failed to translate downlink for ${topic}: ${err.message}`);
         return { topic, message };
     }
 }

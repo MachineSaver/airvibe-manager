@@ -2,6 +2,7 @@ const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const util = require('util');
+const log = require('./logger').child({ module: 'pki' });
 
 const execFilePromise = util.promisify(execFile);
 const CERTS_DIR = process.env.CERTS_DIR || '/app/certs';
@@ -27,7 +28,7 @@ if (!fs.existsSync(CERTS_DIR)) {
     try {
         fs.mkdirSync(CERTS_DIR, { recursive: true });
     } catch (e) {
-        console.error(`Could not create certs dir at ${CERTS_DIR}`, e);
+        log.error({ err: e }, `Could not create certs dir at ${CERTS_DIR}`);
     }
 }
 
@@ -38,7 +39,7 @@ async function generateCA(domain) {
     const caCrtPath = path.join(CERTS_DIR, 'ca.crt');
 
     if (fs.existsSync(caKeyPath) && fs.existsSync(caCrtPath)) {
-        console.log('CA Certificate already exists. Skipping generation.');
+        log.info('CA Certificate already exists. Skipping generation.');
         return { success: true, message: 'CA already exists' };
     }
 
@@ -55,7 +56,7 @@ async function generateCA(domain) {
 
         return { success: true, message: 'CA Generated' };
     } catch (error) {
-        console.error('Error generating CA:', error);
+        log.error({ err: error }, 'Error generating CA');
         throw error;
     }
 }
@@ -67,7 +68,7 @@ async function generateServerCert(domain) {
     const serverCrtPath = path.join(CERTS_DIR, 'server.crt');
 
     if (fs.existsSync(serverKeyPath) && fs.existsSync(serverCrtPath)) {
-        console.log('Server Certificate already exists. Skipping generation.');
+        log.info('Server Certificate already exists. Skipping generation.');
         return { success: true, message: 'Server Cert already exists' };
     }
 
@@ -96,7 +97,7 @@ async function generateServerCert(domain) {
 
         return { success: true, message: 'Server Cert Generated' };
     } catch (error) {
-        console.error('Error generating Server Cert:', error);
+        log.error({ err: error }, 'Error generating Server Cert');
         throw error;
     }
 }
@@ -134,7 +135,7 @@ async function generateClientCert(clientId) {
             }
         };
     } catch (error) {
-        console.error(`Error generating Client Cert for ${clientId}:`, error);
+        log.error({ err: error }, `Error generating Client Cert for ${clientId}`);
         throw error;
     }
 }

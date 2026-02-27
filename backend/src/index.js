@@ -3,6 +3,7 @@
 const dotenv = require('dotenv');
 dotenv.config();
 
+const log = require('./logger').child({ module: 'startup' });
 const { server, io } = require('./app');
 const { connectWithRetry } = require('./db');
 const apiKeyManager = require('./services/ApiKeyManager');
@@ -27,9 +28,9 @@ const domain = process.env.DOMAIN || 'localhost';
     if (bootstrapKey) {
         try {
             await apiKeyManager.bootstrapKey(bootstrapKey, 'bootstrap');
-            console.log('Bootstrap API key registered');
+            log.info('Bootstrap API key registered');
         } catch (e) {
-            console.error('Failed to register bootstrap API key:', e);
+            log.error({ err: e }, 'Failed to register bootstrap API key');
         }
     }
 
@@ -44,15 +45,15 @@ const domain = process.env.DOMAIN || 'localhost';
     await fuotaManager.init(io);
 
     try {
-        console.log(`Checking/Initializing PKI for domain: ${domain}`);
+        log.info(`Checking/Initializing PKI for domain: ${domain}`);
         await pki.generateCA(domain);
         await pki.generateServerCert(domain);
-        console.log('PKI Initialized');
+        log.info('PKI Initialized');
     } catch (e) {
-        console.error('Failed to initialize PKI:', e);
+        log.error({ err: e }, 'Failed to initialize PKI');
     }
 })();
 
 server.listen(port, () => {
-    console.log(`Backend server listening on port ${port}`);
+    log.info(`Backend server listening on port ${port}`);
 });

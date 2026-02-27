@@ -1,6 +1,7 @@
 const { pool } = require('../db');
 const codec = require('../codec/AirVibe_TS013_Codec');
 const auditLogger = require('./AuditLogger');
+const log = require('../logger').child({ module: 'WaveformManager' });
 
 class WaveformManager {
     constructor() {
@@ -49,7 +50,7 @@ class WaveformManager {
                 await this.handleDataSegment(devEui, txId, buffer, true);
             }
         } catch (err) {
-            console.error('Error processing packet:', err);
+            log.error({ err }, 'Error processing packet');
         }
     }
 
@@ -64,7 +65,7 @@ class WaveformManager {
             // distance 0 is same TxID (handled separately), 129-255 means stale retransmit
             if (distance >= 1 && distance <= 128) {
                 await pool.query(`UPDATE waveforms SET status = 'aborted' WHERE id = $1`, [row.id]);
-                console.log(`Aborted stale waveform ${row.id} (TxID ${row.transaction_id}) for ${devEui}, superseded by TxID ${newTxId}`);
+                log.info(`Aborted stale waveform ${row.id} (TxID ${row.transaction_id}) for ${devEui}, superseded by TxID ${newTxId}`);
             }
         }
     }
@@ -97,7 +98,7 @@ class WaveformManager {
             const existing = await pool.query(`SELECT metadata FROM waveforms WHERE id = $1`, [waveformId]);
             if (existing.rows[0]?.metadata) {
                 await pool.query(`UPDATE waveforms SET status = 'aborted' WHERE id = $1`, [waveformId]);
-                console.log(`Aborted reused TxID ${txId} waveform ${waveformId} for ${devEui}, creating fresh row`);
+                log.info(`Aborted reused TxID ${txId} waveform ${waveformId} for ${devEui}, creating fresh row`);
                 waveformId = null;
             }
         }
@@ -116,7 +117,7 @@ class WaveformManager {
             waveformId = res.rows[0].id;
         }
 
-        console.log(`TWIU received for ${devEui} TxID ${txId}`);
+        log.info(`TWIU received for ${devEui} TxID ${txId}`);
 
         // Send ACK via codec (rate-limited — Class A can only receive one downlink per uplink)
         const ackResult = codec.encodeDownlink({
@@ -203,7 +204,7 @@ class WaveformManager {
         if (missing.length === 0) {
             // Complete!
             await this.assembleWaveform(waveformId);
-            console.log(`Waveform ${devEui} TxID ${txId} Complete!`);
+            log.info(`Waveform ${devEui} TxID ${txId} Complete!`);
 
             // Send Data ACK via codec (rate-limited — Class A can only receive one downlink per uplink)
             const ackResult = codec.encodeDownlink({
@@ -213,7 +214,7 @@ class WaveformManager {
             this.sendAutoDownlink(devEui, 20, Buffer.from(ackResult.bytes));
             auditLogger.log('waveform_manager', 'data_ack', devEui, { fPort: 20, txId });
         } else {
-            console.log(`Waveform ${devEui} TxID ${txId} Missing ${missing.length} segments`);
+            log.info(`Waveform ${devEui} TxID ${txId} Missing ${missing.length} segments`);
             // Request up to 20 missing segments per downlink (LoRaWAN payload limit).
             // If more than 20 are missing, the next batch will be requested once
             // the device resends these and checkRepairBatchComplete fires.
@@ -316,7 +317,7 @@ class WaveformManager {
 
     sendAutoDownlink(devEui, port, payload) {
         if (!this.canSendAutoDownlink(devEui)) {
-            console.log(`Rate-limited: skipping downlink to ${devEui} fPort ${port} (max 1/min — Class A queue protection)`);
+            log.info(`Rate-limited: skipping downlink to ${devEui} fPort ${port} (max 1/min — Class A queue protection)`);
             return;
         }
         this.recordAutoDownlink(devEui);
@@ -337,7 +338,7 @@ class WaveformManager {
         // Lazy load mqttClient to avoid circular dependency
         const mqttClient = require('../mqttClient');
         mqttClient.publish(topic, message);
-        console.log(`Downlink sent to ${devEui} on topic ${topic}: ${message}`);
+        log.info(`Downlink sent to ${devEui} on topic ${topic}: ${message}`);
     }
 
     _scheduleRepairTimeout(devEui, txId, waveformId) {
@@ -356,10 +357,10 @@ class WaveformManager {
                 if (!wf || wf.status !== 'pending') return;
                 if (!wf.requested_segments || wf.requested_segments.length === 0) return;
                 // Batch still outstanding — re-run checkCompletion to re-request.
-                console.log(`Repair timeout for ${devEui} TxID ${txId} (waveform ${waveformId}), re-requesting missing segments`);
+                log.info(`Repair timeout for ${devEui} TxID ${txId} (waveform ${waveformId}), re-requesting missing segments`);
                 await this.checkCompletion(devEui, txId, waveformId);
             } catch (err) {
-                console.error(`Repair timeout error for waveform ${waveformId}:`, err);
+                log.error({ err }, `Repair timeout error for waveform ${waveformId}`);
             }
         }, 5 * 60 * 1000); // 5 minutes
         this.repairTimeouts.set(waveformId, handle);
@@ -381,7 +382,7 @@ class WaveformManager {
                     RETURNING id, device_eui, transaction_id
                 `);
                 for (const row of res.rows) {
-                    console.log(`Marked stale waveform ${row.id} failed (${row.device_eui} TxID ${row.transaction_id})`);
+                    log.info(`Marked stale waveform ${row.id} failed (${row.device_eui} TxID ${row.transaction_id})`);
                     auditLogger.log('waveform_manager', 'waveform_stale_failed', row.device_eui, {
                         waveformId: row.id,
                         txId: row.transaction_id,
@@ -397,7 +398,7 @@ class WaveformManager {
                     RETURNING id, device_eui, transaction_id, status
                 `, [failedTtlDays]);
                 for (const row of purgeRes.rows) {
-                    console.log(`Purged ${row.status} waveform ${row.id} (${row.device_eui} TxID ${row.transaction_id}) after ${failedTtlDays}d`);
+                    log.info(`Purged ${row.status} waveform ${row.id} (${row.device_eui} TxID ${row.transaction_id}) after ${failedTtlDays}d`);
                     auditLogger.log('waveform_manager', 'waveform_purged', row.device_eui, {
                         waveformId: row.id,
                         txId: row.transaction_id,
@@ -406,7 +407,7 @@ class WaveformManager {
                     });
                 }
             } catch (e) {
-                console.error('Cleanup job error:', e);
+                log.error({ err: e }, 'Cleanup job error');
             }
         }, 5 * 60 * 1000); // Every 5 mins
     }
@@ -423,7 +424,7 @@ class WaveformManager {
                 `);
 
                 for (const row of res.rows) {
-                    console.log(`Requesting missing TWIU for ${row.device_eui} TxID ${row.transaction_id}`);
+                    log.info(`Requesting missing TWIU for ${row.device_eui} TxID ${row.transaction_id}`);
                     // Request waveform info via codec (port 22, command: request_waveform_info)
                     const result = codec.encodeDownlink({
                         fPort: 22,
@@ -435,7 +436,7 @@ class WaveformManager {
                     await pool.query(`UPDATE waveforms SET last_updated = NOW() WHERE id = $1`, [row.id]);
                 }
             } catch (e) {
-                console.error('TWIU Check job error:', e);
+                log.error({ err: e }, 'TWIU Check job error');
             }
         }, 10 * 1000); // Every 10 seconds
     }

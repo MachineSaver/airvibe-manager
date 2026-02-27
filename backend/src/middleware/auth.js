@@ -1,6 +1,7 @@
 'use strict';
 
 const apiKeyManager = require('../services/ApiKeyManager');
+const log = require('../logger').child({ module: 'auth' });
 
 // Paths that are always accessible without an API key.
 const EXEMPT_PATHS = new Set(['/', '/api/health', '/api/openapi.json']);
@@ -36,7 +37,7 @@ async function requireApiKey(req, res, next) {
     try {
         record = await apiKeyManager.validateKey(rawKey);
     } catch (err) {
-        console.error('Auth: key validation failed:', err);
+        log.error({ err }, 'Auth: key validation failed');
         return res.status(503).json({ error: 'Authentication service temporarily unavailable.' });
     }
 

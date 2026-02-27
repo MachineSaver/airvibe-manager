@@ -1,4 +1,5 @@
 const { pool } = require('../db');
+const log = require('../logger').child({ module: 'MessageTracker' });
 
 const TOPIC_REGEX = /^mqtt\/things\/([^/]+)\/(uplink|downlink)$/;
 
@@ -45,7 +46,7 @@ class MessageTracker {
                 [devEui, topic, direction, JSON.stringify(parsed), payloadHex, fPort, packetType]
             );
         } catch (err) {
-            console.error('MessageTracker error:', err.message);
+            log.error(`MessageTracker error: ${err.message}`);
         }
 
         // Persist ISM band derived from uplink Frequency on every uplink.
@@ -65,7 +66,7 @@ class MessageTracker {
                 pool.query(
                     `UPDATE devices SET metadata = metadata || $1::jsonb WHERE dev_eui = $2`,
                     [JSON.stringify({ ism_band: ismBand }), devEui]
-                ).catch(err => console.error('MessageTracker: ism_band update error:', err.message));
+                ).catch(err => log.error(`MessageTracker: ism_band update error: ${err.message}`));
             }
         }
 
@@ -88,7 +89,7 @@ class MessageTracker {
                 pool.query(
                     `UPDATE devices SET metadata = metadata || $1::jsonb WHERE dev_eui = $2`,
                     [JSON.stringify(metaPatch), devEui]
-                ).catch(err => console.error('MessageTracker: config metadata update error:', err.message));
+                ).catch(err => log.error(`MessageTracker: config metadata update error: ${err.message}`));
             }
         }
     }
@@ -118,10 +119,10 @@ class MessageTracker {
                     [maxAgeDays]
                 );
                 if (res.rowCount > 0) {
-                    console.log(`MessageTracker: purged ${res.rowCount} messages older than ${maxAgeDays} days`);
+                    log.info(`MessageTracker: purged ${res.rowCount} messages older than ${maxAgeDays} days`);
                 }
             } catch (err) {
-                console.error('MessageTracker retention cleanup error:', err.message);
+                log.error(`MessageTracker retention cleanup error: ${err.message}`);
             }
         }, 24 * 60 * 60 * 1000); // Every 24 hours
         timer.unref(); // Don't prevent process exit (e.g. during tests)

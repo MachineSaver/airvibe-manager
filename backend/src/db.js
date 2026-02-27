@@ -1,6 +1,7 @@
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const log = require('./logger').child({ module: 'db' });
 
 const pool = new Pool({
     user: process.env.POSTGRES_USER || 'postgres',
@@ -16,9 +17,9 @@ const initDb = async () => {
         const schemaPath = path.join(__dirname, 'db', 'schema.sql');
         const schemaSql = fs.readFileSync(schemaPath, 'utf8');
         await pool.query(schemaSql);
-        console.log('Database initialized successfully');
+        log.info('Database initialized successfully');
     } catch (err) {
-        console.error('Error initializing database:', err);
+        log.error({ err }, 'Error initializing database');
     }
 };
 
@@ -27,15 +28,15 @@ const connectWithRetry = async (retries = 5, delay = 5000) => {
     for (let i = 0; i < retries; i++) {
         try {
             await pool.query('SELECT NOW()');
-            console.log('Connected to Postgres');
+            log.info('Connected to Postgres');
             await initDb();
             return;
         } catch (err) {
-            console.log(`Failed to connect to Postgres (attempt ${i + 1}/${retries}):`, err.message);
+            log.info(`Failed to connect to Postgres (attempt ${i + 1}/${retries}): ${err.message}`);
             await new Promise(res => setTimeout(res, delay));
         }
     }
-    console.error('Could not connect to Postgres after multiple attempts');
+    log.error('Could not connect to Postgres after multiple attempts');
 };
 
 module.exports = {

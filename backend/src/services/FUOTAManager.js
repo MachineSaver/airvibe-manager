@@ -2,6 +2,7 @@ const { randomUUID } = require('crypto');
 const { pool } = require('../db');
 const auditLogger = require('./AuditLogger');
 const networkClient = require('./networkServerClient');
+const log = require('../logger').child({ module: 'FUOTAManager' });
 
 // ---------------------------------------------------------------------------
 // Protocol constants
@@ -80,27 +81,27 @@ async function resolveClassCProfile(devEui, ismBandFallback) {
         if (ismBand) {
             const profile = ismBandToClassCProfile(ismBand);
             if (profile) {
-                console.log(`FUOTAManager: ${devEui} ISM band=${ismBand} (auto-detected) → ${profile}`);
+                log.info(`FUOTAManager: ${devEui} ISM band=${ismBand} (auto-detected) → ${profile}`);
             }
             return profile;
         }
     } catch (err) {
-        console.warn(`FUOTAManager: could not resolve ISM band for ${devEui}:`, err.message);
+        log.warn(`FUOTAManager: could not resolve ISM band for ${devEui}: ${err.message}`);
     }
 
     // 2. User-selected band from the FUOTA UI start request
     if (ismBandFallback) {
         const profile = ismBandToClassCProfile(ismBandFallback);
         if (profile) {
-            console.log(`FUOTAManager: ${devEui} ISM band=${ismBandFallback} (user-selected) → ${profile}`);
+            log.info(`FUOTAManager: ${devEui} ISM band=${ismBandFallback} (user-selected) → ${profile}`);
         } else {
-            console.warn(`FUOTAManager: ${devEui} unrecognised ISM band '${ismBandFallback}'`);
+            log.warn(`FUOTAManager: ${devEui} unrecognised ISM band '${ismBandFallback}'`);
         }
         return profile;
     }
 
     // 3. No known band — Class C switch will be skipped with a warning
-    console.warn(
+    log.warn(
         `FUOTAManager: ${devEui} has no known ISM band and none was selected in the UI. ` +
         `Class C switch will be skipped; FUOTA will proceed in Class A mode.`
     );
@@ -304,7 +305,7 @@ class FUOTAManager {
                         blockIntervalMs: intervalMs,
                         classCConfigured: session.classCConfigured,
                     });
-                    console.log(`FUOTAManager: recovered session for ${devEui} (${row.firmware_name}, ${row.total_blocks} blocks)`);
+                    log.info(`FUOTAManager: recovered session for ${devEui} (${row.firmware_name}, ${row.total_blocks} blocks)`);
                     this._sendAllBlocks(session).catch(err => {
                         if (this.activeSessions.get(devEui) === session) {
                             this._failSession(devEui, err.message);
@@ -312,7 +313,7 @@ class FUOTAManager {
                     });
                     recovered++;
                 } catch (sessionErr) {
-                    console.error(`FUOTAManager: startup recovery failed for ${devEui}:`, sessionErr.message);
+                    log.error(`FUOTAManager: startup recovery failed for ${devEui}: ${sessionErr.message}`);
                     clearTimeout(session._sessionTimeout);
                     session._sessionTimeout = null;
                     this.activeSessions.delete(devEui);
@@ -320,10 +321,10 @@ class FUOTAManager {
             }
 
             if (recovered > 0 || failed > 0) {
-                console.log(`FUOTAManager: startup recovery — ${recovered} resumed, ${failed} failed (no binary)`);
+                log.info(`FUOTAManager: startup recovery — ${recovered} resumed, ${failed} failed (no binary)`);
             }
         } catch (err) {
-            console.error('FUOTAManager: startup recovery error:', err.message);
+            log.error(`FUOTAManager: startup recovery error: ${err.message}`);
         }
     }
 
@@ -409,7 +410,7 @@ class FUOTAManager {
                 [firmware.rawBuffer, dbId]
             );
         } catch (err) {
-            console.error(`FUOTAManager: DB insert failed for ${devEui}:`, err.message);
+            log.error(`FUOTAManager: DB insert failed for ${devEui}: ${err.message}`);
             dbId = null;
         }
 
@@ -465,7 +466,7 @@ class FUOTAManager {
         });
 
         if (!session.classCConfigured) {
-            console.warn(
+            log.warn(
                 `FUOTAManager: ${devEui} Class C switch failed — proceeding in Class A mode. ` +
                 `ThingPark/Basic Station queues only 1–2 downlinks per device; at the default ` +
                 `10 s block interval the queue will overflow immediately. ` +
@@ -531,7 +532,7 @@ class FUOTAManager {
                 this._handleVerifyUplink(devEui, buf);
             }
         } catch (err) {
-            console.error('FUOTAManager.processPacket error:', err.message);
+            log.error(`FUOTAManager.processPacket error: ${err.message}`);
         }
     }
 
@@ -570,7 +571,7 @@ class FUOTAManager {
             return;
         }
 
-        console.log(`FUOTAManager: ${devEui} entered Class C (0x10 ACK received)`);
+        log.info(`FUOTAManager: ${devEui} entered Class C (0x10 ACK received)`);
         auditLogger.log('fuota_manager', 'init_ack_received', devEui, { errorCode });
 
         // Send config request now that device is confirmed online and in Class C.
@@ -584,7 +585,7 @@ class FUOTAManager {
 
         // Start sending blocks asynchronously
         this._sendAllBlocks(session).catch(err => {
-            console.error(`FUOTAManager: sendAllBlocks error for ${devEui}:`, err.message);
+            log.error(`FUOTAManager: sendAllBlocks error for ${devEui}: ${err.message}`);
             this._failSession(devEui, err.message);
         });
     }
@@ -623,7 +624,7 @@ class FUOTAManager {
         if (session.aborted) return;
         if (this.activeSessions.get(devEui) !== session) return;
 
-        console.log(`FUOTAManager: ${devEui} all ${blocks.length} blocks sent, sending verify`);
+        log.info(`FUOTAManager: ${devEui} all ${blocks.length} blocks sent, sending verify`);
         await this._sendVerify(session);
     }
 
@@ -654,7 +655,7 @@ class FUOTAManager {
             if (this.activeSessions.get(devEui) !== session || session.state !== 'verifying') return;
 
             if (session.verifyAttempts < maxRetries) {
-                console.warn(
+                log.warn(
                     `FUOTAManager: ${devEui} no 0x11 response ` +
                     `(attempt ${session.verifyAttempts}/${maxRetries}), retrying verify…`
                 );
@@ -683,7 +684,7 @@ class FUOTAManager {
 
         const result = parseVerifyUplink(buf);
         if (!result.ok) {
-            console.warn(`FUOTAManager: ${devEui} bad 0x11 payload:`, result.reason);
+            log.warn(`FUOTAManager: ${devEui} bad 0x11 payload: ${result.reason}`);
             return;
         }
 
@@ -721,7 +722,7 @@ class FUOTAManager {
             this._emitProgress(devEui);
 
             this._resendMissedBlocks(session, result.blocks).catch(err => {
-                console.error(`FUOTAManager: resend error for ${devEui}:`, err.message);
+                log.error(`FUOTAManager: resend error for ${devEui}: ${err.message}`);
                 this._failSession(devEui, err.message);
             });
         }
@@ -729,7 +730,7 @@ class FUOTAManager {
 
     async _resendMissedBlocks(session, missedBlockNums) {
         const { devEui, blocks } = session;
-        console.log(`FUOTAManager: ${devEui} resending ${missedBlockNums.length} missed blocks:`, missedBlockNums);
+        log.info({ blocks: missedBlockNums }, `FUOTAManager: ${devEui} resending ${missedBlockNums.length} missed blocks`);
 
         for (let i = 0; i < missedBlockNums.length; i++) {
             if (session.aborted) return;
@@ -741,7 +742,7 @@ class FUOTAManager {
 
             const blockNum = missedBlockNums[i];
             if (blockNum >= blocks.length) {
-                console.warn(`FUOTAManager: ${devEui} missed block ${blockNum} out of range (total ${blocks.length})`);
+                log.warn(`FUOTAManager: ${devEui} missed block ${blockNum} out of range (total ${blocks.length})`);
                 continue;
             }
             const payload = makeBlockPayload(blockNum, blocks[blockNum]);
@@ -781,7 +782,7 @@ class FUOTAManager {
         this._emitProgress(devEui);
         this.activeSessions.delete(devEui);
 
-        console.log(`FUOTAManager: ${devEui} FUOTA complete after ${session.verifyAttempts} verify attempt(s)`);
+        log.info(`FUOTAManager: ${devEui} FUOTA complete after ${session.verifyAttempts} verify attempt(s)`);
         auditLogger.log('fuota_manager', 'session_complete', devEui, {
             verifyAttempts: session.verifyAttempts,
             totalBlocks: session.totalBlocks,
@@ -806,7 +807,7 @@ class FUOTAManager {
         this._emitProgress(devEui);
         this.activeSessions.delete(devEui);
 
-        console.error(`FUOTAManager: ${devEui} session failed: ${reason}`);
+        log.error(`FUOTAManager: ${devEui} session failed: ${reason}`);
         auditLogger.log('fuota_manager', 'session_failed', devEui, { reason });
 
         // Restore original device class — fire-and-forget with retry
@@ -828,7 +829,7 @@ class FUOTAManager {
         this._emitProgress(devEui);
         this.activeSessions.delete(devEui);
 
-        console.log(`FUOTAManager: ${devEui} session aborted: ${reason}`);
+        log.info(`FUOTAManager: ${devEui} session aborted: ${reason}`);
         auditLogger.log('fuota_manager', 'session_aborted', devEui, { reason });
 
         // Restore original device class — fire-and-forget with retry
@@ -853,17 +854,17 @@ class FUOTAManager {
             try {
                 await networkClient.restoreClass(devEui, originalClass);
                 const classDesc = typeof originalClass === 'string' ? originalClass : JSON.stringify(originalClass);
-                console.log(`FUOTAManager: ${devEui} restored to ${classDesc} (attempt ${attempt}/${maxAttempts})`);
+                log.info(`FUOTAManager: ${devEui} restored to ${classDesc} (attempt ${attempt}/${maxAttempts})`);
                 auditLogger.log('fuota_manager', 'class_a_restore', devEui, { originalClass, attempt });
                 return;
             } catch (err) {
-                console.error(`FUOTAManager: ${devEui} class restore attempt ${attempt}/${maxAttempts} failed: ${err.message}`);
+                log.error(`FUOTAManager: ${devEui} class restore attempt ${attempt}/${maxAttempts} failed: ${err.message}`);
                 if (attempt < maxAttempts) {
                     await sleep(delays[attempt - 1]);
                 }
             }
         }
-        console.error(`FUOTAManager: ${devEui} could not restore class after ${maxAttempts} attempts — device may be stuck in ${originalClass}`);
+        log.error(`FUOTAManager: ${devEui} could not restore class after ${maxAttempts} attempts — device may be stuck in ${originalClass}`);
         auditLogger.log('fuota_manager', 'class_a_restore_failed', devEui, { originalClass, maxAttempts });
     }
 
@@ -905,13 +906,13 @@ class FUOTAManager {
         const maxWaitMs = parseInt(process.env.FUOTA_MQTT_WAIT_MS) || 5 * 60 * 1000;
         const deadline = Date.now() + maxWaitMs;
 
-        console.warn(`FUOTAManager: ${devEui} MQTT broker disconnected — pausing block send`);
+        log.warn(`FUOTAManager: ${devEui} MQTT broker disconnected — pausing block send`);
         auditLogger.log('fuota_manager', 'mqtt_disconnect_pause', devEui, {});
 
         while (Date.now() < deadline) {
             await sleep(5000);
             if (mqttClient.isConnected()) {
-                console.log(`FUOTAManager: ${devEui} MQTT broker reconnected — resuming`);
+                log.info(`FUOTAManager: ${devEui} MQTT broker reconnected — resuming`);
                 auditLogger.log('fuota_manager', 'mqtt_reconnect_resume', devEui, {});
                 return;
             }
@@ -1000,7 +1001,7 @@ class FUOTAManager {
                 );
             }
         } catch (err) {
-            console.error('FUOTAManager: DB update error:', err.message);
+            log.error(`FUOTAManager: DB update error: ${err.message}`);
         }
     }
 
@@ -1041,7 +1042,7 @@ class FUOTAManager {
             for (const [id, fw] of this.firmwareStore) {
                 if (now - fw.createdAt > FIRMWARE_STORE_TTL_MS) {
                     this.firmwareStore.delete(id);
-                    console.log(`FUOTAManager: evicted firmware store entry ${id}`);
+                    log.info(`FUOTAManager: evicted firmware store entry ${id}`);
                 }
             }
         }, 15 * 60 * 1000);

@@ -1,4 +1,5 @@
 const { pool } = require('../db');
+const log = require('../logger').child({ module: 'AuditLogger' });
 
 class AuditLogger {
     async log(source, action, deviceEui = null, details = {}) {
@@ -8,7 +9,7 @@ class AuditLogger {
                 [source, action, deviceEui, JSON.stringify(details)]
             );
         } catch (err) {
-            console.error('AuditLogger error:', err.message);
+            log.error(`AuditLogger error: ${err.message}`);
         }
     }
 }
