@@ -150,6 +150,7 @@ Downlink commands target fPorts 20-22, 25, 30-31 with hex payloads. The adapter 
 
 ## Key Conventions
 
+- **Structured logging (`pino`)**: All backend modules use `pino` via a shared singleton. Never use `console.log/warn/error` — import the child logger instead: `const log = require('../logger').child({ module: 'MyModule' })`. Use `log.info`, `log.warn`, `log.error`. For Error objects pass them as a field: `log.error({ err }, 'msg')`. Log level is controlled by `LOG_LEVEL` env var (default `info`). Pretty-print locally with `npm run dev | npx pino-pretty`.
 - **`NETWORK_SERVER`**: `chirpstack` (default) or `thingpark`. Read at module-load time in `mqttClient.js`, `DemoSimulator.js`, and `networkServerClient.js`. Drives adapter selection, Class C switching client selection, and Caddyfile TLS mode.
 - **Internal canonical topic format**: All business logic uses `mqtt/things/{devEUI}/uplink|downlink` — the adapter translates to/from network-server-specific format at the MQTT client boundary.
 - **`caddy/entrypoint.sh`**: Shell script that generates `/etc/caddy/Caddyfile` at container start from `DOMAIN` and `NETWORK_SERVER`, then execs Caddy. ChirpStack/localhost → `tls internal`. ThingPark + real domain → automatic ACME. No static Caddyfile is tracked in git.
