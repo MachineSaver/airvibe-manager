@@ -27,13 +27,13 @@ class MessageTracker {
 
         if (direction === 'uplink' && parsed.DevEUI_uplink) {
             payloadHex = parsed.DevEUI_uplink.payload_hex || null;
-            fPort = parsed.DevEUI_uplink.FPort != null ? parseInt(parsed.DevEUI_uplink.FPort) : null;
+            fPort = parsed.DevEUI_uplink.FPort != null ? parseInt(parsed.DevEUI_uplink.FPort, 10) : null;
             if (payloadHex && payloadHex.length >= 2) {
                 packetType = parseInt(payloadHex.substring(0, 2), 16);
             }
         } else if (direction === 'downlink' && parsed.DevEUI_downlink) {
             payloadHex = parsed.DevEUI_downlink.payload_hex || null;
-            fPort = parsed.DevEUI_downlink.FPort != null ? parseInt(parsed.DevEUI_downlink.FPort) : null;
+            fPort = parsed.DevEUI_downlink.FPort != null ? parseInt(parsed.DevEUI_downlink.FPort, 10) : null;
             // No packet_type for downlinks — identified by fPort
         }
 
@@ -110,7 +110,7 @@ class MessageTracker {
 
     startRetentionCleanup() {
         // Retention window: default 90 days, configurable via MESSAGES_MAX_AGE_DAYS env var.
-        const maxAgeDays = Math.max(1, parseInt(process.env.MESSAGES_MAX_AGE_DAYS) || 90);
+        const maxAgeDays = Math.max(1, parseInt(process.env.MESSAGES_MAX_AGE_DAYS, 10) || 90);
         const timer = setInterval(async () => {
             try {
                 const res = await pool.query(

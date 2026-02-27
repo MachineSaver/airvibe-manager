@@ -46,7 +46,7 @@ async function generateCA(domain) {
 
     try {
         await execFilePromise('openssl', ['genrsa', '-out', caKeyPath, '2048']);
-        fs.chmodSync(caKeyPath, 0o644);
+        fs.chmodSync(caKeyPath, 0o600);
         await execFilePromise('openssl', [
             'req', '-x509', '-new', '-nodes',
             '-key', caKeyPath, '-sha256', '-days', '3650',
@@ -80,7 +80,7 @@ async function generateServerCert(domain) {
         fs.writeFileSync(serverExtPath, `subjectAltName=DNS:${domain}\n`);
 
         await execFilePromise('openssl', ['genrsa', '-out', serverKeyPath, '2048']);
-        fs.chmodSync(serverKeyPath, 0o644);
+        fs.chmodSync(serverKeyPath, 0o600);
         await execFilePromise('openssl', [
             'req', '-new', '-key', serverKeyPath,
             '-out', serverCsrPath, '-subj', subject
@@ -111,7 +111,7 @@ async function generateClientCert(clientId) {
 
     try {
         await execFilePromise('openssl', ['genrsa', '-out', clientKeyPath, '2048']);
-        fs.chmodSync(clientKeyPath, 0o644);
+        fs.chmodSync(clientKeyPath, 0o600);
         await execFilePromise('openssl', [
             'req', '-new', '-key', clientKeyPath,
             '-out', clientCsrPath, '-subj', subject

@@ -19,4 +19,6 @@ deploy.tar.gz
 *:Zone.Identifier
 mosquitto/config/mosquitto_nossl.conf
 public/assets/Screenshot*
+public/assets/*.csv
 FUOTA_IMPROVEMENT_PLAN.md
+backend/scripts/fuota_postmortem*.py
