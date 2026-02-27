@@ -632,4 +632,24 @@ describe('FUOTAManager init downlink fixes', () => {
         const s = fuotaManager.activeSessions.get(DEV);
         if (s) { fuotaManager._clearTimeouts(s); fuotaManager.activeSessions.delete(DEV); }
     });
+
+    it('config request (0x0200) in _handleInitAck uses Confirmed: 1', async () => {
+        const DEV = 'DEAD000000000043';
+        const session = { ...makeVerifySession(DEV, 'waiting_ack', 0) };
+        fuotaManager.activeSessions.set(DEV, session);
+
+        fuotaManager.processPacket(
+            `mqtt/things/${DEV}/uplink`,
+            JSON.stringify({ DevEUI_uplink: { payload_hex: '1000' } })
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const configCall = mqttClient.publish.mock.calls.find(([, m]) => {
+            const dl = JSON.parse(m).DevEUI_downlink;
+            return dl.FPort === 22 && dl.payload_hex === '0200';
+        });
+        expect(configCall).toBeDefined();
+        expect(JSON.parse(configCall[1]).DevEUI_downlink.Confirmed).toBe(1);
+    });
 });

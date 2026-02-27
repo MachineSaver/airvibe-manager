@@ -575,7 +575,7 @@ class FUOTAManager {
 
         // Send config request now that device is confirmed online and in Class C.
         // Fire-and-forget — captures firmware versions (TPM/VSM) before blocks start.
-        this._sendDownlink(devEui, 22, Buffer.from([0x02, 0x00]));
+        this._sendDownlink(devEui, 22, Buffer.from([0x02, 0x00]), true);
         auditLogger.log('fuota_manager', 'config_request_sent', devEui, {});
 
         session.state = 'sending_blocks';

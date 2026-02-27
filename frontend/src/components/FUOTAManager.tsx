@@ -704,12 +704,12 @@ export default function FUOTAManager({ socket }: Props) {
             <table className="w-full text-xs border-collapse">
               <thead className="sticky top-0 bg-[#252526]">
                 <tr className="text-gray-500 border-b border-[#333]">
-                  <th className="pb-1.5 pl-2 text-left w-14">Sel.</th>
-                  <th className="pb-1.5 text-left">DevEUI</th>
-                  <th className="pb-1.5 text-left pl-3">TPMfw Ver</th>
-                  <th className="pb-1.5 text-left pl-3">VSMfw Ver</th>
-                  <th className="pb-1.5 text-left pl-3">Config Updated</th>
-                  <th className="pb-1.5 text-right pr-2">Last Seen</th>
+                  <th className="pb-1.5 pl-2 text-left w-24 border border-[#333]">Select</th>
+                  <th className="pb-1.5 pl-2 text-left border border-[#333]">DevEUI</th>
+                  <th className="pb-1.5 pl-3 text-left border border-[#333]">TPMfw Ver</th>
+                  <th className="pb-1.5 pl-3 text-left border border-[#333]">VSMfw Ver</th>
+                  <th className="pb-1.5 pl-3 text-left border border-[#333]">Config Updated</th>
+                  <th className="pb-1.5 pr-2 text-right border border-[#333]">Last Seen</th>
                 </tr>
               </thead>
               <tbody>
@@ -722,10 +722,10 @@ export default function FUOTAManager({ socket }: Props) {
                       onClick={() => toggleDevice(device.dev_eui)}
                       className={`cursor-pointer hover:bg-[#2d2d2d] ${isSelected ? 'bg-blue-900/10' : ''}`}
                     >
-                      <td className="py-1.5 pl-2">
+                      <td className="py-1.5 pl-2 border border-[#333]">
                         {isActive ? (
                           <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/50 border border-amber-600 text-amber-300">
-                            Upd…
+                            Updating
                           </span>
                         ) : (
                           <input
@@ -737,19 +737,19 @@ export default function FUOTAManager({ socket }: Props) {
                           />
                         )}
                       </td>
-                      <td className="py-1.5 font-mono text-gray-300">{device.dev_eui}</td>
-                      <td className="py-1.5 pl-3 font-mono text-gray-400">
+                      <td className="py-1.5 pl-2 font-mono text-gray-300 border border-[#333]">{device.dev_eui}</td>
+                      <td className="py-1.5 pl-3 font-mono text-gray-400 border border-[#333]">
                         {device.metadata?.tpm_fw ?? <span className="text-gray-600">—</span>}
                       </td>
-                      <td className="py-1.5 pl-3 font-mono text-gray-400">
+                      <td className="py-1.5 pl-3 font-mono text-gray-400 border border-[#333]">
                         {device.metadata?.vsm_fw ?? <span className="text-gray-600">—</span>}
                       </td>
-                      <td className="py-1.5 pl-3 text-gray-500 border-r border-[#333]">
+                      <td className="py-1.5 pl-3 text-gray-500 border border-[#333]">
                         {device.metadata?.config_updated_at
                           ? formatDate(device.metadata.config_updated_at)
                           : <span className="text-gray-600">—</span>}
                       </td>
-                      <td className="py-1.5 pr-2 text-gray-500 text-right">{formatDate(device.last_seen)}</td>
+                      <td className="py-1.5 pr-2 text-gray-500 text-right border border-[#333]">{formatDate(device.last_seen)}</td>
                     </tr>
                   );
                 })}
