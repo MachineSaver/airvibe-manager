@@ -474,13 +474,6 @@ class FUOTAManager {
             );
         }
 
-        // Send a config request (0x0200, fPort 22) so the device responds with a
-        // Type 4 config uplink that MessageTracker uses to capture firmware versions
-        // (TPM/VSM) before the update starts.  Fire-and-forget — we don't wait for
-        // the response.  The device will send it on the next available uplink window.
-        this._sendDownlink(devEui, 22, Buffer.from([0x02, 0x00]));
-        auditLogger.log('fuota_manager', 'config_request_sent', devEui, {});
-
         // Send init downlink then wait for 0x10 ACK
         this._sendInitDownlink(session);
         this._emitProgress(devEui);
@@ -548,7 +541,7 @@ class FUOTAManager {
 
     _sendInitDownlink(session) {
         const payload = makeInitPayload(session.firmwareSize);
-        this._sendDownlink(session.devEui, 22, payload);
+        this._sendDownlink(session.devEui, 22, payload, true);
         session.state = 'waiting_ack';
         this._updateDb(session);
         this._emitProgress(session.devEui);
@@ -579,6 +572,12 @@ class FUOTAManager {
 
         console.log(`FUOTAManager: ${devEui} entered Class C (0x10 ACK received)`);
         auditLogger.log('fuota_manager', 'init_ack_received', devEui, { errorCode });
+
+        // Send config request now that device is confirmed online and in Class C.
+        // Fire-and-forget — captures firmware versions (TPM/VSM) before blocks start.
+        this._sendDownlink(devEui, 22, Buffer.from([0x02, 0x00]));
+        auditLogger.log('fuota_manager', 'config_request_sent', devEui, {});
+
         session.state = 'sending_blocks';
         this._updateDb(session);
         this._emitProgress(devEui);

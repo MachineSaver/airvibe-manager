@@ -545,3 +545,91 @@ describe('FUOTAManager confirmed downlinks', () => {
         expect(dl.Confirmed).toBe(1);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Init downlink fixes:
+//   1. _sendInitDownlink uses confirmed=true
+//   2. 0x0200 config request moved to _handleInitAck (not sent at session start)
+// ---------------------------------------------------------------------------
+
+describe('FUOTAManager init downlink fixes', () => {
+    beforeEach(() => { fuotaManager.io = mockIo; });
+    afterEach(() => { fuotaManager.io = null; });
+
+    it('_sendInitDownlink sends FPort 22 init payload (0x0500) with Confirmed: 1', () => {
+        const DEV = 'DEAD000000000040';
+        const session = {
+            devEui: DEV,
+            dbId: null,
+            firmwareSize: 49,
+            state: 'initializing',
+            blockIntervalMs: 10000,
+            _ackTimeout: null,
+            _verifyTimeout: null,
+            _sessionTimeout: null,
+        };
+        fuotaManager.activeSessions.set(DEV, session);
+
+        fuotaManager._sendInitDownlink(session);
+
+        const initCall = mqttClient.publish.mock.calls.find(([, m]) => {
+            const dl = JSON.parse(m).DevEUI_downlink;
+            return dl.FPort === 22 && dl.payload_hex.startsWith('0500');
+        });
+        expect(initCall).toBeDefined();
+        expect(JSON.parse(initCall[1]).DevEUI_downlink.Confirmed).toBe(1);
+
+        // Cleanup — prevent the ack-timeout from leaking into other tests
+        clearTimeout(session._ackTimeout);
+        fuotaManager.activeSessions.delete(DEV);
+    });
+
+    it('_handleInitAck sends 0x0200 config request on FPort 22', async () => {
+        const DEV = 'DEAD000000000041';
+        // blocksSent=1 == blocks.length → _sendAllBlocks loop skipped entirely,
+        // goes straight to _sendVerify which suspends on its pre-delay sleep.
+        const session = { ...makeVerifySession(DEV, 'waiting_ack', 0) };
+        fuotaManager.activeSessions.set(DEV, session);
+
+        fuotaManager.processPacket(
+            `mqtt/things/${DEV}/uplink`,
+            JSON.stringify({ DevEUI_uplink: { payload_hex: '1000' } })
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const configCalls = mqttClient.publish.mock.calls.filter(([, m]) => {
+            const dl = JSON.parse(m).DevEUI_downlink;
+            return dl.FPort === 22 && dl.payload_hex === '0200';
+        });
+        expect(configCalls).toHaveLength(1);
+    });
+
+    it('startSession does NOT send 0x0200 config request before 0x10 ACK', async () => {
+        const DEV = 'DEAD000000000042';
+        const { sessionId } = fuotaManager.storeFirmware('test.bin', Buffer.alloc(49));
+
+        // Sequence of pool.query calls in startSession:
+        // 1. resolveClassCProfile → SELECT metadata ism_band
+        // 2. INSERT INTO devices (upsert)
+        // 3. INSERT INTO fuota_sessions RETURNING id
+        // 4. UPDATE fuota_sessions SET firmware_data
+        pool.query
+            .mockResolvedValueOnce({ rows: [] })
+            .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+            .mockResolvedValueOnce({ rows: [{ id: 'uuid-42' }] })
+            .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+        await fuotaManager.startSession(sessionId, DEV);
+
+        const configCalls = mqttClient.publish.mock.calls.filter(([, m]) => {
+            const dl = JSON.parse(m).DevEUI_downlink;
+            return dl.FPort === 22 && dl.payload_hex === '0200';
+        });
+        expect(configCalls).toHaveLength(0);
+
+        // Cleanup
+        const s = fuotaManager.activeSessions.get(DEV);
+        if (s) { fuotaManager._clearTimeouts(s); fuotaManager.activeSessions.delete(DEV); }
+    });
+});
