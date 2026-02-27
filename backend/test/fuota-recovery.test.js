@@ -179,44 +179,50 @@ describe('FUOTAManager startup recovery', () => {
 // Bug fixes: verify-state guard (Bug A) and post-resend delay (Bug B)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Shared helpers for verify/resend tests
+// ---------------------------------------------------------------------------
+
+/** Build a minimal session for direct planting into activeSessions. */
+function makeVerifySession(devEui, state, verifyAttempts = 1) {
+    return {
+        devEui,
+        dbId: null,                          // skip _updateDb DB round-trips
+        state,
+        blocks: [Buffer.alloc(49)],           // 1 block at index 0
+        blocksSent: 1,
+        blocksSentAtStart: 0,
+        blocksResentSoFar: 0,
+        confirmedBlocks: new Set(),
+        totalBlocks: 1,
+        blockIntervalMs: 10000,
+        verifyAttempts,
+        lastMissedCount: 0,
+        lastMissedBlocks: [],
+        firmwareName: 'fw.bin',
+        firmwareSize: 49,
+        error: null,
+        aborted: false,
+        classCConfigured: false,
+        originalClass: null,
+        _ackTimeout: null,
+        _verifyTimeout: null,
+        _sessionTimeout: null,
+        startedAt: Date.now(),
+    };
+}
+
+/** 0x11 payload: missedFlag=0, count=1, missed block#0 (LE 16-bit). */
+const VERIFY_UPLINK_1_MISSED = Buffer.from([0x11, 0x00, 0x01, 0x00, 0x00]);
+
+function makeUplink(devEui, payloadBuf) {
+    return {
+        topic: `mqtt/things/${devEui}/uplink`,
+        msg: JSON.stringify({ DevEUI_uplink: { payload_hex: payloadBuf.toString('hex') } }),
+    };
+}
+
 describe('FUOTAManager verify-phase bug fixes', () => {
-    /** Build a minimal session for direct planting into activeSessions. */
-    function makeVerifySession(devEui, state, verifyAttempts = 1) {
-        return {
-            devEui,
-            dbId: null,                          // skip _updateDb DB round-trips
-            state,
-            blocks: [Buffer.alloc(49)],           // 1 block at index 0
-            blocksSent: 1,
-            blocksSentAtStart: 0,
-            totalBlocks: 1,
-            blockIntervalMs: 10000,
-            verifyAttempts,
-            lastMissedCount: 0,
-            lastMissedBlocks: [],
-            firmwareName: 'fw.bin',
-            firmwareSize: 49,
-            error: null,
-            aborted: false,
-            classCConfigured: false,
-            originalClass: null,
-            _ackTimeout: null,
-            _verifyTimeout: null,
-            _sessionTimeout: null,
-            startedAt: Date.now(),
-        };
-    }
-
-    /** 0x11 payload: missedFlag=0, count=1, missed block#0 (LE 16-bit). */
-    const VERIFY_UPLINK_1_MISSED = Buffer.from([0x11, 0x00, 0x01, 0x00, 0x00]);
-
-    function makeUplink(devEui, payloadBuf) {
-        return {
-            topic: `mqtt/things/${devEui}/uplink`,
-            msg: JSON.stringify({ DevEUI_uplink: { payload_hex: payloadBuf.toString('hex') } }),
-        };
-    }
-
     beforeEach(() => { fuotaManager.io = mockIo; });
     afterEach(() => { fuotaManager.io = null; });
 
@@ -362,5 +368,180 @@ describe('FUOTAManager.getActiveSessions() ETA fields', () => {
         const sessions = fuotaManager.getActiveSessions();
         expect(sessions).toHaveLength(1);
         expect(sessions[0].blocksSentAtStart).toBe(2713);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Resend progress tracking (blocksResentSoFar)
+// ---------------------------------------------------------------------------
+
+describe('FUOTAManager resend progress tracking', () => {
+    beforeEach(() => { fuotaManager.io = mockIo; });
+    afterEach(() => { fuotaManager.io = null; });
+
+    it('emits blocksResentSoFar=1 after first block of a two-block resend is sent', async () => {
+        const DEV = 'DEAD000000000012';
+        const session = {
+            ...makeVerifySession(DEV, 'verifying', 1),
+            blocks: [Buffer.alloc(49), Buffer.alloc(49)],
+            totalBlocks: 2,
+        };
+        fuotaManager.activeSessions.set(DEV, session);
+
+        // 0x11: missedFlag=0, count=2, block#0 LE and block#1 LE
+        const twoMissed = Buffer.from([0x11, 0x00, 0x02, 0x00, 0x00, 0x01, 0x00]);
+        const { topic, msg } = makeUplink(DEV, twoMissed);
+        fuotaManager.processPacket(topic, msg);
+
+        // Let _resendMissedBlocks send block 0, then pause at sleep(blockIntervalMs)
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const progressEmits = mockIo.emit.mock.calls
+            .filter(([ev]) => ev === 'fuota:progress')
+            .map(([, p]) => p);
+
+        // Must have emitted blocksResentSoFar=1 after first missed block resent
+        expect(progressEmits.some(p => p.blocksResentSoFar === 1)).toBe(true);
+    });
+
+    it('includes blocksResentSoFar=0 in getActiveSessions before any resend', () => {
+        const DEV = 'DEAD000000000013';
+        fuotaManager.activeSessions.set(DEV, makeVerifySession(DEV, 'verifying', 1));
+
+        const sessions = fuotaManager.getActiveSessions();
+        expect(sessions).toHaveLength(1);
+        expect(typeof sessions[0].blocksResentSoFar).toBe('number');
+        expect(sessions[0].blocksResentSoFar).toBe(0);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// confirmedBlocks accumulation — tracks device-confirmed received blocks
+// ---------------------------------------------------------------------------
+
+describe('FUOTAManager confirmedBlocks accumulation', () => {
+    beforeEach(() => { fuotaManager.io = mockIo; });
+    afterEach(() => { fuotaManager.io = null; });
+
+    // Helper: build session with N blocks all sent
+    function makeNBlockSession(devEui, n) {
+        return {
+            ...makeVerifySession(devEui, 'verifying', 1),
+            blocks: Array.from({ length: n }, () => Buffer.alloc(49)),
+            totalBlocks: n,
+            blocksSent: n,
+        };
+    }
+
+    it('missedFlag=0: confirms all sent blocks except those in the missed list', async () => {
+        const DEV = 'DEAD000000000020';
+        fuotaManager.activeSessions.set(DEV, makeNBlockSession(DEV, 4));
+
+        // 0x11: missedFlag=0 (complete list), count=1, block#2 missed
+        const payload = Buffer.from([0x11, 0x00, 0x01, 0x02, 0x00]);
+        fuotaManager.processPacket(`mqtt/things/${DEV}/uplink`,
+            JSON.stringify({ DevEUI_uplink: { payload_hex: payload.toString('hex') } }));
+        await Promise.resolve();
+
+        const s = fuotaManager.activeSessions.get(DEV);
+        // 4 blocks sent, block 2 missed → blocks 0,1,3 confirmed
+        expect(s.confirmedBlocks.has(0)).toBe(true);
+        expect(s.confirmedBlocks.has(1)).toBe(true);
+        expect(s.confirmedBlocks.has(2)).toBe(false);  // missed
+        expect(s.confirmedBlocks.has(3)).toBe(true);
+    });
+
+    it('missedFlag=1: confirms only blocks in 0..maxMissed that are not missed', async () => {
+        const DEV = 'DEAD000000000021';
+        fuotaManager.activeSessions.set(DEV, makeNBlockSession(DEV, 6));
+
+        // 0x11: missedFlag=1 (partial list), count=1, block#3 missed
+        const payload = Buffer.from([0x11, 0x01, 0x01, 0x03, 0x00]);
+        fuotaManager.processPacket(`mqtt/things/${DEV}/uplink`,
+            JSON.stringify({ DevEUI_uplink: { payload_hex: payload.toString('hex') } }));
+        await Promise.resolve();
+
+        const s = fuotaManager.activeSessions.get(DEV);
+        // 6 blocks sent, missedFlag=1, maxMissed=3 → only confirm 0..3 except block 3
+        expect(s.confirmedBlocks.has(0)).toBe(true);
+        expect(s.confirmedBlocks.has(1)).toBe(true);
+        expect(s.confirmedBlocks.has(2)).toBe(true);
+        expect(s.confirmedBlocks.has(3)).toBe(false); // missed
+        expect(s.confirmedBlocks.has(4)).toBe(false); // beyond maxMissed — not confirmed
+        expect(s.confirmedBlocks.has(5)).toBe(false); // beyond maxMissed — not confirmed
+    });
+
+    it('getActiveSessions returns confirmedRanges as sorted [lo,hi] pairs', () => {
+        const DEV = 'DEAD000000000022';
+        const session = makeVerifySession(DEV, 'verifying', 1);
+        session.confirmedBlocks = new Set([0, 1, 2, 5, 6]);
+        fuotaManager.activeSessions.set(DEV, session);
+
+        const sessions = fuotaManager.getActiveSessions();
+        expect(sessions[0].confirmedRanges).toEqual([[0, 2], [5, 6]]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Confirmed downlinks — FUOTA data blocks and verify commands must be confirmed
+// ---------------------------------------------------------------------------
+
+describe('FUOTAManager confirmed downlinks', () => {
+    beforeEach(() => { fuotaManager.io = mockIo; });
+    afterEach(() => { fuotaManager.io = null; });
+
+    it('_sendAllBlocks publishes FPort 25 blocks with Confirmed: 1', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [makeRow('DEAD000000000030')] });
+        mqttClient.publish.mockReturnValue(undefined);
+
+        await fuotaManager.init(mockIo);
+
+        const port25Calls = mqttClient.publish.mock.calls.filter(
+            ([, msg]) => JSON.parse(msg).DevEUI_downlink.FPort === 25
+        );
+        expect(port25Calls.length).toBeGreaterThan(0);
+        const dl = JSON.parse(port25Calls[0][1]).DevEUI_downlink;
+        expect(dl.Confirmed).toBe(1);
+    });
+
+    it('_resendMissedBlocks publishes FPort 25 resend blocks with Confirmed: 1', async () => {
+        const DEV = 'DEAD000000000031';
+        fuotaManager.activeSessions.set(DEV, makeVerifySession(DEV, 'verifying', 1));
+
+        const { topic, msg } = makeUplink(DEV, VERIFY_UPLINK_1_MISSED);
+        fuotaManager.processPacket(topic, msg);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const port25Calls = mqttClient.publish.mock.calls.filter(
+            ([, m]) => JSON.parse(m).DevEUI_downlink.FPort === 25
+        );
+        expect(port25Calls).toHaveLength(1);
+        const dl = JSON.parse(port25Calls[0][1]).DevEUI_downlink;
+        expect(dl.Confirmed).toBe(1);
+    });
+
+    it('_sendVerify publishes FPort 22 verify command (0x0600) with Confirmed: 1', async () => {
+        const DEV = 'DEAD000000000032';
+        fuotaManager.activeSessions.set(DEV, makeVerifySession(DEV, 'verifying', 1));
+
+        const { topic, msg } = makeUplink(DEV, VERIFY_UPLINK_1_MISSED);
+        fuotaManager.processPacket(topic, msg);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // Advance past the 30 s resend-verify delay so the next verify fires
+        jest.advanceTimersByTime(30000);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const verifyCalls = mqttClient.publish.mock.calls.filter(([, m]) => {
+            const dl = JSON.parse(m).DevEUI_downlink;
+            return dl.FPort === 22 && dl.payload_hex === '0600';
+        });
+        expect(verifyCalls.length).toBeGreaterThan(0);
+        const dl = JSON.parse(verifyCalls[0][1]).DevEUI_downlink;
+        expect(dl.Confirmed).toBe(1);
     });
 });

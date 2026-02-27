@@ -173,6 +173,26 @@ describe('normalizeOutgoing — internal downlink', () => {
         expect(result.topic).toBe(topic);
         expect(result.message).toBe(msg);
     });
+
+    it('sets confirmed: true when DevEUI_downlink.Confirmed is 1', () => {
+        const topic = 'mqtt/things/AABBCCDDEEFF0011/downlink';
+        const msg = JSON.stringify({
+            DevEUI_downlink: { DevEUI: 'AABBCCDDEEFF0011', FPort: 25, payload_hex: 'aabb', Confirmed: 1 },
+        });
+        const { message } = adapter.normalizeOutgoing(topic, msg);
+        const parsed = JSON.parse(message);
+        expect(parsed.confirmed).toBe(true);
+    });
+
+    it('sets confirmed: false when DevEUI_downlink.Confirmed is absent', () => {
+        const topic = 'mqtt/things/AABBCCDDEEFF0011/downlink';
+        const msg = JSON.stringify({
+            DevEUI_downlink: { DevEUI: 'AABBCCDDEEFF0011', FPort: 25, payload_hex: 'aabb' },
+        });
+        const { message } = adapter.normalizeOutgoing(topic, msg);
+        const parsed = JSON.parse(message);
+        expect(parsed.confirmed).toBe(false);
+    });
 });
 
 // ---------------------------------------------------------------------------

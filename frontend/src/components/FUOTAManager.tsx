@@ -41,6 +41,8 @@ interface DeviceProgress {
   classCConfigured?: boolean;
   startedAt?: number;
   blocksSentAtStart?: number;
+  blocksResentSoFar?: number;
+  confirmedRanges?: [number, number][];
 }
 
 interface Device {
@@ -842,13 +844,12 @@ function DeviceProgressCard({
   const {
     devEui, state, blocksSent, totalBlocks, verifyAttempts,
     lastMissedCount, lastMissedBlocks, error, firmwareName, blockIntervalMs, classCConfigured,
-    startedAt, blocksSentAtStart,
+    startedAt, blocksSentAtStart, blocksResentSoFar, confirmedRanges,
   } = progress;
   const pct = totalBlocks > 0 ? Math.min(100, Math.round((blocksSent / totalBlocks) * 100)) : 0;
   const isTerminal = isTerminalState(state);
   const isActive = !isTerminal && state !== 'idle';
   const isFailed = state === 'failed' || state === 'aborted';
-  const remaining = totalBlocks > blocksSent ? totalBlocks - blocksSent : 0;
 
   // ---- Timeline step states ----
   const classCOk = !!classCConfigured;
@@ -965,35 +966,19 @@ function DeviceProgressCard({
         </div>
       )}
 
-      {/* Progress bar */}
-      {(state === 'sending_blocks' || state === 'resending' ||
-        (isTerminal && totalBlocks > 0 && blocksSent > 0)) && (
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>Blocks {blocksSent.toLocaleString()} / {totalBlocks.toLocaleString()}</span>
-            <span>{pct}%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-[#333] overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${
-                state === 'complete' ? 'bg-green-500' :
-                isFailed ? 'bg-red-500' :
-                'bg-blue-500'
-              }`}
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Missed blocks map — populated once device responds with 0x11 */}
-      {lastMissedBlocks && lastMissedBlocks.length > 0 && totalBlocks > 0 && state !== 'complete' && (
-        <MissedBlocksMap totalBlocks={totalBlocks} missedBlocks={lastMissedBlocks} />
-      )}
-      {(state === 'verifying' || state === 'resending') && (!lastMissedBlocks || lastMissedBlocks.length === 0) && (
-        <p className="text-[11px] text-gray-600 italic">
-          Missed block map will appear here once the device responds with a 0x11 uplink.
-        </p>
+      {/* Block status map — visible once blocks are being sent */}
+      {totalBlocks > 0 && (blocksSent > 0 || isTerminal) && (
+        <BlockStatusMap
+          totalBlocks={totalBlocks}
+          blocksSent={blocksSent}
+          confirmedRanges={confirmedRanges ?? []}
+          lastMissedBlocks={lastMissedBlocks ?? []}
+          blocksResentSoFar={blocksResentSoFar ?? 0}
+          blockIntervalMs={blockIntervalMs}
+          startedAt={startedAt}
+          blocksSentAtStart={blocksSentAtStart}
+          state={state}
+        />
       )}
 
       {/* Error */}
@@ -1012,14 +997,16 @@ function DeviceProgressCard({
               Waiting for 0x11 verify uplink{verifyAttempts > 0 ? ` (attempt ${verifyAttempts})` : ''}…
             </span>
           )}
-          {state === 'resending' && lastMissedCount > 0 && (
-            <span className="text-amber-400">Re-sending {lastMissedCount} missed block{lastMissedCount !== 1 ? 's' : ''}…</span>
-          )}
-          {state === 'sending_blocks' && remaining > 0 && (() => {
-            const eta = formatObservedEta(remaining, blocksSent, startedAt, blockIntervalMs, blocksSentAtStart);
-            return eta ? (
-              <span>ETA: <span className="text-gray-200 font-mono">{eta}</span> remaining</span>
-            ) : null;
+          {state === 'resending' && lastMissedCount > 0 && (() => {
+            const sent = blocksResentSoFar ?? 0;
+            if (sent >= lastMissedCount) {
+              return <span className="text-amber-400">All {lastMissedCount} block{lastMissedCount !== 1 ? 's' : ''} resent — waiting before next verify…</span>;
+            }
+            return (
+              <span className="text-amber-400">
+                Re-sending {sent + 1} of {lastMissedCount} missed blocks…
+              </span>
+            );
           })()}
           {state === 'complete' && (
             <span className="text-green-400">All blocks confirmed — update applied</span>
@@ -1041,87 +1028,215 @@ function DeviceProgressCard({
 }
 
 // ---------------------------------------------------------------------------
-// MissedBlocksMap
+// BlockStatusMap — full block-range visualization, SegmentMap pattern
 // ---------------------------------------------------------------------------
 
-const MAP_CELLS = 200; // fixed visual resolution regardless of firmware size
+const BLOCK_COLORS = {
+  unsent:    { bg: 'transparent',  border: '#334155', label: 'Unsent' },
+  sent:      { bg: '#eab308',      border: '#ca8a04', label: 'Sent (unconfirmed)' },
+  missing:   { bg: '#ef4444',      border: '#dc2626', label: 'Missing' },
+  confirmed: { bg: '#22c55e',      border: '#16a34a', label: 'Confirmed' },
+} as const;
 
-function MissedBlocksMap({
+type BlockState = keyof typeof BLOCK_COLORS;
+
+const BLOCK_MAP_CELLS = 200;
+
+/** Binary-search range membership — confirmedRanges must be sorted. */
+function inAnyRange(b: number, ranges: [number, number][]): boolean {
+  let lo = 0, hi = ranges.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const [rlo, rhi] = ranges[mid];
+    if (b >= rlo && b <= rhi) return true;
+    if (b < rlo) hi = mid - 1; else lo = mid + 1;
+  }
+  return false;
+}
+
+function BlockStatusMap({
   totalBlocks,
-  missedBlocks,
+  blocksSent,
+  confirmedRanges,
+  lastMissedBlocks,
+  blocksResentSoFar,
+  blockIntervalMs,
+  startedAt,
+  blocksSentAtStart,
+  state,
 }: {
   totalBlocks: number;
-  missedBlocks: number[];
+  blocksSent: number;
+  confirmedRanges: [number, number][];
+  lastMissedBlocks: number[];
+  blocksResentSoFar: number;
+  blockIntervalMs?: number;
+  startedAt?: number;
+  blocksSentAtStart?: number;
+  state: FuotaState;
 }) {
-  const missedSet = new Set(missedBlocks);
-  const cellCount = Math.min(totalBlocks, MAP_CELLS);
-  // Each cell covers a contiguous range of blocks
-  const cells = Array.from({ length: cellCount }, (_, i) => {
-    const lo = Math.floor((i * totalBlocks) / cellCount);
-    const hi = Math.floor(((i + 1) * totalBlocks) / cellCount);
-    // Cell is "missed" if any block in [lo, hi) is in the missed set
-    let hasMissed = false;
+  const [expanded, setExpanded] = useState(false);
+
+  // During resending: blocks not yet resent in this cycle are "missing" (red)
+  // During verifying and other states: no blocks are currently red — they were
+  // all resent before the verify command was sent
+  const pendingMissedSet = new Set<number>(
+    state === 'resending' ? lastMissedBlocks.slice(blocksResentSoFar) : []
+  );
+
+  const cellCount = Math.min(totalBlocks, BLOCK_MAP_CELLS);
+  const cells: BlockState[] = Array.from({ length: cellCount }, (_, i) => {
+    const lo = Math.floor(i * totalBlocks / cellCount);
+    const hi = Math.floor((i + 1) * totalBlocks / cellCount);
+    let hasMissing = false, hasSent = false, hasConfirmed = false;
     for (let b = lo; b < hi; b++) {
-      if (missedSet.has(b)) { hasMissed = true; break; }
+      if (pendingMissedSet.has(b)) { hasMissing = true; break; }
+      if (inAnyRange(b, confirmedRanges)) { hasConfirmed = true; }
+      else if (b < blocksSent) { hasSent = true; }
     }
-    return { lo, hi: hi - 1, hasMissed };
+    if (hasMissing) return 'missing';
+    if (hasSent)    return 'sent';
+    if (hasConfirmed) return 'confirmed';
+    return 'unsent';
   });
+
+  // Counts for summary line
+  const confirmedCount = confirmedRanges.reduce((acc, [lo, hi]) => acc + hi - lo + 1, 0);
+  const pendingCount = pendingMissedSet.size;
+  const pct = totalBlocks > 0 ? Math.min(100, Math.round(blocksSent / totalBlocks * 100)) : 0;
+  const isFailed = state === 'failed' || state === 'aborted';
+
+  const eta = state === 'sending_blocks'
+    ? formatObservedEta(totalBlocks - blocksSent, blocksSent, startedAt, blockIntervalMs, blocksSentAtStart)
+    : null;
 
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-xs text-gray-500">
-        <span className="font-medium text-amber-400">
-          Missed blocks from last 0x11 uplink
-        </span>
-        <span>
-          <span className="text-amber-400 font-mono">{missedBlocks.length}</span>
-          <span> block{missedBlocks.length !== 1 ? 's' : ''} to resend</span>
-        </span>
-      </div>
-
-      {/* Block map grid */}
+      {/* Summary bar — always visible, click to expand circle grid */}
       <div
-        className="flex flex-wrap gap-px rounded overflow-hidden"
-        title={`${missedBlocks.length} missed block(s): ${missedBlocks.slice(0, 12).join(', ')}${missedBlocks.length > 12 ? '…' : ''}`}
+        className="flex items-center gap-2 cursor-pointer select-none"
+        onClick={() => setExpanded(v => !v)}
       >
-        {cells.map((cell, i) => (
+        <div className="flex-1 min-w-0 space-y-1">
+          {/* Counts row */}
+          <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-gray-400">
+            <span className={`font-bold ${state === 'complete' ? 'text-green-400' : isFailed ? 'text-red-400' : 'text-white'}`}>
+              {pct}%
+            </span>
+            <span className="text-gray-600">·</span>
+            <span>
+              <span className="font-mono">{blocksSent.toLocaleString()}</span>
+              <span className="text-gray-600">/{totalBlocks.toLocaleString()} sent</span>
+            </span>
+            {confirmedCount > 0 && (
+              <>
+                <span className="text-gray-600">·</span>
+                <span className="text-green-400 font-mono">{confirmedCount.toLocaleString()}</span>
+                <span className="text-gray-500"> confirmed</span>
+              </>
+            )}
+            {pendingCount > 0 && (
+              <>
+                <span className="text-gray-600">·</span>
+                <span className="text-red-400 font-mono">{pendingCount}</span>
+                <span className="text-gray-500"> missing</span>
+              </>
+            )}
+            {eta && (
+              <>
+                <span className="text-gray-600">·</span>
+                <span className="text-gray-300 font-mono">{eta}</span>
+                <span className="text-gray-500"> remaining</span>
+              </>
+            )}
+          </div>
+          {/* CSS gradient bar */}
           <div
-            key={i}
-            title={
-              cell.lo === cell.hi
-                ? `Block ${cell.lo}${cell.hasMissed ? ' — MISSING' : ' — received'}`
-                : `Blocks ${cell.lo}–${cell.hi}${cell.hasMissed ? ' — contains missing' : ' — received'}`
-            }
-            className={`h-3 flex-shrink-0 rounded-sm transition-colors ${
-              cell.hasMissed
-                ? 'bg-amber-500'
-                : 'bg-blue-900/60'
-            }`}
-            style={{ width: `${Math.max(2, Math.floor(100 / cellCount))}%` }}
+            className="w-full h-1.5 rounded-full"
+            style={{
+              background: cells.length > 0
+                ? `linear-gradient(to right, ${cells.map((s, i) => {
+                    const n = cells.length;
+                    const start = (i / n * 100).toFixed(2);
+                    const end = ((i + 1) / n * 100).toFixed(2);
+                    const bg = BLOCK_COLORS[s].bg === 'transparent' ? '#1e293b' : BLOCK_COLORS[s].bg;
+                    return `${bg} ${start}% ${end}%`;
+                  }).join(', ')})`
+                : '#1e293b',
+            }}
           />
-        ))}
+        </div>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className={`h-4 w-4 text-gray-500 shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+          viewBox="0 0 20 20" fill="currentColor"
+        >
+          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
       </div>
 
-      {/* Block number list */}
-      <div className="flex flex-wrap gap-1">
-        {missedBlocks.map(b => (
-          <span
-            key={b}
-            className="font-mono text-[10px] px-1 py-0.5 rounded bg-amber-900/40 border border-amber-700/50 text-amber-300"
-          >
-            {b}
-          </span>
-        ))}
-      </div>
+      {/* Expanded circle grid */}
+      {expanded && (
+        <div className="mt-1">
+          <div className="flex flex-wrap gap-1 p-3 bg-[#1e1e1e] rounded-lg border border-[#333]">
+            {cells.map((s, i) => (
+              <div
+                key={i}
+                className="w-3 h-3 rounded-full transition-colors duration-200 flex-shrink-0"
+                style={{
+                  background: BLOCK_COLORS[s].bg === 'transparent' ? 'transparent' : BLOCK_COLORS[s].bg,
+                  border: `1.5px solid ${BLOCK_COLORS[s].border}`,
+                }}
+                title={`Blocks ~${Math.floor(i * totalBlocks / cellCount)}–${Math.floor((i + 1) * totalBlocks / cellCount) - 1}: ${BLOCK_COLORS[s].label}`}
+              />
+            ))}
+          </div>
+          {/* Legend */}
+          <div className="flex flex-wrap gap-3 mt-2">
+            {(Object.entries(BLOCK_COLORS) as [BlockState, typeof BLOCK_COLORS[BlockState]][]).map(([key, { bg, border, label }]) => (
+              <div key={key} className="flex items-center gap-1 text-[10px] text-gray-500">
+                <span
+                  className="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0"
+                  style={{
+                    background: bg === 'transparent' ? 'transparent' : bg,
+                    border: `1.5px solid ${border}`,
+                  }}
+                />
+                {label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-      <div className="flex items-center gap-3 text-[10px] text-gray-600">
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-500" /> missing
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-900/60 border border-blue-800" /> received
-        </span>
-      </div>
+      {/* Missed block chips — only shown during active resend cycle */}
+      {state === 'resending' && lastMissedBlocks.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-[10px] text-gray-500">
+            Last 0x11 reported {lastMissedBlocks.length} missing block{lastMissedBlocks.length !== 1 ? 's' : ''}
+            {blocksResentSoFar > 0 && (
+              <span> · <span className="text-yellow-400">{Math.min(blocksResentSoFar, lastMissedBlocks.length)} resent</span></span>
+            )}
+            {pendingCount > 0 && (
+              <span> · <span className="text-red-400">{pendingCount} pending</span></span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {lastMissedBlocks.map((b, idx) => (
+              <span
+                key={b}
+                className={`font-mono text-[10px] px-1 py-0.5 rounded border ${
+                  idx < blocksResentSoFar
+                    ? 'bg-yellow-900/30 border-yellow-700/50 text-yellow-300'
+                    : 'bg-red-900/30 border-red-700/50 text-red-300'
+                }`}
+              >
+                {b}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

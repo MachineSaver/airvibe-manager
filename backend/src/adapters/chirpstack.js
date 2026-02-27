@@ -133,7 +133,7 @@ function normalizeOutgoing(topic, message) {
 
         const csPayload = {
             devEui:    devEui.toLowerCase(),
-            confirmed: false,
+            confirmed: !!(dl.Confirmed),
             fPort:     dl.FPort,
             data:      Buffer.from(dl.payload_hex || '', 'hex').toString('base64'),
         };

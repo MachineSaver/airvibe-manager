@@ -256,6 +256,8 @@ class FUOTAManager {
                     state:           'initializing',
                     blocksSent:      row.blocks_sent || 0,
                     blocksSentAtStart: row.blocks_sent || 0,
+                    blocksResentSoFar: 0,
+                    confirmedBlocks: new Set(),
                     verifyAttempts:  row.verify_attempts || 0,
                     lastMissedCount: 0,
                     lastMissedBlocks:[],
@@ -423,6 +425,8 @@ class FUOTAManager {
             state: 'initializing',
             blocksSent: 0,
             blocksSentAtStart: 0,
+            blocksResentSoFar: 0,
+            confirmedBlocks: new Set(),
             verifyAttempts: 0,
             lastMissedCount: 0,
             lastMissedBlocks: [],
@@ -599,7 +603,7 @@ class FUOTAManager {
             if (session.aborted || this.activeSessions.get(devEui) !== session) return;
 
             const payload = makeBlockPayload(i, blocks[i]);
-            this._sendDownlink(devEui, 25, payload);
+            this._sendDownlink(devEui, 25, payload, true);
             session.blocksSent = i + 1;
 
             // Emit progress every 5 blocks for near-real-time UI updates
@@ -640,7 +644,7 @@ class FUOTAManager {
         this._updateDb(session);
         this._emitProgress(devEui);
 
-        this._sendDownlink(devEui, 22, makeVerifyPayload());
+        this._sendDownlink(devEui, 22, makeVerifyPayload(), true);
         auditLogger.log('fuota_manager', 'verify_sent', devEui, { attempt: session.verifyAttempts });
 
         // Each attempt gets an equal share of the total verify timeout budget.
@@ -694,8 +698,24 @@ class FUOTAManager {
             // All blocks received — device is applying the update
             this._completeSession(devEui);
         } else {
+            // Update confirmed-received set before transitioning to resend.
+            // missedFlag=0: complete list — all sent blocks NOT in the missed list are confirmed.
+            // missedFlag=1: partial list — only confirm blocks in range 0..maxMissedBlock.
+            const missedSet = new Set(result.blocks);
+            if (result.missedFlag === 0) {
+                for (let b = 0; b < session.blocksSent; b++) {
+                    if (!missedSet.has(b)) session.confirmedBlocks.add(b);
+                }
+            } else if (result.blocks.length > 0) {
+                const maxMissed = Math.max(...result.blocks);
+                for (let b = 0; b <= maxMissed && b < session.blocksSent; b++) {
+                    if (!missedSet.has(b)) session.confirmedBlocks.add(b);
+                }
+            }
+
             // Resend missed blocks then verify again
             session.state = 'resending';
+            session.blocksResentSoFar = 0;
             session.lastMissedCount = result.count;
             session.lastMissedBlocks = result.blocks;
             this._updateDb(session);
@@ -726,7 +746,9 @@ class FUOTAManager {
                 continue;
             }
             const payload = makeBlockPayload(blockNum, blocks[blockNum]);
-            this._sendDownlink(devEui, 25, payload);
+            this._sendDownlink(devEui, 25, payload, true);
+            session.blocksResentSoFar = i + 1;
+            this._emitProgress(devEui);
 
             if (i < missedBlockNums.length - 1) {
                 await sleep(session.blockIntervalMs);
@@ -855,7 +877,7 @@ class FUOTAManager {
         session._sessionTimeout = null;
     }
 
-    _sendDownlink(devEui, port, payloadBuf) {
+    _sendDownlink(devEui, port, payloadBuf, confirmed = false) {
         // Publish in internal format — mqttClient.publish translates to ChirpStack
         const topic = `mqtt/things/${devEui}/downlink`;
         const message = JSON.stringify({
@@ -863,6 +885,7 @@ class FUOTAManager {
                 DevEUI: devEui,
                 FPort: port,
                 payload_hex: payloadBuf.toString('hex'),
+                Confirmed: confirmed ? 1 : 0,
             },
         });
         // Lazy load to avoid circular dependency
@@ -898,6 +921,20 @@ class FUOTAManager {
         throw new Error(`MQTT broker unreachable for ${maxWaitMs / 60000} min — session failed`);
     }
 
+    /** Convert a Set of block numbers to sorted [lo, hi] range pairs. */
+    _blocksToRanges(blockSet) {
+        if (!blockSet || blockSet.size === 0) return [];
+        const sorted = [...blockSet].sort((a, b) => a - b);
+        const ranges = [];
+        let lo = sorted[0], hi = sorted[0];
+        for (let i = 1; i < sorted.length; i++) {
+            if (sorted[i] === hi + 1) { hi = sorted[i]; }
+            else { ranges.push([lo, hi]); lo = hi = sorted[i]; }
+        }
+        ranges.push([lo, hi]);
+        return ranges;
+    }
+
     _emitProgress(devEui) {
         if (!this.io) return;
         const session = this.activeSessions.get(devEui);
@@ -910,6 +947,8 @@ class FUOTAManager {
                   verifyAttempts: session.verifyAttempts,
                   lastMissedCount: session.lastMissedCount,
                   lastMissedBlocks: session.lastMissedBlocks,
+                  blocksResentSoFar: session.blocksResentSoFar ?? 0,
+                  confirmedRanges: this._blocksToRanges(session.confirmedBlocks),
                   error: session.error,
                   firmwareName: session.firmwareName,
                   firmwareSize: session.firmwareSize,
@@ -980,6 +1019,8 @@ class FUOTAManager {
                 verifyAttempts: s.verifyAttempts,
                 lastMissedCount: s.lastMissedCount,
                 lastMissedBlocks: s.lastMissedBlocks,
+                blocksResentSoFar: s.blocksResentSoFar ?? 0,
+                confirmedRanges: this._blocksToRanges(s.confirmedBlocks),
                 error: s.error,
                 blockIntervalMs: s.blockIntervalMs,
                 classCConfigured: s.classCConfigured,
