@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 
 // ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ const FIRMWARE_CATALOG = [
     region: 'EU868',
     description: 'European — Power & Transmission Module',
     filename: 'TPMfw_2-35_Upgrade_Common_868.bin',
-    defaultIntervalMs: 10000,
+    defaultIntervalMs: 60000,
   },
   {
     id: 'tpm-915',
@@ -109,7 +109,7 @@ const FIRMWARE_CATALOG = [
     region: 'US915',
     description: 'North American — Power & Transmission Module',
     filename: 'TPMfw_2-35_Upgrade_Common_915.bin',
-    defaultIntervalMs: 2000,
+    defaultIntervalMs: 5000,
   },
   {
     id: 'vsm',
@@ -117,7 +117,7 @@ const FIRMWARE_CATALOG = [
     region: 'All regions',
     description: 'Vibration Sensor Module',
     filename: 'VSMfw_1-27Upgrade_Common.bin',
-    defaultIntervalMs: 10000,
+    defaultIntervalMs: 60000,
   },
 ] as const;
 
@@ -490,10 +490,25 @@ export default function FUOTAManager({ socket }: Props) {
   }
 
   // -------------------------------------------------------------------------
-  // Render
+  // Band-specific interval limits
   // -------------------------------------------------------------------------
 
-  const showIntervalWarning = blockIntervalMs < 2000;
+  const { minIntervalMs, maxIntervalMs } = useMemo(() => {
+    const name = firmwareInfo?.name ?? '';
+    const band = selectedIsmBand;
+    if (band.includes('915') || name.includes('915')) return { minIntervalMs: 5000,  maxIntervalMs: 15000  };
+    if (band.includes('868') || name.includes('868')) return { minIntervalMs: 60000, maxIntervalMs: 300000 };
+    return { minIntervalMs: 60000, maxIntervalMs: 300000 }; // conservative fallback
+  }, [firmwareInfo?.name, selectedIsmBand]);
+
+  // Re-clamp the current interval whenever the limits change (e.g. user switches firmware)
+  useEffect(() => {
+    setBlockIntervalMs(prev => Math.min(maxIntervalMs, Math.max(minIntervalMs, prev)));
+  }, [minIntervalMs, maxIntervalMs]);
+
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
@@ -624,11 +639,11 @@ export default function FUOTAManager({ socket }: Props) {
             <label className="text-xs text-gray-400 whitespace-nowrap">Block interval (ms)</label>
             <input
               type="number"
-              min={1000}
-              max={60000}
+              min={minIntervalMs}
+              max={maxIntervalMs}
               step={500}
               value={blockIntervalMs}
-              onChange={e => setBlockIntervalMs(Math.min(60000, Math.max(1000, parseInt(e.target.value) || 1000)))}
+              onChange={e => setBlockIntervalMs(Math.min(maxIntervalMs, Math.max(minIntervalMs, parseInt(e.target.value) || minIntervalMs)))}
               className="w-24 px-2 py-1 rounded border border-[#444] bg-[#3c3c3c] text-xs text-gray-200 font-mono focus:outline-none focus:border-blue-500"
             />
           </div>
@@ -655,11 +670,9 @@ export default function FUOTAManager({ socket }: Props) {
           )}
         </div>
 
-        {showIntervalWarning && (
-          <p className="text-xs text-amber-400">
-            Low interval — safe only on US915 with Class C profile confirmed. EU868 requires ≥5,000ms at DR3; use ≥10,000ms to be safe.
-          </p>
-        )}
+        <p className="text-xs text-gray-500">
+          Allowed range for selected band: {(minIntervalMs / 1000).toFixed(0)} – {(maxIntervalMs / 1000).toFixed(0)} s
+        </p>
         {!selectedIsmBand && (
           <p className="text-xs text-gray-500">
             Select the ISM band for devices that have not yet sent an uplink. Devices with a known band (from prior uplinks) will use their auto-detected region regardless.

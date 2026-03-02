@@ -14,12 +14,32 @@ const FUOTA_ACK_TIMEOUT_MS    = parseInt(process.env.FUOTA_ACK_TIMEOUT_MS)    ||
 const FUOTA_VERIFY_TIMEOUT_MS = parseInt(process.env.FUOTA_VERIFY_TIMEOUT_MS) || 14400000; // 4 hours
 const FUOTA_SESSION_TIMEOUT_MS= parseInt(process.env.FUOTA_SESSION_TIMEOUT_MS)|| 259200000; // 72 hours
 
-// Per-session interval clamp bounds (ms)
-// MAX is 300 s — Class A devices need long intervals because ThingPark/Basic Station
-// queues only 1–2 downlinks per device; at 10 s intervals the queue overflows immediately.
-// Recommended: 10 s for Class C (always-on RX), 120–300 s for Class A.
-const MIN_INTERVAL_MS = 1000;
-const MAX_INTERVAL_MS = 300000;
+// Per-session interval clamp bounds (ms), keyed by ISM band.
+// US915 (Class C, always-on RX): tight window, short intervals are safe.
+// EU868 (Class A or C, stricter duty cycle): longer intervals required.
+// Unknown band falls back to the conservative EU868 limits.
+const INTERVAL_LIMITS = {
+    US915: { min:  5_000, max:  15_000 },
+    EU868: { min: 60_000, max: 300_000 },
+};
+const DEFAULT_INTERVAL_LIMITS = { min: 60_000, max: 300_000 };
+
+/**
+ * Resolve min/max interval bounds for a session.
+ * Priority: ismBand > infer from firmware filename > conservative fallback.
+ * @param {string|null|undefined} ismBand
+ * @param {string|null|undefined} firmwareName
+ * @returns {{ min: number, max: number }}
+ */
+function resolveIntervalLimits(ismBand, firmwareName) {
+    const band = ismBand || '';
+    if (band.includes('915')) return INTERVAL_LIMITS.US915;
+    if (band.includes('868')) return INTERVAL_LIMITS.EU868;
+    const name = firmwareName || '';
+    if (name.includes('915')) return INTERVAL_LIMITS.US915;
+    if (name.includes('868')) return INTERVAL_LIMITS.EU868;
+    return DEFAULT_INTERVAL_LIMITS;
+}
 
 // Verify retry settings.
 // First verify attempt is sent after FUOTA_VERIFY_PRE_DELAY_MS to let the device
@@ -385,10 +405,11 @@ class FUOTAManager {
             throw new Error(`Firmware session ${sessionId} not found or expired`);
         }
 
-        // Clamp per-session interval
+        // Clamp per-session interval to band-specific bounds.
+        const limits = resolveIntervalLimits(ismBand, firmware.name);
         const intervalMs = (typeof blockIntervalMs === 'number' && isFinite(blockIntervalMs))
-            ? Math.min(MAX_INTERVAL_MS, Math.max(MIN_INTERVAL_MS, Math.round(blockIntervalMs)))
-            : FUOTA_BLOCK_INTERVAL_MS;
+            ? Math.min(limits.max, Math.max(limits.min, Math.round(blockIntervalMs)))
+            : Math.min(limits.max, Math.max(limits.min, FUOTA_BLOCK_INTERVAL_MS));
 
         // If there is already an active session for this device, abort it first
         if (this.activeSessions.has(devEui)) {
@@ -592,11 +613,6 @@ class FUOTAManager {
 
         log.info(`FUOTAManager: ${devEui} entered Class C (0x10 ACK received)`);
         auditLogger.log('fuota_manager', 'init_ack_received', devEui, { errorCode });
-
-        // Send config request now that device is confirmed online and in Class C.
-        // Fire-and-forget — captures firmware versions (TPM/VSM) before blocks start.
-        this._sendDownlink(devEui, 22, Buffer.from([0x02, 0x00]), true);
-        auditLogger.log('fuota_manager', 'config_request_sent', devEui, {});
 
         session.state = 'sending_blocks';
         this._updateDb(session);
@@ -1163,4 +1179,6 @@ class FUOTAManager {
     }
 }
 
-module.exports = new FUOTAManager();
+const _instance = new FUOTAManager();
+_instance.resolveIntervalLimits = resolveIntervalLimits;
+module.exports = _instance;

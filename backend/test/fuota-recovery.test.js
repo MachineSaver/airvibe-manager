@@ -548,9 +548,7 @@ describe('FUOTAManager confirmed downlinks', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Init downlink fixes:
-//   1. _sendInitDownlink uses confirmed=true
-//   2. 0x0200 config request moved to _handleInitAck (not sent at session start)
+// Init downlink
 // ---------------------------------------------------------------------------
 
 describe('FUOTAManager init downlink fixes', () => {
@@ -585,48 +583,7 @@ describe('FUOTAManager init downlink fixes', () => {
         fuotaManager.activeSessions.delete(DEV);
     });
 
-    it('_handleInitAck sends 0x0200 config request on FPort 22', async () => {
-        const DEV = 'DEAD000000000041';
-        // blocksSent=1 == blocks.length → _sendAllBlocks loop skipped entirely,
-        // goes straight to _sendVerify which suspends on its pre-delay sleep.
-        const session = { ...makeVerifySession(DEV, 'waiting_ack', 0) };
-        fuotaManager.activeSessions.set(DEV, session);
-
-        fuotaManager.processPacket(
-            `mqtt/things/${DEV}/uplink`,
-            JSON.stringify({ DevEUI_uplink: { payload_hex: '1000' } })
-        );
-        await Promise.resolve();
-        await Promise.resolve();
-
-        const configCalls = mqttClient.publish.mock.calls.filter(([, m]) => {
-            const dl = JSON.parse(m).DevEUI_downlink;
-            return dl.FPort === 22 && dl.payload_hex === '0200';
-        });
-        expect(configCalls).toHaveLength(1);
-    });
-
-    it('config request (0x0200) in _handleInitAck uses Confirmed: 1', async () => {
-        const DEV = 'DEAD000000000043';
-        const session = { ...makeVerifySession(DEV, 'waiting_ack', 0) };
-        fuotaManager.activeSessions.set(DEV, session);
-
-        fuotaManager.processPacket(
-            `mqtt/things/${DEV}/uplink`,
-            JSON.stringify({ DevEUI_uplink: { payload_hex: '1000' } })
-        );
-        await Promise.resolve();
-        await Promise.resolve();
-
-        const configCall = mqttClient.publish.mock.calls.find(([, m]) => {
-            const dl = JSON.parse(m).DevEUI_downlink;
-            return dl.FPort === 22 && dl.payload_hex === '0200';
-        });
-        expect(configCall).toBeDefined();
-        expect(JSON.parse(configCall[1]).DevEUI_downlink.Confirmed).toBe(1);
-    });
-
-    it('startSession does NOT send 0x0200 config request before 0x10 ACK (fresh config)', async () => {
+    it('startSession does NOT send 0x0200 config request (fresh config)', async () => {
         const DEV = 'DEAD000000000042';
         const { sessionId } = fuotaManager.storeFirmware('test.bin', Buffer.alloc(49));
 
@@ -770,5 +727,42 @@ describe('FUOTAManager config pre-flight poll', () => {
         expect(pollCalls).toHaveLength(1);
 
         fuotaManager.activeSessions.delete(DEV);
+    });
+
+    // -----------------------------------------------------------------------
+    // resolveIntervalLimits — band-specific clamping bounds
+    // -----------------------------------------------------------------------
+
+    describe('resolveIntervalLimits', () => {
+        it('returns US915 limits when ismBand is US915', () => {
+            expect(fuotaManager.resolveIntervalLimits('US915', 'fw.bin'))
+                .toEqual({ min: 5000, max: 15000 });
+        });
+
+        it('returns EU868 limits when ismBand is EU868', () => {
+            expect(fuotaManager.resolveIntervalLimits('EU868', 'fw.bin'))
+                .toEqual({ min: 60000, max: 300000 });
+        });
+
+        it('infers US915 limits from firmware filename when ismBand is absent', () => {
+            expect(fuotaManager.resolveIntervalLimits('', 'TPMfw_2-35_Upgrade_Common_915.bin'))
+                .toEqual({ min: 5000, max: 15000 });
+        });
+
+        it('infers EU868 limits from firmware filename when ismBand is absent', () => {
+            expect(fuotaManager.resolveIntervalLimits(null, 'TPMfw_2-35_Upgrade_Common_868.bin'))
+                .toEqual({ min: 60000, max: 300000 });
+        });
+
+        it('falls back to conservative EU868 limits for unknown band and universal firmware', () => {
+            expect(fuotaManager.resolveIntervalLimits('', 'VSMfw_1-27Upgrade_Common.bin'))
+                .toEqual({ min: 60000, max: 300000 });
+        });
+
+        it('ismBand takes precedence over firmware filename', () => {
+            // ismBand says US915 even though filename has no region hint
+            expect(fuotaManager.resolveIntervalLimits('US915', 'VSMfw_1-27Upgrade_Common.bin'))
+                .toEqual({ min: 5000, max: 15000 });
+        });
     });
 });
