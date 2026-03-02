@@ -169,6 +169,10 @@ services:
       # FUOTA: ms to wait after resending missed blocks before sending the next 0x0600
       # verify command — gives the device time to write blocks to flash (default: 30000 = 30 s)
       - FUOTA_RESEND_VERIFY_DELAY_MS=${FUOTA_RESEND_VERIFY_DELAY_MS:-30000}
+      # FUOTA: ms to wait after the last data block before sending the first verify command.
+      # Must be shorter than the device's internal FUOTA deadline (~3 min observed).
+      # Previous default of 300000 (5 min) caused the device to declare failure before verify arrived.
+      - FUOTA_VERIFY_PRE_DELAY_MS=${FUOTA_VERIFY_PRE_DELAY_MS:-30000}
       # ThingPark integration (enables Class C auto-switch for FUOTA in ThingPark mode)
       - THINGPARK_BASE_URL=${THINGPARK_BASE_URL:-https://community.thingpark.io}
       - THINGPARK_CLIENT_ID=${THINGPARK_CLIENT_ID:-}

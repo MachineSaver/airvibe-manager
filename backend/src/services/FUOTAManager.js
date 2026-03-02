@@ -27,7 +27,7 @@ const MAX_INTERVAL_MS = 300000;
 // On no-response, retries up to FUOTA_VERIFY_MAX_RETRIES times (total), dividing
 // FUOTA_VERIFY_TIMEOUT_MS evenly across attempts.
 const FUOTA_VERIFY_MAX_RETRIES  = parseInt(process.env.FUOTA_VERIFY_MAX_RETRIES)  || 10;
-const FUOTA_VERIFY_PRE_DELAY_MS    = parseInt(process.env.FUOTA_VERIFY_PRE_DELAY_MS)    || 300000; // 5 min
+const FUOTA_VERIFY_PRE_DELAY_MS    = parseInt(process.env.FUOTA_VERIFY_PRE_DELAY_MS)    || 30000;  // 30 s
 // After resending a missed-block batch, wait this long before issuing the next
 // 0x0600 verify command so the device has time to finish writing the blocks to
 // flash before it checks receipt (default 30 s).
