@@ -872,6 +872,7 @@ function DeviceProgressCard({
   const classCOk = !!classCConfigured;
 
   // Whether each step has been completed (past)
+  const configPollDone = ['initializing', 'waiting_ack', 'sending_blocks', 'resending', 'verifying', 'complete', 'failed', 'aborted'].includes(state);
   const initDone   = ['sending_blocks', 'resending', 'verifying', 'complete', 'failed', 'aborted'].includes(state);
   const blocksDone = ['verifying', 'complete'].includes(state) ||
                      (isFailed && blocksSent > 0 && blocksSent === totalBlocks);
@@ -879,7 +880,8 @@ function DeviceProgressCard({
   const verifyDone = state === 'complete';
 
   // Whether each step is currently active
-  const initActive   = state === 'waiting_ack' || state === 'initializing' || state === 'config_poll';
+  const configPollActive = state === 'config_poll';
+  const initActive   = state === 'waiting_ack' || state === 'initializing';
   const blocksActive = state === 'sending_blocks';
   const resendActive = state === 'resending';
   const verifyActive = state === 'verifying';
@@ -924,6 +926,19 @@ function DeviceProgressCard({
       {/* Timeline */}
       {(isActive || isTerminal) && (
         <div className="flex items-center gap-0.5 text-[11px] overflow-x-auto">
+          {/* Config poll */}
+          <span className={`px-2 py-0.5 rounded border shrink-0 ${
+            configPollActive
+              ? 'bg-purple-900/50 border-purple-600 text-purple-300'
+              : configPollDone
+              ? 'bg-green-900/30 border-green-700 text-green-400'
+              : 'border-[#2a2a2a] text-gray-600'
+          }`}>
+            {configPollDone ? 'Config ✓' : configPollActive ? `Config ${configPollAttempt ?? 0}/3` : 'Config'}
+          </span>
+
+          <div className={connCls(configPollDone || configPollActive)} />
+
           {/* Class C */}
           <span className={`px-2 py-0.5 rounded border shrink-0 ${
             classCOk
