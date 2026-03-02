@@ -93,13 +93,24 @@ class WaveformManager {
         let waveformId = await this.findPendingWaveformId(devEui, txId);
 
         if (waveformId) {
-            // If this waveform already has metadata, it's a TxID reuse (rollover cycle).
-            // Abort the old one and create a fresh row.
-            const existing = await pool.query(`SELECT metadata FROM waveforms WHERE id = $1`, [waveformId]);
-            if (existing.rows[0]?.metadata) {
-                await pool.query(`UPDATE waveforms SET status = 'aborted' WHERE id = $1`, [waveformId]);
-                log.info(`Aborted reused TxID ${txId} waveform ${waveformId} for ${devEui}, creating fresh row`);
-                waveformId = null;
+            // If this waveform already has metadata, it could be a TxID rollover (256 transactions
+            // have elapsed and the counter wrapped) OR a simple TWIU retransmission (device did not
+            // receive our ACK and is resending). Distinguish the two by age:
+            //   - Age < 255 min → retransmission: update metadata in place, preserve earliest created_at
+            //   - Age ≥ 255 min → genuine rollover: abort old row and start fresh
+            // 255 min is the minimum physical rollover period (255 transactions × ≥1 min apart).
+            const existing = await pool.query(`SELECT metadata, created_at FROM waveforms WHERE id = $1`, [waveformId]);
+            const row = existing.rows[0];
+            if (row?.metadata) {
+                const ageMinutes = (Date.now() - new Date(row.created_at).getTime()) / 60000;
+                if (ageMinutes >= 255) {
+                    await pool.query(`UPDATE waveforms SET status = 'aborted' WHERE id = $1`, [waveformId]);
+                    log.info(`Aborted rolled-over TxID ${txId} waveform ${waveformId} for ${devEui} (age: ${Math.round(ageMinutes)} min)`);
+                    waveformId = null;
+                } else {
+                    log.info(`Duplicate TWIU for ${devEui} TxID ${txId} (age: ${Math.round(ageMinutes)} min) — updating metadata in place`);
+                    // waveformId stays set; falls through to the UPDATE block below
+                }
             }
         }
 
@@ -292,7 +303,7 @@ class WaveformManager {
         const res = await pool.query(`
             SELECT id FROM waveforms
             WHERE device_eui = $1 AND transaction_id = $2 AND status = 'pending'
-            ORDER BY created_at DESC
+            ORDER BY created_at ASC
             LIMIT 1
         `, [devEui, txId]);
         return res.rows[0]?.id;

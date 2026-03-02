@@ -158,6 +158,62 @@ describe('processPacket — TWIU (0x03)', () => {
         expect(abortCall[0]).toMatch(/UPDATE waveforms SET status = 'aborted'/i);
         expect(abortCall[1]).toEqual([7]);
     });
+
+    it('updates metadata in place when duplicate TWIU arrives within 255 min (retransmission)', async () => {
+        const recentCreatedAt = new Date(Date.now() - 10 * 60 * 1000); // 10 minutes ago
+        // abortStalePendingWaveforms → no stale rows
+        pool.query.mockResolvedValueOnce({ rows: [] });
+        // findPendingWaveformId → existing waveform with same TxID
+        pool.query.mockResolvedValueOnce({ rows: [{ id: 55 }] });
+        // SELECT metadata, created_at → has metadata but row is recent
+        pool.query.mockResolvedValueOnce({ rows: [{ metadata: { numSegments: 10 }, created_at: recentCreatedAt }] });
+        // UPDATE metadata in place
+        pool.query.mockResolvedValueOnce({ rows: [] });
+
+        const payloadHex = '0319' + '00'.repeat(10);
+        await waveformManager.processPacket(UPLINK_TOPIC, makeUplinkMsg(payloadHex));
+
+        // Must NOT abort the existing row
+        const abortOnRow55 = pool.query.mock.calls.find(
+            c => typeof c[0] === 'string' && c[0].includes("status = 'aborted'") && c[1]?.[0] === 55
+        );
+        expect(abortOnRow55).toBeUndefined();
+
+        // Must NOT insert a new waveform row
+        const insertCalls = pool.query.mock.calls.filter(
+            c => typeof c[0] === 'string' && c[0].includes('INSERT INTO waveforms')
+        );
+        expect(insertCalls).toHaveLength(0);
+    });
+
+    it('aborts and recreates when duplicate TWIU row is older than 255 min (rollover)', async () => {
+        const oldCreatedAt = new Date(Date.now() - 260 * 60 * 1000); // 260 minutes ago
+        // abortStalePendingWaveforms → no stale rows
+        pool.query.mockResolvedValueOnce({ rows: [] });
+        // findPendingWaveformId → existing old waveform
+        pool.query.mockResolvedValueOnce({ rows: [{ id: 77 }] });
+        // SELECT metadata, created_at → has metadata, row is old
+        pool.query.mockResolvedValueOnce({ rows: [{ metadata: { numSegments: 10 }, created_at: oldCreatedAt }] });
+        // UPDATE abort old row
+        pool.query.mockResolvedValueOnce({ rows: [] });
+        // INSERT fresh row
+        pool.query.mockResolvedValueOnce({ rows: [{ id: 78 }] });
+
+        const payloadHex = '0319' + '00'.repeat(10);
+        await waveformManager.processPacket(UPLINK_TOPIC, makeUplinkMsg(payloadHex));
+
+        // Must abort old row 77
+        const abortCall = pool.query.mock.calls.find(
+            c => typeof c[0] === 'string' && c[0].includes("status = 'aborted'") && c[1]?.[0] === 77
+        );
+        expect(abortCall).toBeDefined();
+
+        // Must insert a fresh row
+        const insertCall = pool.query.mock.calls.find(
+            c => typeof c[0] === 'string' && c[0].includes('INSERT INTO waveforms')
+        );
+        expect(insertCall).toBeDefined();
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -344,5 +400,21 @@ describe('checkCompletion — missing segments', () => {
 
         const encodeCall = codec.encodeDownlink.mock.calls[0];
         expect(encodeCall[0].data.segments).toEqual([1, 2, 3]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// findPendingWaveformId — ordering
+// ---------------------------------------------------------------------------
+
+describe('findPendingWaveformId', () => {
+    it('uses ORDER BY created_at ASC to prefer the oldest pending row', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [{ id: 123 }] });
+
+        const id = await waveformManager.findPendingWaveformId(DEVEUI, 0x20);
+
+        expect(id).toBe(123);
+        const call = pool.query.mock.calls[0];
+        expect(call[0]).toMatch(/ORDER BY created_at ASC/i);
     });
 });
