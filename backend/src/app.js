@@ -138,7 +138,7 @@ const upload = multer({
 // ---------------------------------------------------------------------------
 
 app.get('/', (req, res) => {
-    res.send('MQTT Manager Backend is running');
+    res.send('AirVibe Manager Backend is running');
 });
 
 // ---------------------------------------------------------------------------

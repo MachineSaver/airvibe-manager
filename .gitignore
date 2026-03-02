@@ -22,3 +22,4 @@ public/assets/Screenshot*
 public/assets/*.csv
 FUOTA_IMPROVEMENT_PLAN.md
 backend/scripts/fuota_postmortem*.py
+cloudgate.md

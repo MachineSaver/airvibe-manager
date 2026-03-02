@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MQTT Manager",
+  title: "AirVibe Manager",
   description: "MQTT Broker and Certificate Manager",
 };
 

@@ -11,7 +11,7 @@ interface MQTTMessageCardProps {
 }
 
 const MQTTMessageCard: React.FC<MQTTMessageCardProps> = ({ topic, payload, timestamp, collapseKey = 0, expandKey = 0 }) => {
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(true);
     const [prevCollapseKey, setPrevCollapseKey] = useState(collapseKey);
     const [prevExpandKey, setPrevExpandKey] = useState(expandKey);
     const [copied, setCopied] = useState(false);

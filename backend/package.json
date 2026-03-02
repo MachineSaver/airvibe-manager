@@ -1,7 +1,7 @@
 {
   "name": "mqtt-manager-backend",
   "version": "1.0.0",
-  "description": "Backend for MQTT Manager",
+  "description": "Backend for AirVibe Manager",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

@@ -256,13 +256,13 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
         )}
       </div>
 
-      {/* MQTT Message Config */}
+      {/* Downlink Builder */}
       <div className="bg-[#252526] rounded border border-[#333]">
         <button
           onClick={() => toggle('message')}
           className="w-full flex items-center justify-between px-4 py-3 text-left"
         >
-          <span className="text-xs font-semibold text-orange-500 uppercase">MQTT Message</span>
+          <span className="text-xs font-semibold text-orange-500 uppercase">Downlink Builder</span>
           <span className="text-gray-500 text-xs">{collapsed.message ? '▶' : '▼'}</span>
         </button>
         {!collapsed.message && (
@@ -484,18 +484,22 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
         <div className="flex items-center justify-between px-4 py-3">
           <button
             onClick={() => toggle('preview')}
-            className="flex items-center gap-2 text-left"
+            className="flex-1 text-left"
           >
-            <span className="text-xs font-semibold text-orange-500 uppercase">MQTT Payload Preview</span>
-            <span className="text-gray-500 text-xs">{collapsed.preview ? '▶' : '▼'}</span>
+            <span className="text-xs font-semibold text-orange-500 uppercase">Downlink JSON Preview</span>
           </button>
-          <button
-            onClick={() => copyToClipboard(getJsonPayload(), 'json')}
-            className="flex items-center space-x-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            <span>{copiedJson ? 'Copied!' : 'Copy JSON'}</span>
-            {copiedJson ? <CheckIcon /> : <CopyIcon />}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => copyToClipboard(getJsonPayload(), 'json')}
+              className="text-blue-400 hover:text-blue-300 transition-colors"
+              title={copiedJson ? 'Copied!' : 'Copy JSON'}
+            >
+              {copiedJson ? <CheckIcon /> : <CopyIcon />}
+            </button>
+            <button onClick={() => toggle('preview')} className="text-gray-500 text-xs leading-none">
+              {collapsed.preview ? '▶' : '▼'}
+            </button>
+          </div>
         </div>
         {!collapsed.preview && (
           <div className="px-4 pb-4">
@@ -511,21 +515,25 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
         <div className="flex items-center justify-between px-4 py-3">
           <button
             onClick={() => toggle('command')}
-            className="flex items-center gap-2 text-left"
+            className="flex-1 text-left"
           >
-            <span className="text-xs font-semibold text-orange-500 uppercase">Mosquitto Pub Command</span>
-            <span className="text-gray-500 text-xs">{collapsed.command ? '▶' : '▼'}</span>
+            <span className="text-xs font-semibold text-orange-500 uppercase">Mosquitto CLI Preview</span>
           </button>
-          <button
-            onClick={() => {
-              const cmd = `mosquitto_pub -h ${host} -p 8883 -t "${topic.replace('[DevEUI]', devEui || '8C1F64...')}" -m '${getJsonPayload()}'`;
-              copyToClipboard(cmd, 'cmd');
-            }}
-            className="flex items-center space-x-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            <span>{copiedCmd ? 'Copied!' : 'Copy Command'}</span>
-            {copiedCmd ? <CheckIcon /> : <CopyIcon />}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const cmd = `mosquitto_pub -h ${host} -p 8883 -t "${topic.replace('[DevEUI]', devEui || '8C1F64...')}" -m '${getJsonPayload()}'`;
+                copyToClipboard(cmd, 'cmd');
+              }}
+              className="text-blue-400 hover:text-blue-300 transition-colors"
+              title={copiedCmd ? 'Copied!' : 'Copy Command'}
+            >
+              {copiedCmd ? <CheckIcon /> : <CopyIcon />}
+            </button>
+            <button onClick={() => toggle('command')} className="text-gray-500 text-xs leading-none">
+              {collapsed.command ? '▶' : '▼'}
+            </button>
+          </div>
         </div>
         {!collapsed.command && (
           <div className="px-4 pb-4">

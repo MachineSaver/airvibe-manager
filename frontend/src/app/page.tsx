@@ -17,11 +17,11 @@ function AppContent() {
     <div className="flex h-screen bg-[#1e1e1e] text-gray-300 font-sans">
       {/* Sidebar */}
       <div className="w-16 bg-[#252526] flex flex-col items-center py-4 border-r border-[#333]">
-        {/* MQTT Monitor */}
+        {/* MQTT Live Data */}
         <button
           onClick={() => setActiveView('mqtt')}
           className={`p-3 mb-2 rounded-lg ${activeView === 'mqtt' ? 'bg-[#37373d] text-green-500' : 'hover:bg-[#2d2d2d]'}`}
-          title="MQTT Monitor"
+          title="MQTT Live Data"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -89,7 +89,7 @@ function AppContent() {
         {/* Header */}
         <div className="h-12 bg-[#252526] border-b border-[#333] flex items-center px-4 justify-between shrink-0">
           <h1 className="font-semibold text-sm text-gray-200">
-            {activeView === 'mqtt' ? 'MQTT Monitor'
+            {activeView === 'mqtt' ? 'MQTT Live Data'
               : activeView === 'waveforms' ? 'Waveform Manager'
               : activeView === 'fuota' ? 'FUOTA Manager'
               : activeView === 'devtools' ? 'Dev Tools'
