@@ -9,6 +9,7 @@ import type { Socket } from 'socket.io-client';
 
 type FuotaState =
   | 'idle'
+  | 'config_poll'
   | 'initializing'
   | 'waiting_ack'
   | 'sending_blocks'
@@ -43,6 +44,7 @@ interface DeviceProgress {
   blocksSentAtStart?: number;
   blocksResentSoFar?: number;
   confirmedRanges?: [number, number][];
+  configPollAttempt?: number;
 }
 
 interface Device {
@@ -128,6 +130,8 @@ function stateBadgeClass(state: FuotaState | string): string {
   switch (state) {
     case 'complete':
       return 'bg-green-900/50 border-green-600 text-green-400';
+    case 'config_poll':
+      return 'bg-purple-900/50 border-purple-600 text-purple-300';
     case 'sending_blocks':
     case 'initializing':
     case 'waiting_ack':
@@ -844,7 +848,7 @@ function DeviceProgressCard({
   const {
     devEui, state, blocksSent, totalBlocks, verifyAttempts,
     lastMissedCount, lastMissedBlocks, error, firmwareName, blockIntervalMs, classCConfigured,
-    startedAt, blocksSentAtStart, blocksResentSoFar, confirmedRanges,
+    startedAt, blocksSentAtStart, blocksResentSoFar, confirmedRanges, configPollAttempt,
   } = progress;
   const pct = totalBlocks > 0 ? Math.min(100, Math.round((blocksSent / totalBlocks) * 100)) : 0;
   const isTerminal = isTerminalState(state);
@@ -862,7 +866,7 @@ function DeviceProgressCard({
   const verifyDone = state === 'complete';
 
   // Whether each step is currently active
-  const initActive   = state === 'waiting_ack' || state === 'initializing';
+  const initActive   = state === 'waiting_ack' || state === 'initializing' || state === 'config_poll';
   const blocksActive = state === 'sending_blocks';
   const resendActive = state === 'resending';
   const verifyActive = state === 'verifying';
@@ -989,6 +993,11 @@ function DeviceProgressCard({
       {/* Bottom row: status text + ETA left, Abort right */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+          {state === 'config_poll' && (
+            <span className="text-purple-400">
+              Requesting device configuration{configPollAttempt ? ` (attempt ${configPollAttempt}/3)` : ''}…
+            </span>
+          )}
           {state === 'waiting_ack' && (
             <span className="text-blue-400">Waiting for 0x10 ACK…</span>
           )}

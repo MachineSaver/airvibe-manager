@@ -194,6 +194,7 @@ function makeVerifySession(devEui, state, verifyAttempts = 1) {
         blocksSentAtStart: 0,
         blocksResentSoFar: 0,
         confirmedBlocks: new Set(),
+        configPollAttempt: 0,
         totalBlocks: 1,
         blockIntervalMs: 10000,
         verifyAttempts,
@@ -605,34 +606,6 @@ describe('FUOTAManager init downlink fixes', () => {
         expect(configCalls).toHaveLength(1);
     });
 
-    it('startSession does NOT send 0x0200 config request before 0x10 ACK', async () => {
-        const DEV = 'DEAD000000000042';
-        const { sessionId } = fuotaManager.storeFirmware('test.bin', Buffer.alloc(49));
-
-        // Sequence of pool.query calls in startSession:
-        // 1. resolveClassCProfile → SELECT metadata ism_band
-        // 2. INSERT INTO devices (upsert)
-        // 3. INSERT INTO fuota_sessions RETURNING id
-        // 4. UPDATE fuota_sessions SET firmware_data
-        pool.query
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-            .mockResolvedValueOnce({ rows: [{ id: 'uuid-42' }] })
-            .mockResolvedValueOnce({ rows: [], rowCount: 1 });
-
-        await fuotaManager.startSession(sessionId, DEV);
-
-        const configCalls = mqttClient.publish.mock.calls.filter(([, m]) => {
-            const dl = JSON.parse(m).DevEUI_downlink;
-            return dl.FPort === 22 && dl.payload_hex === '0200';
-        });
-        expect(configCalls).toHaveLength(0);
-
-        // Cleanup
-        const s = fuotaManager.activeSessions.get(DEV);
-        if (s) { fuotaManager._clearTimeouts(s); fuotaManager.activeSessions.delete(DEV); }
-    });
-
     it('config request (0x0200) in _handleInitAck uses Confirmed: 1', async () => {
         const DEV = 'DEAD000000000043';
         const session = { ...makeVerifySession(DEV, 'waiting_ack', 0) };
@@ -651,5 +624,151 @@ describe('FUOTAManager init downlink fixes', () => {
         });
         expect(configCall).toBeDefined();
         expect(JSON.parse(configCall[1]).DevEUI_downlink.Confirmed).toBe(1);
+    });
+
+    it('startSession does NOT send 0x0200 config request before 0x10 ACK (fresh config)', async () => {
+        const DEV = 'DEAD000000000042';
+        const { sessionId } = fuotaManager.storeFirmware('test.bin', Buffer.alloc(49));
+
+        // config_updated_at is 1h ago (fresh < 6h) → _prefillConfig skips poll
+        const freshTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+        // Sequence of pool.query calls in startSession:
+        // 1. INSERT INTO devices (upsert)
+        // 2. INSERT INTO fuota_sessions RETURNING id
+        // 3. UPDATE fuota_sessions SET firmware_data
+        // 4. _prefillConfig → SELECT config_updated_at (fresh → skip poll)
+        // 5. resolveClassCProfile → SELECT metadata ism_band
+        pool.query
+            .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+            .mockResolvedValueOnce({ rows: [{ id: 'uuid-42' }] })
+            .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+            .mockResolvedValueOnce({ rows: [{ config_updated_at: freshTime }] })
+            .mockResolvedValueOnce({ rows: [] });
+
+        await fuotaManager.startSession(sessionId, DEV);
+
+        const configCalls = mqttClient.publish.mock.calls.filter(([, m]) => {
+            const dl = JSON.parse(m).DevEUI_downlink;
+            return dl.FPort === 22 && dl.payload_hex === '0200';
+        });
+        expect(configCalls).toHaveLength(0);
+
+        // Cleanup
+        const s = fuotaManager.activeSessions.get(DEV);
+        if (s) { fuotaManager._clearTimeouts(s); fuotaManager.activeSessions.delete(DEV); }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Pre-flight config poll (_prefillConfig)
+// ---------------------------------------------------------------------------
+
+describe('FUOTAManager config pre-flight poll', () => {
+    // Default poll wait from env (or 5 min)
+    const POLL_WAIT_MS = parseInt(process.env.FUOTA_CONFIG_POLL_WAIT_MS) || 5 * 60 * 1000;
+
+    beforeEach(() => { fuotaManager.io = mockIo; });
+    afterEach(() => { fuotaManager.io = null; });
+
+    it('skips config poll when config_updated_at is fresh (< 6h)', async () => {
+        const DEV = 'DEAD000000000050';
+        const session = { ...makeVerifySession(DEV, 'initializing', 0) };
+        fuotaManager.activeSessions.set(DEV, session);
+
+        // 1h ago — well within the 6h freshness window
+        const freshTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        pool.query.mockResolvedValueOnce({ rows: [{ config_updated_at: freshTime }] });
+
+        await fuotaManager._prefillConfig(DEV);
+
+        // No 0x0200 config request should have been sent
+        const pollCalls = mqttClient.publish.mock.calls.filter(([, m]) => {
+            const dl = JSON.parse(m).DevEUI_downlink;
+            return dl.FPort === 22 && dl.payload_hex === '0200';
+        });
+        expect(pollCalls).toHaveLength(0);
+        // Session state must be unchanged
+        expect(session.state).toBe('initializing');
+
+        fuotaManager.activeSessions.delete(DEV);
+    });
+
+    it('sends exactly 3 config requests when config is stale and device never responds', async () => {
+        const DEV = 'DEAD000000000051';
+        const session = { ...makeVerifySession(DEV, 'initializing', 0) };
+        fuotaManager.activeSessions.set(DEV, session);
+
+        // 8h ago — stale (older than 6h)
+        const staleTime = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
+
+        // 4 pool.query calls: initial check + re-check after each of 3 attempts
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ config_updated_at: staleTime }] })
+            .mockResolvedValueOnce({ rows: [{ config_updated_at: staleTime }] })
+            .mockResolvedValueOnce({ rows: [{ config_updated_at: staleTime }] })
+            .mockResolvedValueOnce({ rows: [{ config_updated_at: staleTime }] });
+
+        const prefillPromise = fuotaManager._prefillConfig(DEV);
+
+        // Flush initial pool.query → loop entered, first _sendDownlink sent, sleep started
+        await Promise.resolve();
+
+        // Advance through attempt 1, 2, 3 (each: timer → sleep resolves, pool.query re-check)
+        for (let i = 0; i < 3; i++) {
+            jest.advanceTimersByTime(POLL_WAIT_MS);
+            await Promise.resolve(); // flush sleep → runs until pool.query re-check suspends
+            await Promise.resolve(); // flush pool.query → runs until next sleep (or return)
+        }
+
+        await prefillPromise;
+
+        const pollCalls = mqttClient.publish.mock.calls.filter(([, m]) => {
+            const dl = JSON.parse(m).DevEUI_downlink;
+            return dl.FPort === 22 && dl.payload_hex === '0200';
+        });
+        expect(pollCalls).toHaveLength(3);
+        // All 3 must be confirmed downlinks
+        pollCalls.forEach(([, m]) => {
+            expect(JSON.parse(m).DevEUI_downlink.Confirmed).toBe(1);
+        });
+
+        fuotaManager.activeSessions.delete(DEV);
+    });
+
+    it('stops after one successful poll when device responds with fresh config', async () => {
+        const DEV = 'DEAD000000000052';
+        const session = { ...makeVerifySession(DEV, 'initializing', 0) };
+        fuotaManager.activeSessions.set(DEV, session);
+
+        const staleTime = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
+        // Simulated fresh response: 30s ago (device responded ~30s before the re-check runs)
+        const freshResponse = new Date(Date.now() - 30 * 1000).toISOString();
+
+        // 2 pool.query calls: initial check (stale) + re-check after attempt 1 (fresh)
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ config_updated_at: staleTime }] })
+            .mockResolvedValueOnce({ rows: [{ config_updated_at: freshResponse }] });
+
+        const prefillPromise = fuotaManager._prefillConfig(DEV);
+
+        // Flush initial pool.query → loop, _sendDownlink, sleep
+        await Promise.resolve();
+
+        // Advance through attempt 1 sleep
+        jest.advanceTimersByTime(POLL_WAIT_MS);
+        await Promise.resolve(); // flush sleep → re-check pool.query suspends
+        await Promise.resolve(); // flush pool.query → fresh detected → return
+
+        await prefillPromise;
+
+        const pollCalls = mqttClient.publish.mock.calls.filter(([, m]) => {
+            const dl = JSON.parse(m).DevEUI_downlink;
+            return dl.FPort === 22 && dl.payload_hex === '0200';
+        });
+        // Only 1 config request should have been sent (stopped early)
+        expect(pollCalls).toHaveLength(1);
+
+        fuotaManager.activeSessions.delete(DEV);
     });
 });

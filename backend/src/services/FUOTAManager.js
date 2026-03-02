@@ -36,6 +36,17 @@ const FUOTA_RESEND_VERIFY_DELAY_MS = parseInt(process.env.FUOTA_RESEND_VERIFY_DE
 // Firmware store TTL (1 hour) – uploaded binaries are kept in memory this long
 const FIRMWARE_STORE_TTL_MS = 3600000;
 
+// Config pre-flight poll.
+// Before switching to Class C and sending the init downlink, check whether the device's
+// config_updated_at (written by MessageTracker on every 0x02 config uplink) is fresh enough.
+// If it is older than CONFIG_FRESH_MS (default 6h) or absent, send up to CONFIG_POLL_MAX
+// confirmed 0x0200 config requests, waiting CONFIG_POLL_WAIT_MS between each attempt.
+// If the device responds at any point the poll exits early; after CONFIG_POLL_MAX attempts
+// FUOTA proceeds regardless so the user is never permanently blocked.
+const CONFIG_FRESH_MS    = parseInt(process.env.FUOTA_CONFIG_FRESH_MS)    || 6 * 60 * 60 * 1000; // 6h
+const CONFIG_POLL_WAIT_MS = parseInt(process.env.FUOTA_CONFIG_POLL_WAIT_MS) || 5 * 60 * 1000;     // 5 min
+const CONFIG_POLL_MAX    = 3;
+
 // ---------------------------------------------------------------------------
 // ISM band → ThingPark Class C device profile mapping
 // ---------------------------------------------------------------------------
@@ -428,6 +439,7 @@ class FUOTAManager {
             blocksSentAtStart: 0,
             blocksResentSoFar: 0,
             confirmedBlocks: new Set(),
+            configPollAttempt: 0,
             verifyAttempts: 0,
             lastMissedCount: 0,
             lastMissedBlocks: [],
@@ -451,6 +463,13 @@ class FUOTAManager {
                 await this._failSession(devEui, 'Session exceeded maximum lifetime (72h)');
             }
         }, FUOTA_SESSION_TIMEOUT_MS);
+
+        // Pre-flight: ensure device has a fresh config before starting FUOTA.
+        // Sends up to CONFIG_POLL_MAX confirmed 0x0200 requests if config is stale/absent.
+        await this._prefillConfig(devEui);
+
+        // Guard: session may have been aborted or superseded during config poll
+        if (!this.activeSessions.has(devEui) || session.aborted) return;
 
         // Resolve per-device Class C profile: auto-detected band first, then user selection.
         const classCProfile = await resolveClassCProfile(devEui, ismBand);
@@ -843,6 +862,99 @@ class FUOTAManager {
     // -----------------------------------------------------------------------
 
     /**
+     * Pre-flight config poll.
+     *
+     * Before the Class C switch and init downlink, verify that the device's firmware
+     * version info (captured in devices.metadata.config_updated_at on every 0x02 config
+     * uplink) is recent enough. If it is older than CONFIG_FRESH_MS (default 6 h) or
+     * absent, send up to CONFIG_POLL_MAX confirmed 0x0200 config requests spaced
+     * CONFIG_POLL_WAIT_MS apart. Returns as soon as the device responds or after all
+     * attempts are exhausted — caller always continues with the FUOTA regardless.
+     *
+     * @param {string} devEui
+     */
+    async _prefillConfig(devEui) {
+        // 1. Read current config_updated_at from DB
+        let configUpdatedAt = null;
+        try {
+            const row = await pool.query(
+                `SELECT metadata->>'config_updated_at' AS config_updated_at FROM devices WHERE dev_eui = $1`,
+                [devEui]
+            );
+            configUpdatedAt = row.rows[0]?.config_updated_at || null;
+        } catch (err) {
+            log.warn(`FUOTAManager: ${devEui} config pre-flight DB check failed: ${err.message}`);
+        }
+
+        // 2. If fresh enough, skip the poll entirely
+        if (configUpdatedAt) {
+            const ageMs = Date.now() - new Date(configUpdatedAt).getTime();
+            if (ageMs < CONFIG_FRESH_MS) {
+                log.info(
+                    `FUOTAManager: ${devEui} config fresh ` +
+                    `(age ${Math.round(ageMs / 60000)} min < ${CONFIG_FRESH_MS / 3600000}h) — skipping pre-flight poll`
+                );
+                return;
+            }
+        }
+
+        // 3. Stale or absent — switch state and begin polling
+        const session = this.activeSessions.get(devEui);
+        if (session) {
+            session.state = 'config_poll';
+            session.configPollAttempt = 0;
+            this._emitProgress(devEui);
+        }
+
+        log.info(
+            `FUOTAManager: ${devEui} config stale/absent — ` +
+            `starting pre-flight poll (up to ${CONFIG_POLL_MAX} attempts, ${CONFIG_POLL_WAIT_MS / 60000} min apart)`
+        );
+        auditLogger.log('fuota_manager', 'config_poll_start', devEui, { configUpdatedAt });
+
+        for (let attempt = 1; attempt <= CONFIG_POLL_MAX; attempt++) {
+            if (session && session.aborted) return;
+            if (!this.activeSessions.has(devEui)) return;
+
+            this._sendDownlink(devEui, 22, Buffer.from([0x02, 0x00]), true);
+            if (session) session.configPollAttempt = attempt;
+            this._emitProgress(devEui);
+            auditLogger.log('fuota_manager', 'config_poll_sent', devEui, { attempt, maxAttempts: CONFIG_POLL_MAX });
+
+            await sleep(CONFIG_POLL_WAIT_MS);
+            if (session && session.aborted) return;
+            if (!this.activeSessions.has(devEui)) return;
+
+            // Re-check: was config_updated_at updated recently (i.e., device responded)?
+            try {
+                const checkRow = await pool.query(
+                    `SELECT metadata->>'config_updated_at' AS config_updated_at FROM devices WHERE dev_eui = $1`,
+                    [devEui]
+                );
+                const newUpdatedAt = checkRow.rows[0]?.config_updated_at;
+                if (newUpdatedAt) {
+                    const ageMs = Date.now() - new Date(newUpdatedAt).getTime();
+                    // Fresh if updated within the poll window + 1 min tolerance
+                    if (ageMs < CONFIG_POLL_WAIT_MS + 60000) {
+                        log.info(`FUOTAManager: ${devEui} config updated after poll attempt ${attempt} — proceeding`);
+                        auditLogger.log('fuota_manager', 'config_poll_success', devEui, { attempt, newUpdatedAt });
+                        return;
+                    }
+                }
+            } catch (err) {
+                log.warn(`FUOTAManager: ${devEui} config poll re-check failed: ${err.message}`);
+            }
+
+            log.warn(`FUOTAManager: ${devEui} config poll attempt ${attempt}/${CONFIG_POLL_MAX} — no response yet`);
+        }
+
+        log.warn(
+            `FUOTAManager: ${devEui} no config response after ${CONFIG_POLL_MAX} attempts — proceeding with FUOTA`
+        );
+        auditLogger.log('fuota_manager', 'config_poll_exhausted', devEui, { attempts: CONFIG_POLL_MAX });
+    }
+
+    /**
      * Restore a device's original class after FUOTA, with up to 3 attempts and
      * exponential backoff (15 s, 30 s). Called fire-and-forget from terminal states
      * so the session is never held open waiting for a network round-trip.
@@ -949,6 +1061,7 @@ class FUOTAManager {
                   lastMissedBlocks: session.lastMissedBlocks,
                   blocksResentSoFar: session.blocksResentSoFar ?? 0,
                   confirmedRanges: this._blocksToRanges(session.confirmedBlocks),
+                  configPollAttempt: session.configPollAttempt ?? 0,
                   error: session.error,
                   firmwareName: session.firmwareName,
                   firmwareSize: session.firmwareSize,
@@ -1021,6 +1134,7 @@ class FUOTAManager {
                 lastMissedBlocks: s.lastMissedBlocks,
                 blocksResentSoFar: s.blocksResentSoFar ?? 0,
                 confirmedRanges: this._blocksToRanges(s.confirmedBlocks),
+                configPollAttempt: s.configPollAttempt ?? 0,
                 error: s.error,
                 blockIntervalMs: s.blockIntervalMs,
                 classCConfigured: s.classCConfigured,
