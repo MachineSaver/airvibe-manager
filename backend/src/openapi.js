@@ -40,12 +40,12 @@ Keys are created via \`POST /api/keys\`. The raw key is returned exactly once at
     ],
     security: [{ BearerAuth: [] }],
     tags: [
+        { name: 'API Keys',    description: 'Bearer key lifecycle management' },
         { name: 'Health',      description: 'Liveness and readiness checks' },
         { name: 'Waveforms',   description: 'Assembled AirVibe waveform records' },
         { name: 'Devices',     description: 'Device registry' },
         { name: 'Messages',    description: 'Raw uplink/downlink message log' },
         { name: 'FUOTA',       description: 'Firmware-over-the-air update sessions' },
-        { name: 'API Keys',    description: 'Bearer key lifecycle management' },
         { name: 'Audit Log',   description: 'Immutable audit trail' },
         { name: 'Certificates',description: 'X.509 certificate management for MQTT TLS' },
         { name: 'Demo',        description: 'Simulated device data for development/testing' },

@@ -21,6 +21,10 @@
   ],
   "tags": [
     {
+      "name": "API Keys",
+      "description": "Bearer key lifecycle management"
+    },
+    {
       "name": "Health",
       "description": "Liveness and readiness checks"
     },
@@ -39,10 +43,6 @@
     {
       "name": "FUOTA",
       "description": "Firmware-over-the-air update sessions"
-    },
-    {
-      "name": "API Keys",
-      "description": "Bearer key lifecycle management"
     },
     {
       "name": "Audit Log",
