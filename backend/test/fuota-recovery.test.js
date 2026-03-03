@@ -876,4 +876,174 @@ describe('FUOTAManager config pre-flight poll', () => {
             expect(fuotaManager.activeSessions.has('EAEA000000000099')).toBe(false);
         });
     });
+
+    // -----------------------------------------------------------------------
+    // Init downlink retry schedule
+    // -----------------------------------------------------------------------
+
+    describe('init downlink retry on ACK timeout', () => {
+        beforeEach(() => { fuotaManager.io = mockIo; });
+        afterEach(() => { fuotaManager.io = null; });
+
+        /** Minimal session already in 'waiting_ack', simulating a just-sent init downlink. */
+        function makeWaitingAckSession(devEui) {
+            return {
+                devEui,
+                dbId: null,
+                state: 'waiting_ack',
+                firmwareName: 'fw.bin',
+                firmwareSize: 49,
+                blocks: [Buffer.alloc(49, 0xab)],
+                totalBlocks: 1,
+                blockIntervalMs: 5000,
+                blocksSent: 0,
+                blocksSentAtStart: 0,
+                blocksResentSoFar: 0,
+                confirmedBlocks: new Set(),
+                configPollAttempt: 0,
+                initAttempts: 0,
+                verifyAttempts: 0,
+                lastMissedCount: 0,
+                lastMissedBlocks: [],
+                error: null,
+                aborted: false,
+                classCConfigured: false,
+                originalClass: null,
+                _ackTimeout: null,
+                _verifyTimeout: null,
+                _sessionTimeout: null,
+                _earlyInitAck: undefined,
+                startedAt: Date.now(),
+            };
+        }
+
+        function countInitDownlinks() {
+            return mqttClient.publish.mock.calls.filter(([, msg]) => {
+                try {
+                    const p = JSON.parse(msg);
+                    return p.DevEUI_downlink?.FPort === 22 &&
+                           p.DevEUI_downlink?.payload_hex?.startsWith('05');
+                } catch { return false; }
+            }).length;
+        }
+
+        it('initAckWaitMs returns 1 min for attempts 1–5', () => {
+            for (let i = 1; i <= 5; i++) {
+                expect(fuotaManager.initAckWaitMs(i)).toBe(60_000);
+            }
+        });
+
+        it('initAckWaitMs returns 5 min for attempts 6–10', () => {
+            for (let i = 6; i <= 10; i++) {
+                expect(fuotaManager.initAckWaitMs(i)).toBe(300_000);
+            }
+        });
+
+        it('initAckWaitMs returns 10 min for attempts 11–13', () => {
+            for (let i = 11; i <= 13; i++) {
+                expect(fuotaManager.initAckWaitMs(i)).toBe(600_000);
+            }
+        });
+
+        it('re-sends the init downlink after the 1-min first-tier timeout', async () => {
+            const devEui = 'FBFB000000000001';
+            const session = makeWaitingAckSession(devEui);
+            fuotaManager.activeSessions.set(devEui, session);
+
+            fuotaManager._sendInitDownlink(session);
+            expect(session.initAttempts).toBe(1);
+            expect(countInitDownlinks()).toBe(1);
+
+            await jest.advanceTimersByTimeAsync(60_000);
+            await Promise.resolve();
+
+            expect(session.initAttempts).toBe(2);
+            expect(countInitDownlinks()).toBe(2);
+        });
+
+        it('switches to the 5-min interval after the 5th attempt', async () => {
+            const devEui = 'FBFB000000000002';
+            const session = makeWaitingAckSession(devEui);
+            session.initAttempts = 5; // 5 already sent; this call becomes attempt 6
+            fuotaManager.activeSessions.set(devEui, session);
+
+            fuotaManager._sendInitDownlink(session);
+            expect(session.initAttempts).toBe(6);
+
+            // 1 min must NOT trigger a retry (we're in the 5-min tier now)
+            await jest.advanceTimersByTimeAsync(60_000);
+            await Promise.resolve();
+            expect(session.initAttempts).toBe(6);
+
+            // Full 5-min wait does trigger the retry
+            await jest.advanceTimersByTimeAsync(240_000); // 4 min more = 5 min total
+            await Promise.resolve();
+            expect(session.initAttempts).toBe(7);
+        });
+
+        it('switches to the 10-min interval after the 10th attempt', async () => {
+            const devEui = 'FBFB000000000003';
+            const session = makeWaitingAckSession(devEui);
+            session.initAttempts = 10;
+            fuotaManager.activeSessions.set(devEui, session);
+
+            fuotaManager._sendInitDownlink(session);
+            expect(session.initAttempts).toBe(11);
+
+            // 5 min must NOT trigger a retry
+            await jest.advanceTimersByTimeAsync(300_000);
+            await Promise.resolve();
+            expect(session.initAttempts).toBe(11);
+
+            // Full 10-min wait does trigger the retry
+            await jest.advanceTimersByTimeAsync(300_000); // 5 min more = 10 min total
+            await Promise.resolve();
+            expect(session.initAttempts).toBe(12);
+        });
+
+        it('fails the session after all 13 attempts are exhausted', async () => {
+            const devEui = 'FBFB000000000004';
+            const session = makeWaitingAckSession(devEui);
+            session.initAttempts = 12; // 12 done; this call becomes attempt 13 (the last)
+            fuotaManager.activeSessions.set(devEui, session);
+
+            fuotaManager._sendInitDownlink(session);
+            expect(session.initAttempts).toBe(13);
+
+            await jest.advanceTimersByTimeAsync(600_000);
+            await Promise.resolve();
+
+            // Session must be removed and failed
+            expect(fuotaManager.activeSessions.has(devEui)).toBe(false);
+        });
+
+        it('a 0x10 ACK received during the retry window clears the timeout and starts block sending', async () => {
+            const devEui = 'FBFB000000000005';
+            const session = makeWaitingAckSession(devEui);
+            fuotaManager.activeSessions.set(devEui, session);
+
+            fuotaManager._sendInitDownlink(session);
+            expect(session.initAttempts).toBe(1);
+
+            // ACK arrives before the 1-min timeout
+            fuotaManager.processPacket(
+                `mqtt/things/${devEui}/uplink`,
+                Buffer.from([0x10, 0x00]),
+            );
+
+            // Advancing past the 1-min mark must NOT trigger another init send
+            await jest.advanceTimersByTimeAsync(60_000);
+            await Promise.resolve();
+            expect(session.initAttempts).toBe(1); // no retry
+
+            // Block sending should have started
+            await Promise.resolve();
+            await Promise.resolve();
+            const blockDownlinks = mqttClient.publish.mock.calls.filter(([, msg]) => {
+                try { return JSON.parse(msg).DevEUI_downlink?.FPort === 25; }
+                catch { return false; }
+            });
+            expect(blockDownlinks.length).toBeGreaterThan(0);
+        });
+    });
 });

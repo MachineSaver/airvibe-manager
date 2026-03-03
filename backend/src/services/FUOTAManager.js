@@ -41,6 +41,33 @@ function resolveIntervalLimits(ismBand, firmwareName) {
     return DEFAULT_INTERVAL_LIMITS;
 }
 
+// Init downlink retry schedule.
+// If no 0x10 ACK is received within the timeout for each attempt, the init
+// downlink is re-sent up to ACK_MAX_ATTEMPTS times before the session fails.
+//   Tier 1: 5 attempts × 1 min   (covers brief delivery failures / Basic Station queue)
+//   Tier 2: 5 attempts × 5 min   (covers longer radio gaps)
+//   Tier 3: 3 attempts × 10 min  (last resort before giving up)
+// Total: 13 attempts, ~60 minutes of patience.
+const ACK_RETRY_SCHEDULE = [
+    { attempts: 5, intervalMs:    60_000 },  // 5 × 1 min
+    { attempts: 5, intervalMs:   300_000 },  // 5 × 5 min
+    { attempts: 3, intervalMs:   600_000 },  // 3 × 10 min
+];
+const ACK_MAX_ATTEMPTS = ACK_RETRY_SCHEDULE.reduce((s, r) => s + r.attempts, 0); // 13
+
+/**
+ * Return the ACK timeout duration for a given init attempt number (1-based).
+ * Walks the schedule tiers and returns the interval for the tier the attempt falls in.
+ */
+function initAckWaitMs(attemptNumber) {
+    let remaining = attemptNumber;
+    for (const { attempts, intervalMs } of ACK_RETRY_SCHEDULE) {
+        if (remaining <= attempts) return intervalMs;
+        remaining -= attempts;
+    }
+    return ACK_RETRY_SCHEDULE[ACK_RETRY_SCHEDULE.length - 1].intervalMs;
+}
+
 // Verify retry settings.
 // First verify attempt is sent after FUOTA_VERIFY_PRE_DELAY_MS to let the device
 // finish processing the last data block before checking receipt.
@@ -461,6 +488,7 @@ class FUOTAManager {
             blocksResentSoFar: 0,
             confirmedBlocks: new Set(),
             configPollAttempt: 0,
+            initAttempts: 0,
             verifyAttempts: 0,
             lastMissedCount: 0,
             lastMissedBlocks: [],
@@ -594,6 +622,8 @@ class FUOTAManager {
             return;
         }
 
+        session.initAttempts = (session.initAttempts || 0) + 1;
+
         const payload = makeInitPayload(session.firmwareSize);
         this._sendDownlink(session.devEui, 22, payload, true);
         session.state = 'waiting_ack';
@@ -601,14 +631,33 @@ class FUOTAManager {
         this._emitProgress(session.devEui);
         auditLogger.log('fuota_manager', 'init_downlink_sent', session.devEui, {
             firmwareSize: session.firmwareSize,
+            attempt: session.initAttempts,
         });
 
-        // Start ACK timeout
+        // Per-attempt timeout: re-send if retries remain, fail once budget exhausted.
+        const waitMs = initAckWaitMs(session.initAttempts);
         session._ackTimeout = setTimeout(async () => {
-            if (this.activeSessions.get(session.devEui) === session) {
-                await this._failSession(session.devEui, `No 0x10 ACK received within ${FUOTA_ACK_TIMEOUT_MS / 3600000}h`);
+            if (this.activeSessions.get(session.devEui) !== session) return;
+            if (session.state !== 'waiting_ack') return;
+
+            if (session.initAttempts < ACK_MAX_ATTEMPTS) {
+                log.warn(
+                    `FUOTAManager: ${session.devEui} no 0x10 ACK ` +
+                    `(attempt ${session.initAttempts}/${ACK_MAX_ATTEMPTS}) — retrying init downlink`
+                );
+                auditLogger.log('fuota_manager', 'init_ack_timeout_retry', session.devEui, {
+                    attempt: session.initAttempts,
+                });
+                clearTimeout(session._ackTimeout);
+                session._ackTimeout = null;
+                this._sendInitDownlink(session);
+            } else {
+                await this._failSession(
+                    session.devEui,
+                    `No 0x10 ACK after ${ACK_MAX_ATTEMPTS} attempts (5×1 min, 5×5 min, 3×10 min)`
+                );
             }
-        }, FUOTA_ACK_TIMEOUT_MS);
+        }, waitMs);
     }
 
     _handleInitAck(devEui, buf) {
@@ -1204,4 +1253,5 @@ class FUOTAManager {
 
 const _instance = new FUOTAManager();
 _instance.resolveIntervalLimits = resolveIntervalLimits;
+_instance.initAckWaitMs = initAckWaitMs;
 module.exports = _instance;
