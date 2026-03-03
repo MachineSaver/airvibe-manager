@@ -340,20 +340,12 @@ class FUOTAManager {
 
                 // Per-session try-catch: one session failing must not abort recovery of others.
                 try {
-                    // If the original class info was persisted at session start, use it directly.
-                    // The device is already in Class C mid-FUOTA — calling switchToClassC would
-                    // capture the Class C profile as the "original", making the restore a no-op.
+                    // Use the original class info persisted at session start so the correct
+                    // Class A profile is restored after FUOTA completes.
                     if (row.original_class_info) {
                         session.originalClass    = row.original_class_info;
                         session.classCConfigured = true;
-                        log.info(`FUOTAManager: ${devEui} recovery — using stored original class info, skipping switchToClassC`);
-                    } else {
-                        // No stored info (session started before this fix, or Class C switch had
-                        // not yet occurred) — fall back to switchToClassC.
-                        const classCProfile = await resolveClassCProfile(devEui).catch(() => null);
-                        const csResult = await networkClient.switchToClassC(devEui, classCProfile).catch(() => null);
-                        session.originalClass    = csResult?.originalClass || null;
-                        session.classCConfigured = !!csResult;
+                        log.info(`FUOTAManager: ${devEui} recovery — restored original class info from DB`);
                     }
 
                     // Wait for MQTT before starting block send — the broker may not be

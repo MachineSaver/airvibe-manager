@@ -91,13 +91,19 @@ describe('FUOTAManager startup recovery', () => {
             rows: [makeRow('DEAD000000000001'), makeRow('DEAD000000000002')],
         });
 
-        // First publish() call (session 1's init downlink) throws — simulates the
+        // First publish() call (session 1's block send) throws — simulates the
         // real-world race where MQTT isn't connected yet at startup.
         mqttClient.publish
             .mockImplementationOnce(() => { throw new Error('MQTT Client not connected'); })
             .mockReturnValue(undefined);
 
         await fuotaManager.init(mockIo);
+        // Flush the microtask queue so the _failSession chain for session 1
+        // (publish throw → _sendAllBlocks reject → .catch → _failSession → _updateDb await →
+        // activeSessions.delete) completes before asserting.
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
 
         // Session 1 failed and should have been cleaned up; session 2 must be recovered.
         expect(fuotaManager.activeSessions.has('DEAD000000000001')).toBe(false);
