@@ -40,10 +40,10 @@ export const COMMAND_PRESETS: CommandPreset[] = [
     notes: "Triggers a new Time Waveform collection immediately."
   },
   {
-    name: "Initialize AirVibe TPM/VSM Upgrade Session",
+    name: "Initialize TPM/VSM Update Session",
     fPort: 22,
     type: 'codec',
-    codecInput: { command_id: "init_upgrade_session", parameters: [] },
+    codecInput: { command_id: "init_upgrade_session", parameters: ["229","255","02","00"] },
     notes: "Warning - this will set the AirVibe into Class C Mode which will use more battery."
   },
   {
