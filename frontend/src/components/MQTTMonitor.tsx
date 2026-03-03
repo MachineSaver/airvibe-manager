@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { Socket } from 'socket.io-client';
 import MQTTMessageCard from './MQTTMessageCard';
 import DownlinkBuilder from './DownlinkBuilder';
@@ -21,6 +21,8 @@ export default function MQTTMonitor({ messages, socket }: MQTTMonitorProps) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [filterDevEui, setFilterDevEui] = useState('');
   const [filterDirection, setFilterDirection] = useState<'all' | 'uplink' | 'downlink'>('all');
+  const [apiDevEuis, setApiDevEuis] = useState<string[]>([]);
+  const [isCustomMode, setIsCustomMode] = useState(false);
   const [collapseKey, setCollapseKey] = useState(0);
   const [expandKey, setExpandKey] = useState(0);
 
@@ -40,6 +42,32 @@ export default function MQTTMonitor({ messages, socket }: MQTTMonitorProps) {
     const i1 = setInterval(fetchStats, 5000);
     return () => { clearTimeout(t1); clearInterval(i1); };
   }, [fetchStats]);
+
+  const fetchDevices = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/devices`);
+      const data = await res.json();
+      setApiDevEuis(data.map((d: { dev_eui: string }) => d.dev_eui));
+    } catch {
+      // silently ignore
+    }
+  }, [apiUrl]);
+
+  useEffect(() => {
+    const timeout = setTimeout(fetchDevices, 0);
+    const interval = setInterval(fetchDevices, 10000);
+    return () => { clearTimeout(timeout); clearInterval(interval); };
+  }, [fetchDevices]);
+
+  // Build known DevEUIs from API registry + live message topics
+  const knownDevEuis = useMemo(() => {
+    const euis = new Set<string>(apiDevEuis);
+    for (const msg of messages) {
+      const match = msg.topic.match(/mqtt\/things\/([^/]+)\//);
+      if (match) euis.add(match[1]);
+    }
+    return euis;
+  }, [apiDevEuis, messages]);
 
   // Client-side filter
   const filtered = messages.filter(msg => {
@@ -94,13 +122,46 @@ export default function MQTTMonitor({ messages, socket }: MQTTMonitorProps) {
 
       {/* Stream Controls */}
       <div className="p-3 bg-[#252526] rounded border border-[#333] flex flex-wrap items-center gap-3">
-        <input
-          type="text"
-          value={filterDevEui}
-          onChange={e => setFilterDevEui(e.target.value)}
-          placeholder="Filter by DevEUI…"
-          className="bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none w-48"
-        />
+        {knownDevEuis.size > 0 && !isCustomMode ? (
+          <select
+            value={filterDevEui}
+            onChange={e => {
+              const val = e.target.value;
+              if (val === '__custom__') {
+                setIsCustomMode(true);
+                setFilterDevEui('');
+              } else {
+                setFilterDevEui(val);
+              }
+            }}
+            className="bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none w-48"
+          >
+            <option value="">-- All DevEUIs --</option>
+            {Array.from(knownDevEuis).map(id => (
+              <option key={id} value={id}>{id}</option>
+            ))}
+            <option value="__custom__">-- Enter Custom DevEUI --</option>
+          </select>
+        ) : (
+          <div className="relative">
+            <input
+              type="text"
+              value={filterDevEui}
+              onChange={e => setFilterDevEui(e.target.value)}
+              placeholder="Filter by DevEUI…"
+              className="bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none w-48"
+              autoFocus={isCustomMode}
+            />
+            {knownDevEuis.size > 0 && (
+              <button
+                onClick={() => { setIsCustomMode(false); setFilterDevEui(''); }}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[10px] text-blue-400 hover:text-blue-300"
+              >
+                List
+              </button>
+            )}
+          </div>
+        )}
         <select
           value={filterDirection}
           onChange={e => setFilterDirection(e.target.value as 'all' | 'uplink' | 'downlink')}

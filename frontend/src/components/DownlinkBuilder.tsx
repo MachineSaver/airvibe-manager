@@ -12,7 +12,7 @@ const CopyIcon = () => (
 );
 
 const CheckIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
   </svg>
 );
@@ -491,7 +491,7 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
           <div className="flex items-center gap-2">
             <button
               onClick={() => copyToClipboard(getJsonPayload(), 'json')}
-              className="text-blue-400 hover:text-blue-300 transition-colors"
+              className="p-1 hover:bg-[#3e3e42] rounded text-gray-400 hover:text-blue-400 transition-colors"
               title={copiedJson ? 'Copied!' : 'Copy JSON'}
             >
               {copiedJson ? <CheckIcon /> : <CopyIcon />}
@@ -525,7 +525,7 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
                 const cmd = `mosquitto_pub -h ${host} -p 8883 -t "${topic.replace('[DevEUI]', devEui || '8C1F64...')}" -m '${getJsonPayload()}'`;
                 copyToClipboard(cmd, 'cmd');
               }}
-              className="text-blue-400 hover:text-blue-300 transition-colors"
+              className="p-1 hover:bg-[#3e3e42] rounded text-gray-400 hover:text-blue-400 transition-colors"
               title={copiedCmd ? 'Copied!' : 'Copy Command'}
             >
               {copiedCmd ? <CheckIcon /> : <CopyIcon />}

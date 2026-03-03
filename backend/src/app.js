@@ -749,7 +749,42 @@ app.delete('/api/keys/:id', async (req, res) => {
 // Routes — API documentation
 // ---------------------------------------------------------------------------
 
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec));
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec, {
+  customCss: `
+    button.copy-to-clipboard {
+      color: #9ca3af;
+      transition: color 0.15s;
+    }
+    button.copy-to-clipboard:hover {
+      color: #60a5fa;
+      background: #3e3e42;
+      border-radius: 4px;
+    }
+    button.copy-to-clipboard.av-copied svg {
+      display: none;
+    }
+    button.copy-to-clipboard.av-copied::after {
+      content: '✓';
+      color: #22c55e;
+      font-size: 14px;
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      line-height: 16px;
+      text-align: center;
+    }
+  `,
+  customJsStr: `
+    (function () {
+      document.addEventListener('click', function (e) {
+        var btn = e.target.closest('button.copy-to-clipboard');
+        if (!btn) return;
+        btn.classList.add('av-copied');
+        setTimeout(function () { btn.classList.remove('av-copied'); }, 2000);
+      });
+    })();
+  `,
+}));
 app.get('/api/openapi.json', (req, res) => res.json(openApiSpec));
 
 // ---------------------------------------------------------------------------
