@@ -475,7 +475,7 @@ Caddy is its own certificate authority and issues a certificate for `DOMAIN` wit
 **To eliminate the browser warning (one-time per machine):**
 
 ```bash
-docker exec mqtt-manager-caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root-ca.crt
+docker exec airvibe-manager-caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root-ca.crt
 ```
 
 Import `caddy-root-ca.crt` into your OS trust store:
@@ -689,7 +689,7 @@ docker logs chirpstack
 
 **FUOTA Class C switch not happening**
 ```bash
-docker logs mqtt-manager-backend | grep ChirpStack
+docker logs airvibe-manager-backend | grep ChirpStack
 # If "not configured" — add CHIRPSTACK_API_KEY to .env and restart backend
 ```
 
@@ -705,14 +705,14 @@ Generate certificates via the AirVibe UI (Dev Tools → Certificates) first, the
 
 **Backend not receiving messages**
 ```bash
-docker logs mqtt-manager-backend | grep -E "MQTT|adapter"
+docker logs airvibe-manager-backend | grep -E "MQTT|adapter"
 # Confirm: "MQTT adapter: thingpark" — if not, check NETWORK_SERVER in .env
 # Confirm: "Connected to MQTT Broker" — if not, check MQTT_BROKER_URL/credentials
 ```
 
 **Downlinks not reaching devices**
 ```bash
-docker logs mqtt-manager-backend | grep downlink
+docker logs airvibe-manager-backend | grep downlink
 # Verify messages are published to mqtt/things/{devEUI}/downlink (not ChirpStack topic format)
 # If ChirpStack topic format appears, NETWORK_SERVER is set to chirpstack — fix .env and rebuild
 ```
@@ -723,7 +723,7 @@ docker logs mqtt-manager-backend | grep downlink
 **Let's Encrypt certificate not issued**
 - Confirm `DOMAIN` DNS A record points at this host
 - Confirm ports 80 and 443 are reachable from the internet
-- `docker logs mqtt-manager-caddy`
+- `docker logs airvibe-manager-caddy`
 
 ---
 
@@ -758,7 +758,7 @@ ChirpStack runs database migrations automatically on startup. The `chirpstack-db
 | `chirpstack` | `chirpstack/chirpstack:4` | full | 8080 | LoRaWAN Network + Application Server |
 | `chirpstack-redis` | `redis:7-alpine` | full | internal | ChirpStack session state |
 | `mqtt-broker` | `eclipse-mosquitto:2` | always | 8883 (public), 1883 (loopback) | MQTT broker. ThingPark connects on 8883 (mTLS). Backend connects on 1883 (internal). |
-| `mqtt-manager-postgres` | `postgres:16-alpine` | always | internal | AirVibe + ChirpStack databases |
-| `mqtt-manager-backend` | (built) | always | internal | Express API + Socket.io |
-| `mqtt-manager-frontend` | (built) | always | internal | Next.js UI |
-| `mqtt-manager-caddy` | `caddy:alpine` | always | 80, 443 | HTTPS reverse proxy (generates Caddyfile at runtime) |
+| `airvibe-manager-postgres` | `postgres:16-alpine` | always | internal | AirVibe + ChirpStack databases |
+| `airvibe-manager-backend` | (built) | always | internal | Express API + Socket.io |
+| `airvibe-manager-frontend` | (built) | always | internal | Next.js UI |
+| `airvibe-manager-caddy` | `caddy:alpine` | always | 80, 443 | HTTPS reverse proxy (generates Caddyfile at runtime) |

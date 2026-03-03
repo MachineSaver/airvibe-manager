@@ -110,7 +110,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: mqtt-manager-postgres
+    container_name: airvibe-manager-postgres
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
@@ -125,13 +125,13 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # AirVibe Waveform Manager (backend + frontend)  (always starts)
+  # AirVibe Manager (backend + frontend)  (always starts)
   # ---------------------------------------------------------------------------
 
   backend:
-    image: ghcr.io/machinesaver/mqtt-manager-backend:latest
+    image: ghcr.io/machinesaver/airvibe-manager-backend:latest
     build: ./backend
-    container_name: mqtt-manager-backend
+    container_name: airvibe-manager-backend
     ports:
       - "127.0.0.1:4000:4000"   # Loopback-only: accessible on the host for local dev but not reachable from the internet (Docker bypasses UFW for 0.0.0.0 bindings)
     environment:
@@ -185,14 +185,14 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ghcr.io/machinesaver/mqtt-manager-frontend:latest
+    image: ghcr.io/machinesaver/airvibe-manager-frontend:latest
     build:
       context: ./frontend
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://localhost}
         - NEXT_PUBLIC_BUILD_HASH=${NEXT_PUBLIC_BUILD_HASH:-unknown}
         - NEXT_PUBLIC_BUILD_DATE=${NEXT_PUBLIC_BUILD_DATE:-unknown}
-    container_name: mqtt-manager-frontend
+    container_name: airvibe-manager-frontend
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://localhost}
     depends_on:
@@ -205,7 +205,7 @@ services:
 
   caddy:
     image: caddy:alpine
-    container_name: mqtt-manager-caddy
+    container_name: airvibe-manager-caddy
     restart: unless-stopped
     ports:
       - "80:80"

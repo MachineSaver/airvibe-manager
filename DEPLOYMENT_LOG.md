@@ -1,4 +1,4 @@
-# Deployment Log — AirVibe Waveform Manager
+# Deployment Log — AirVibe Manager
 
 Running log of issues, ambiguities, and documentation gaps encountered during
 testing and deployment. Each entry includes a status and the action taken or
@@ -289,7 +289,7 @@ The following steps are needed from the operator to complete the integration:
 
 Once connector is connected and assigned:
 ```bash
-docker compose logs -f mqtt-manager-backend | grep -E "MQTT|message|uplink"
+docker compose logs -f airvibe-manager-backend | grep -E "MQTT|message|uplink"
 ```
 
 ---

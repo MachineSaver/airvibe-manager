@@ -53,7 +53,7 @@ jobs:
       with:
         context: ./backend
         push: ${{ github.event_name == 'push' }}
-        tags: ghcr.io/machinesaver/mqtt-manager-backend:latest
+        tags: ghcr.io/machinesaver/airvibe-manager-backend:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
@@ -62,7 +62,7 @@ jobs:
       with:
         context: ./frontend
         push: ${{ github.event_name == 'push' }}
-        tags: ghcr.io/machinesaver/mqtt-manager-frontend:latest
+        tags: ghcr.io/machinesaver/airvibe-manager-frontend:latest
         build-args: |
           NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL || 'https://localhost' }}
           NEXT_PUBLIC_BUILD_HASH=${{ env.SHORT_SHA }}

@@ -14,7 +14,7 @@ function connect(brokerUrl, io, onMessage) {
     log.info(`Connecting to MQTT Broker at ${brokerUrl}`);
 
     client = mqtt.connect(brokerUrl, {
-        clientId: 'mqtt-manager-backend_' + Math.random().toString(16).substring(2, 10),
+        clientId: 'airvibe-manager-backend_' + Math.random().toString(16).substring(2, 10),
         reconnectPeriod: 1000,
         ...(process.env.MQTT_USER ? { username: process.env.MQTT_USER } : {}),
         ...(process.env.MQTT_PASS ? { password: process.env.MQTT_PASS } : {}),

@@ -18,4 +18,4 @@ docker compose up -d
 
 echo ""
 echo "Deployed:"
-docker images --format "  {{.Repository}}: {{.CreatedAt}}" | grep mqtt-manager-
+docker images --format "  {{.Repository}}: {{.CreatedAt}}" | grep airvibe-manager-

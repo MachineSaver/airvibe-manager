@@ -1,5 +1,5 @@
 {
-  "name": "mqtt-manager-backend",
+  "name": "airvibe-manager-backend",
   "version": "1.0.0",
   "description": "Backend for AirVibe Manager",
   "main": "src/index.js",

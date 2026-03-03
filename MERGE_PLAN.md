@@ -225,7 +225,7 @@ Replace entirely with a unified template. The defaults must be valid for a zero-
 
 ```bash
 # =============================================================================
-# AirVibe Waveform Manager — Environment Configuration
+# AirVibe Manager — Environment Configuration
 # =============================================================================
 # Copy: cp .env.example .env
 #
@@ -357,8 +357,8 @@ The README rewrite must produce a single document that serves both ChirpStack an
 ---
 
 #### Title
-**Current:** `AirVibe Waveform Manager — On-Premise Edition`
-**New:** `AirVibe Waveform Manager`
+**Current:** `AirVibe Manager — On-Premise Edition`
+**New:** `AirVibe Manager`
 Remove the edition qualifier — the product is now unified.
 
 ---
@@ -366,7 +366,7 @@ Remove the edition qualifier — the product is now unified.
 #### Opening paragraph
 One sentence describing what the product does. One sentence stating that it supports two deployment modes. No mode is presented as the default or "real" version.
 
-> *Example direction:* "AirVibe Waveform Manager is a Docker-based platform for monitoring, managing, and firmware-updating AirVibe vibration sensors over LoRaWAN. It runs in two modes: **on-premise** (self-hosted ChirpStack LoRaWAN network server, no cloud dependency) and **cloud** (Actility ThingPark network server, AirVibe management layer only)."
+> *Example direction:* "AirVibe Manager is a Docker-based platform for monitoring, managing, and firmware-updating AirVibe vibration sensors over LoRaWAN. It runs in two modes: **on-premise** (self-hosted ChirpStack LoRaWAN network server, no cloud dependency) and **cloud** (Actility ThingPark network server, AirVibe management layer only)."
 
 Remove the current `> Looking for the cloud version? See main branch.` callout entirely — there will be one branch.
 
@@ -646,14 +646,14 @@ Add a **ThingPark-specific** subsection:
 
 **Backend not receiving messages in ThingPark mode**
 ```bash
-docker logs mqtt-manager-backend | grep -E "MQTT|adapter"
+docker logs airvibe-manager-backend | grep -E "MQTT|adapter"
 # Confirm: "MQTT adapter: thingpark" — if not, check NETWORK_SERVER in .env
 # Confirm: "Connected to MQTT Broker" — if not, check MQTT_BROKER_URL/credentials
 ```
 
 **Downlinks not reaching devices (ThingPark)**
 ```bash
-docker logs mqtt-manager-backend | grep downlink
+docker logs airvibe-manager-backend | grep downlink
 # Verify messages are published to mqtt/things/{devEUI}/downlink (not ChirpStack topic format)
 # If ChirpStack topic format appears, NETWORK_SERVER is set to chirpstack — fix .env and rebuild
 ```
@@ -664,7 +664,7 @@ Expected. Switch the device profile manually in ThingPark portal before starting
 **Let's Encrypt certificate not issued (ThingPark)**
 - Confirm `DOMAIN` DNS A record points at this host
 - Confirm ports 80 and 443 are reachable from the internet
-- Check Caddy logs: `docker logs mqtt-manager-caddy`
+- Check Caddy logs: `docker logs airvibe-manager-caddy`
 
 ---
 
@@ -759,7 +759,7 @@ The `Caddyfile` generated at runtime by `caddy/entrypoint.sh` must never be comm
 - `docker compose config` parses cleanly
 - `COMPOSE_PROFILES=full docker compose up -d` → all 8 services start, ChirpStack UI accessible
 - `docker compose up -d` (no profile) → only 4 services start
-- Caddy generates the right Caddyfile in each mode (`docker exec mqtt-manager-caddy cat /etc/caddy/Caddyfile`)
+- Caddy generates the right Caddyfile in each mode (`docker exec airvibe-manager-caddy cat /etc/caddy/Caddyfile`)
 - `chirpstack-db-init` runs and exits cleanly (`docker compose logs chirpstack-db-init`)
 - ChirpStack starts successfully after `chirpstack-db-init` completes
 
@@ -849,7 +849,7 @@ The static `Caddyfile` tracked in git should be **deleted** once the `caddy/entr
 - [ ] `docker compose logs chirpstack-db-init` — shows successful DB/extension creation, exits 0
 - [ ] ChirpStack UI at `http://localhost:8080` — accessible
 - [ ] `https://localhost` — Caddy self-signed cert served (browser warning expected until root CA imported)
-- [ ] `docker exec mqtt-manager-caddy cat /etc/caddy/Caddyfile` — contains `tls internal`
+- [ ] `docker exec airvibe-manager-caddy cat /etc/caddy/Caddyfile` — contains `tls internal`
 - [ ] MQTT adapter log shows `MQTT adapter: chirpstack`
 - [ ] Demo mode → waveforms appear in Waveform Manager tab
 - [ ] FUOTA session → blocks sent, 0x11 uplink processed, missed blocks map renders
@@ -857,7 +857,7 @@ The static `Caddyfile` tracked in git should be **deleted** once the `caddy/entr
 
 ### ThingPark / app-only (requires an actual ThingPark account or mock broker)
 - [ ] `.env` with `NETWORK_SERVER=thingpark`, `COMPOSE_PROFILES=` (empty), correct `MQTT_BROKER_URL` → exactly 4 services start
-- [ ] `docker exec mqtt-manager-caddy cat /etc/caddy/Caddyfile` — no `tls internal` line
+- [ ] `docker exec airvibe-manager-caddy cat /etc/caddy/Caddyfile` — no `tls internal` line
 - [ ] MQTT adapter log shows `MQTT adapter: thingpark`
 - [ ] Uplink from ThingPark format arrives at WaveformManager (canonical passthrough)
 - [ ] Downlink from DownlinkBuilder → published in `DevEUI_downlink` format (not ChirpStack format)

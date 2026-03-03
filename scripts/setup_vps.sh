@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# AirVibe Waveform Manager — VPS Setup Script
+# AirVibe Manager — VPS Setup Script
 # =============================================================================
 # Usage:
 #   chmod +x setup_vps.sh && ./setup_vps.sh
@@ -17,7 +17,7 @@
 set -e
 
 echo "=========================================="
-echo "   AirVibe Waveform Manager — VPS Setup"
+echo "   AirVibe Manager — VPS Setup"
 echo "=========================================="
 
 # 1. Update system & install dependencies
@@ -40,8 +40,8 @@ else
 fi
 
 # 3. Clone or update repository
-REPO_URL="https://github.com/MachineSaver/mqtt-manager.git"
-DIR_NAME="mqtt-manager"
+REPO_URL="https://github.com/MachineSaver/airvibe-manager.git"
+DIR_NAME="airvibe-manager"
 
 echo ""
 if git rev-parse --is-inside-work-tree &>/dev/null; then

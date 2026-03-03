@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AirVibe Waveform Manager is a Docker-based platform for managing AirVibe vibration sensors over LoRaWAN. It supports two deployment modes driven by the `NETWORK_SERVER` environment variable:
+AirVibe Manager is a Docker-based platform for managing AirVibe vibration sensors over LoRaWAN. It supports two deployment modes driven by the `NETWORK_SERVER` environment variable:
 
 - **on-premise** (`NETWORK_SERVER=chirpstack`, default): Bundles ChirpStack v4 (open-source LoRaWAN Network + Application Server) in Docker. No cloud account, no internet required at runtime.
 - **cloud** (`NETWORK_SERVER=thingpark`): Connects to Actility ThingPark. AirVibe runs as the application layer only; ThingPark handles LoRaWAN provisioning and payload decryption.
@@ -66,10 +66,10 @@ Services marked `profiles: [full]` only start when `COMPOSE_PROFILES=full`. App-
 | `chirpstack` | full | LoRaWAN Network + Application Server (port 8080). Handles MAC, join, ADR, decryption |
 | `chirpstack-redis` | full | ChirpStack device session state |
 | `mqtt-broker` (Mosquitto) | full | MQTT broker (1883/8883) shared between ChirpStack and backend |
-| `mqtt-manager-postgres` | always | PostgreSQL 16 — `airvibe` DB (application data) + `chirpstack` DB (on-premise only) |
-| `mqtt-manager-backend` | always | Express + Socket.io + MQTT client |
-| `mqtt-manager-frontend` | always | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
-| `mqtt-manager-caddy` | always | Reverse proxy (80/443). Generates Caddyfile at runtime from `NETWORK_SERVER` + `DOMAIN` |
+| `airvibe-manager-postgres` | always | PostgreSQL 16 — `airvibe` DB (application data) + `chirpstack` DB (on-premise only) |
+| `airvibe-manager-backend` | always | Express + Socket.io + MQTT client |
+| `airvibe-manager-frontend` | always | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
+| `airvibe-manager-caddy` | always | Reverse proxy (80/443). Generates Caddyfile at runtime from `NETWORK_SERVER` + `DOMAIN` |
 
 ### Real-time data flow
 
@@ -240,7 +240,7 @@ Starting multiple concurrent `next build` processes on a 1 GB machine will compo
 1. Reboot from the Linode dashboard (SSH will be unresponsive — `Connection reset by peer`)
 2. Confirm SSH access is restored
 3. Verify swap is still active (`free -h`)
-4. Pull and rebuild: `cd /root/mqtt-manager && ./build.sh`
+4. Pull and rebuild: `cd /root/airvibe-manager && ./build.sh`
 
 ### VPS path
-The project lives at `/root/mqtt-manager` on the VPS (not `/root/AirVibe_Waveform_Manager`).
+The project lives at `/root/airvibe-manager` on the VPS (not `/root/AirVibe_Waveform_Manager`).

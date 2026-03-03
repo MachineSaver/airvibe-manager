@@ -1,11 +1,11 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "AirVibe Waveform Manager API",
+    "title": "AirVibe Manager API",
     "version": "1.0.0",
-    "description": "REST API for the AirVibe Waveform Manager platform.\n\nSupports two deployment modes driven by the `NETWORK_SERVER` environment variable:\n- **on-premise** (`NETWORK_SERVER=chirpstack`): bundles ChirpStack v4 LoRaWAN Network Server\n- **cloud** (`NETWORK_SERVER=thingpark`): connects to Actility ThingPark\n\nAuthentication is controlled by the `API_KEYS_ENABLED` environment variable.\nWhen enabled, all endpoints except `/health`, `/openapi.json`, and `/docs` require a\nBearer API key in the `Authorization` header.\n\nKeys are created via `POST /api/keys`. The raw key is returned exactly once at creation time.",
+    "description": "REST API for the AirVibe Manager platform.\n\nSupports two deployment modes driven by the `NETWORK_SERVER` environment variable:\n- **on-premise** (`NETWORK_SERVER=chirpstack`): bundles ChirpStack v4 LoRaWAN Network Server\n- **cloud** (`NETWORK_SERVER=thingpark`): connects to Actility ThingPark\n\nAuthentication is controlled by the `API_KEYS_ENABLED` environment variable.\nWhen enabled, all endpoints except `/health`, `/openapi.json`, and `/docs` require a\nBearer API key in the `Authorization` header.\n\nKeys are created via `POST /api/keys`. The raw key is returned exactly once at creation time.",
     "contact": {
-      "name": "AirVibe Waveform Manager"
+      "name": "AirVibe Manager"
     }
   },
   "servers": [

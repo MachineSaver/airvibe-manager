@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * OpenAPI 3.1 specification for the AirVibe Waveform Manager API.
+ * OpenAPI 3.1 specification for the AirVibe Manager API.
  *
  * Served at:
  *   GET /api/openapi.json  — raw JSON spec
@@ -13,10 +13,10 @@
 const spec = {
     openapi: '3.1.0',
     info: {
-        title: 'AirVibe Waveform Manager API',
+        title: 'AirVibe Manager API',
         version: '1.0.0',
         description: `
-REST API for the AirVibe Waveform Manager platform.
+REST API for the AirVibe Manager platform.
 
 Supports two deployment modes driven by the \`NETWORK_SERVER\` environment variable:
 - **on-premise** (\`NETWORK_SERVER=chirpstack\`): bundles ChirpStack v4 LoRaWAN Network Server
@@ -29,7 +29,7 @@ Bearer API key in the \`Authorization\` header.
 Keys are created via \`POST /api/keys\`. The raw key is returned exactly once at creation time.
 `.trim(),
         contact: {
-            name: 'AirVibe Waveform Manager',
+            name: 'AirVibe Manager',
         },
     },
     servers: [
