@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 
 // ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ const FIRMWARE_CATALOG = [
     region: 'EU868',
     description: 'European — Power & Transmission Module',
     filename: 'TPMfw_2-35_Upgrade_Common_868.bin',
-    defaultIntervalMs: 60000,
+    defaultIntervalMs: 5000,
   },
   {
     id: 'tpm-915',
@@ -117,7 +117,7 @@ const FIRMWARE_CATALOG = [
     region: 'All regions',
     description: 'Vibration Sensor Module',
     filename: 'VSMfw_1-27Upgrade_Common.bin',
-    defaultIntervalMs: 60000,
+    defaultIntervalMs: 5000,
   },
 ] as const;
 
@@ -493,13 +493,8 @@ export default function FUOTAManager({ socket }: Props) {
   // Band-specific interval limits
   // -------------------------------------------------------------------------
 
-  const { minIntervalMs, maxIntervalMs } = useMemo(() => {
-    const name = firmwareInfo?.name ?? '';
-    const band = selectedIsmBand;
-    if (band.includes('915') || name.includes('915')) return { minIntervalMs: 5000,  maxIntervalMs: 15000  };
-    if (band.includes('868') || name.includes('868')) return { minIntervalMs: 60000, maxIntervalMs: 300000 };
-    return { minIntervalMs: 60000, maxIntervalMs: 300000 }; // conservative fallback
-  }, [firmwareInfo?.name, selectedIsmBand]);
+  const minIntervalMs = 5000;
+  const maxIntervalMs = 180000;
 
   // Re-clamp the current interval whenever the limits change (e.g. user switches firmware)
   useEffect(() => {
