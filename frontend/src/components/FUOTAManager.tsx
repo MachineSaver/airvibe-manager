@@ -648,12 +648,12 @@ export default function FUOTAManager({ socket }: Props) {
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <label className="text-xs text-gray-400 whitespace-nowrap">ISM Band</label>
             <select
               value={selectedIsmBand}
               onChange={e => setSelectedIsmBand(e.target.value)}
-              className="px-2 py-1 rounded border border-[#444] bg-[#3c3c3c] text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+              className="flex-1 min-w-0 px-2 py-1 rounded border border-[#444] bg-[#3c3c3c] text-xs text-gray-200 focus:outline-none focus:border-blue-500"
             >
               <option value="">Select band…</option>
               {ISM_BAND_OPTIONS.map(o => (
