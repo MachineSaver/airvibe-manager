@@ -1047,3 +1047,26 @@ describe('FUOTAManager config pre-flight poll', () => {
         });
     });
 });
+
+// ---------------------------------------------------------------------------
+// updateBlockInterval — live session block-interval override
+// ---------------------------------------------------------------------------
+
+describe('FUOTAManager updateBlockInterval', () => {
+    it('updates blockIntervalMs on an active session and returns true', () => {
+        const devEui = 'DEAD000000000099';
+        const session = { devEui, state: 'sending_blocks', blockIntervalMs: 60000 };
+        fuotaManager.activeSessions.set(devEui, session);
+
+        const result = fuotaManager.updateBlockInterval(devEui, 5000);
+
+        expect(result).toBe(true);
+        expect(session.blockIntervalMs).toBe(5000);
+
+        fuotaManager.activeSessions.delete(devEui);
+    });
+
+    it('returns false when no active session exists for the devEui', () => {
+        expect(fuotaManager.updateBlockInterval('DEAD000000000099', 5000)).toBe(false);
+    });
+});

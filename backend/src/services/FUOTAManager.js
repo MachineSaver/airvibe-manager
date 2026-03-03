@@ -1234,6 +1234,24 @@ class FUOTAManager {
     }
 
     // -----------------------------------------------------------------------
+    // Live session overrides
+    // -----------------------------------------------------------------------
+
+    /**
+     * Update the block-send interval for an active session.
+     * @param {string} devEui
+     * @param {number} intervalMs
+     * @returns {boolean} true if the session was found and updated, false otherwise
+     */
+    updateBlockInterval(devEui, intervalMs) {
+        const session = this.activeSessions.get(devEui);
+        if (!session) return false;
+        session.blockIntervalMs = intervalMs;
+        log.info({ devEui, blockIntervalMs: intervalMs }, 'FUOTAManager: live block interval updated');
+        return true;
+    }
+
+    // -----------------------------------------------------------------------
     // Housekeeping
     // -----------------------------------------------------------------------
 

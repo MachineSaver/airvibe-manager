@@ -683,6 +683,19 @@ app.put('/api/fuota/config', (req, res) => {
     res.json({ maxVerifyRetries });
 });
 
+// PATCH /api/fuota/sessions/:devEui — live block-interval override for an active session.
+// Takes effect on the next sleep() iteration; no session abort or restart needed.
+app.patch('/api/fuota/sessions/:devEui', (req, res) => {
+    const { devEui } = req.params;
+    const { blockIntervalMs } = req.body || {};
+    if (!Number.isInteger(blockIntervalMs) || blockIntervalMs < 1000) {
+        return res.status(400).json({ error: 'blockIntervalMs must be an integer >= 1000' });
+    }
+    const updated = fuotaManager.updateBlockInterval(devEui, blockIntervalMs);
+    if (!updated) return res.status(404).json({ error: 'No active session for this device' });
+    res.json({ devEui, blockIntervalMs });
+});
+
 // ---------------------------------------------------------------------------
 // Routes — API key management
 // ---------------------------------------------------------------------------

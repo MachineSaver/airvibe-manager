@@ -24,6 +24,7 @@ jest.mock('../src/services/FUOTAManager', () => ({
     startSession: jest.fn().mockResolvedValue(),
     abortSession: jest.fn().mockResolvedValue(true),
     setVerifyMaxRetries: jest.fn(),
+    updateBlockInterval: jest.fn().mockReturnValue(true),
 }));
 
 jest.mock('../src/services/WaveformManager', () => ({
@@ -689,6 +690,53 @@ describe('PUT /api/fuota/config', () => {
         const res = await request(app)
             .put('/api/fuota/config')
             .send({ maxVerifyRetries: 0 });
+
+        expect(res.status).toBe(400);
+        expect(res.body).toHaveProperty('error');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /api/fuota/sessions/:devEui — live block-interval override
+// ---------------------------------------------------------------------------
+
+describe('PATCH /api/fuota/sessions/:devEui', () => {
+    const fuotaManager = require('../src/services/FUOTAManager');
+
+    it('returns 200 and echoes devEui + blockIntervalMs on success', async () => {
+        fuotaManager.updateBlockInterval.mockReturnValue(true);
+        const res = await request(app)
+            .patch('/api/fuota/sessions/AABBCCDDEEFF0011')
+            .send({ blockIntervalMs: 5000 });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ devEui: 'AABBCCDDEEFF0011', blockIntervalMs: 5000 });
+        expect(fuotaManager.updateBlockInterval).toHaveBeenCalledWith('AABBCCDDEEFF0011', 5000);
+    });
+
+    it('returns 404 when no active session exists for the devEui', async () => {
+        fuotaManager.updateBlockInterval.mockReturnValue(false);
+        const res = await request(app)
+            .patch('/api/fuota/sessions/NOTFOUND')
+            .send({ blockIntervalMs: 5000 });
+
+        expect(res.status).toBe(404);
+        expect(res.body).toHaveProperty('error');
+    });
+
+    it('returns 400 when blockIntervalMs is below 1000', async () => {
+        const res = await request(app)
+            .patch('/api/fuota/sessions/AABBCCDDEEFF0011')
+            .send({ blockIntervalMs: 100 });
+
+        expect(res.status).toBe(400);
+        expect(res.body).toHaveProperty('error');
+    });
+
+    it('returns 400 when blockIntervalMs is not an integer', async () => {
+        const res = await request(app)
+            .patch('/api/fuota/sessions/AABBCCDDEEFF0011')
+            .send({ blockIntervalMs: 'fast' });
 
         expect(res.status).toBe(400);
         expect(res.body).toHaveProperty('error');
