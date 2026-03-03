@@ -734,35 +734,34 @@ describe('FUOTAManager config pre-flight poll', () => {
     // -----------------------------------------------------------------------
 
     describe('resolveIntervalLimits', () => {
-        it('returns US915 limits when ismBand is US915', () => {
-            expect(fuotaManager.resolveIntervalLimits('US915', 'fw.bin'))
-                .toEqual({ min: 5000, max: 15000 });
+        const UNIFIED = { min: 5000, max: 180000 };
+
+        it('returns unified limits when ismBand is US915', () => {
+            expect(fuotaManager.resolveIntervalLimits('US915', 'fw.bin')).toEqual(UNIFIED);
         });
 
-        it('returns EU868 limits when ismBand is EU868', () => {
-            expect(fuotaManager.resolveIntervalLimits('EU868', 'fw.bin'))
-                .toEqual({ min: 60000, max: 300000 });
+        it('returns unified limits when ismBand is EU868', () => {
+            expect(fuotaManager.resolveIntervalLimits('EU868', 'fw.bin')).toEqual(UNIFIED);
         });
 
-        it('infers US915 limits from firmware filename when ismBand is absent', () => {
+        it('infers limits from 915 firmware filename when ismBand is absent', () => {
             expect(fuotaManager.resolveIntervalLimits('', 'TPMfw_2-35_Upgrade_Common_915.bin'))
-                .toEqual({ min: 5000, max: 15000 });
+                .toEqual(UNIFIED);
         });
 
-        it('infers EU868 limits from firmware filename when ismBand is absent', () => {
+        it('infers limits from 868 firmware filename when ismBand is absent', () => {
             expect(fuotaManager.resolveIntervalLimits(null, 'TPMfw_2-35_Upgrade_Common_868.bin'))
-                .toEqual({ min: 60000, max: 300000 });
+                .toEqual(UNIFIED);
         });
 
-        it('falls back to conservative EU868 limits for unknown band and universal firmware', () => {
+        it('returns unified limits for unknown band and universal firmware', () => {
             expect(fuotaManager.resolveIntervalLimits('', 'VSMfw_1-27Upgrade_Common.bin'))
-                .toEqual({ min: 60000, max: 300000 });
+                .toEqual(UNIFIED);
         });
 
         it('ismBand takes precedence over firmware filename', () => {
-            // ismBand says US915 even though filename has no region hint
             expect(fuotaManager.resolveIntervalLimits('US915', 'VSMfw_1-27Upgrade_Common.bin'))
-                .toEqual({ min: 5000, max: 15000 });
+                .toEqual(UNIFIED);
         });
     });
 

@@ -14,15 +14,14 @@ const FUOTA_ACK_TIMEOUT_MS    = parseInt(process.env.FUOTA_ACK_TIMEOUT_MS)    ||
 const FUOTA_VERIFY_TIMEOUT_MS = parseInt(process.env.FUOTA_VERIFY_TIMEOUT_MS) || 14400000; // 4 hours
 const FUOTA_SESSION_TIMEOUT_MS= parseInt(process.env.FUOTA_SESSION_TIMEOUT_MS)|| 259200000; // 72 hours
 
-// Per-session interval clamp bounds (ms), keyed by ISM band.
-// US915 (Class C, always-on RX): tight window, short intervals are safe.
-// EU868 (Class A or C, stricter duty cycle): longer intervals required.
-// Unknown band falls back to the conservative EU868 limits.
+// Per-session interval clamp bounds (ms).
+// All bands share the same limits: min 5 s, max 3 min.
+// ThingPark handles duty-cycle compliance on the gateway side.
 const INTERVAL_LIMITS = {
-    US915: { min:  5_000, max:  15_000 },
-    EU868: { min: 60_000, max: 300_000 },
+    US915: { min: 5_000, max: 180_000 },
+    EU868: { min: 5_000, max: 180_000 },
 };
-const DEFAULT_INTERVAL_LIMITS = { min: 60_000, max: 300_000 };
+const DEFAULT_INTERVAL_LIMITS = { min: 5_000, max: 180_000 };
 
 /**
  * Resolve min/max interval bounds for a session.
