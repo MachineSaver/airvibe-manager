@@ -8,12 +8,12 @@ import CertificateManager from './CertificateManager';
 type SubTab = 'simulator' | 'tracker' | 'certs';
 
 export default function DevTools() {
-  const [activeTab, setActiveTab] = useState<SubTab>('simulator');
+  const [activeTab, setActiveTab] = useState<SubTab>('certs');
 
   const tabs: { key: SubTab; label: string }[] = [
+    { key: 'certs', label: 'Certificates' },
     { key: 'simulator', label: 'Sensor Simulator' },
     { key: 'tracker', label: 'Waveform Tracker' },
-    { key: 'certs', label: 'Certificates' },
   ];
 
   return (
