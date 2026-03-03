@@ -581,6 +581,19 @@ class FUOTAManager {
     // -----------------------------------------------------------------------
 
     _sendInitDownlink(session) {
+        // If a 0x10 ACK arrived early (while session was still 'initializing' or
+        // 'config_poll'), the device already processed a prior init downlink and is
+        // ready to receive blocks.  Skip the re-send and consume the stashed ACK.
+        if (session._earlyInitAck) {
+            const earlyBuf = session._earlyInitAck;
+            session._earlyInitAck = null;
+            log.info(`FUOTAManager: ${session.devEui} consuming stashed early 0x10 ACK — skipping init downlink`);
+            auditLogger.log('fuota_manager', 'init_ack_early', session.devEui, {});
+            session.state = 'waiting_ack'; // satisfy _handleInitAck's state guard
+            this._handleInitAck(session.devEui, earlyBuf);
+            return;
+        }
+
         const payload = makeInitPayload(session.firmwareSize);
         this._sendDownlink(session.devEui, 22, payload, true);
         session.state = 'waiting_ack';
@@ -600,7 +613,17 @@ class FUOTAManager {
 
     _handleInitAck(devEui, buf) {
         const session = this.activeSessions.get(devEui);
-        if (!session || session.state !== 'waiting_ack') return;
+        if (!session) return;
+
+        // If the ACK arrived before pre-flight or Class C switch completed, stash it.
+        // _sendInitDownlink will consume it and skip the redundant re-send.
+        if (session.state === 'initializing' || session.state === 'config_poll') {
+            session._earlyInitAck = buf;
+            log.info(`FUOTAManager: ${devEui} early 0x10 ACK received during '${session.state}' — stashed`);
+            return;
+        }
+
+        if (session.state !== 'waiting_ack') return;
 
         clearTimeout(session._ackTimeout);
         session._ackTimeout = null;

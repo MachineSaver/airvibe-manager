@@ -765,4 +765,115 @@ describe('FUOTAManager config pre-flight poll', () => {
                 .toEqual({ min: 5000, max: 15000 });
         });
     });
+
+    // -----------------------------------------------------------------------
+    // Early 0x10 ACK — received while session is still 'initializing'
+    // -----------------------------------------------------------------------
+
+    describe('early 0x10 ACK during initializing state', () => {
+        beforeEach(() => { fuotaManager.io = mockIo; });
+        afterEach(() => { fuotaManager.io = null; });
+
+        /** Build a session in 'initializing' state, as startSession leaves it
+         *  just after adding it to activeSessions and before _sendInitDownlink. */
+        function makeInitializingSession(devEui) {
+            return {
+                devEui,
+                dbId: null,
+                state: 'initializing',
+                firmwareName: 'fw.bin',
+                firmwareSize: 49,
+                blocks: [Buffer.alloc(49, 0xab)],
+                totalBlocks: 1,
+                blockIntervalMs: 5000,
+                blocksSent: 0,
+                blocksSentAtStart: 0,
+                blocksResentSoFar: 0,
+                confirmedBlocks: new Set(),
+                configPollAttempt: 0,
+                verifyAttempts: 0,
+                lastMissedCount: 0,
+                lastMissedBlocks: [],
+                error: null,
+                aborted: false,
+                classCConfigured: false,
+                originalClass: null,
+                _ackTimeout: null,
+                _verifyTimeout: null,
+                _sessionTimeout: null,
+                startedAt: Date.now(),
+            };
+        }
+
+        it('stashes a 0x10 ACK that arrives while state is initializing', () => {
+            const devEui = 'EAEA000000000001';
+            const session = makeInitializingSession(devEui);
+            fuotaManager.activeSessions.set(devEui, session);
+
+            fuotaManager.processPacket(
+                `mqtt/things/${devEui}/uplink`,
+                Buffer.from([0x10, 0x00]),
+            );
+
+            expect(session._earlyInitAck).toBeDefined();
+            expect(session._earlyInitAck[0]).toBe(0x10);
+            expect(session.state).toBe('initializing'); // not changed
+        });
+
+        it('stashes a 0x10 ACK that arrives while state is config_poll', () => {
+            const devEui = 'EAEA000000000002';
+            const session = makeInitializingSession(devEui);
+            session.state = 'config_poll';
+            fuotaManager.activeSessions.set(devEui, session);
+
+            fuotaManager.processPacket(
+                `mqtt/things/${devEui}/uplink`,
+                Buffer.from([0x10, 0x00]),
+            );
+
+            expect(session._earlyInitAck).toBeDefined();
+            expect(session.state).toBe('config_poll'); // not changed
+        });
+
+        it('consumes a stashed ACK in _sendInitDownlink — no init downlink sent, block sending starts', async () => {
+            const devEui = 'EAEA000000000003';
+            const session = makeInitializingSession(devEui);
+            // Pre-stash the early ACK (as processPacket would have stored it)
+            session._earlyInitAck = Buffer.from([0x10, 0x00]);
+            fuotaManager.activeSessions.set(devEui, session);
+
+            // _sendInitDownlink should detect the stash, skip the MQTT send, and
+            // call _handleInitAck internally to kick off block sending
+            fuotaManager._sendInitDownlink(session);
+
+            // Stash must be consumed
+            expect(session._earlyInitAck).toBeNull();
+
+            // No FPort-22 init downlink (0x05…) must have been published
+            const initDownlinks = mqttClient.publish.mock.calls.filter(([, msg]) => {
+                try {
+                    const p = JSON.parse(msg);
+                    return p.DevEUI_downlink?.FPort === 22 &&
+                           p.DevEUI_downlink?.payload_hex?.startsWith('05');
+                } catch { return false; }
+            });
+            expect(initDownlinks).toHaveLength(0);
+
+            // Drain microtasks so _sendAllBlocks publishes the first block
+            await Promise.resolve();
+            await Promise.resolve();
+
+            // At least one FPort-25 block downlink must have been published
+            const blockDownlinks = mqttClient.publish.mock.calls.filter(([, msg]) => {
+                try { return JSON.parse(msg).DevEUI_downlink?.FPort === 25; }
+                catch { return false; }
+            });
+            expect(blockDownlinks.length).toBeGreaterThan(0);
+        });
+
+        it('ignores a 0x10 ACK that arrives when there is no active session', () => {
+            fuotaManager.processPacket('EAEA000000000099', 'mqtt/things/EAEA000000000099/uplink', Buffer.from([0x10, 0x00]));
+            expect(fuotaManager.activeSessions.has('EAEA000000000099')).toBe(false);
+        });
+    });
 });
