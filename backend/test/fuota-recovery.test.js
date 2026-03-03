@@ -173,6 +173,84 @@ describe('FUOTAManager startup recovery', () => {
         expect(fuotaManager.activeSessions.has('DEAD000000000001')).toBe(false);
         expect(fuotaManager.activeSessions.has('DEAD000000000002')).toBe(true);
     });
+
+    it('uses stored original_class_info from DB and does not call switchToClassC', async () => {
+        const networkClient = require('../src/services/networkServerClient');
+        const classInfo = { deviceRef: 'ref-123', originalProfileId: 'LORA/GenericA.1.0.4b_FCC' };
+        const rowWithClassInfo = {
+            ...makeRow('DEAD000000000005'),
+            original_class_info: classInfo,
+        };
+        pool.query.mockResolvedValueOnce({ rows: [rowWithClassInfo] });
+        mqttClient.publish.mockReturnValue(undefined);
+
+        await fuotaManager.init(mockIo);
+
+        // switchToClassC must NOT be called — device is already in Class C mid-FUOTA
+        expect(networkClient.switchToClassC).not.toHaveBeenCalled();
+        const session = fuotaManager.activeSessions.get('DEAD000000000005');
+        expect(session).toBeDefined();
+        expect(session.classCConfigured).toBe(true);
+        expect(session.originalClass).toEqual(classInfo);
+    });
+});
+
+describe('FUOTAManager startSession Class C persistence', () => {
+    beforeEach(() => { fuotaManager.io = mockIo; });
+    afterEach(() => { fuotaManager.io = null; });
+
+    it('persists original_class_info to DB after a successful Class C switch', async () => {
+        const DEV = 'DEAD000000000050';
+        const networkClient = require('../src/services/networkServerClient');
+        const { sessionId } = fuotaManager.storeFirmware('test.bin', Buffer.alloc(49));
+        const classInfo = { deviceRef: 'ref-456', originalProfileId: 'LORA/GenericA.1.0.4b_FCC' };
+        networkClient.switchToClassC.mockResolvedValueOnce({ originalClass: classInfo });
+
+        const freshTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        pool.query
+            .mockResolvedValueOnce({ rows: [], rowCount: 0 })              // INSERT devices
+            .mockResolvedValueOnce({ rows: [{ id: 'uuid-50' }] })          // INSERT fuota_sessions
+            .mockResolvedValueOnce({ rows: [], rowCount: 1 })               // UPDATE firmware_data
+            .mockResolvedValueOnce({ rows: [{ config_updated_at: freshTime }] }) // prefillConfig SELECT
+            .mockResolvedValueOnce({ rows: [] })                            // resolveClassCProfile SELECT
+            .mockResolvedValueOnce({ rows: [], rowCount: 1 });              // UPDATE original_class_info
+
+        await fuotaManager.startSession(sessionId, DEV);
+
+        const originalClassCall = pool.query.mock.calls.find(
+            ([sql]) => typeof sql === 'string' && sql.includes('original_class_info')
+        );
+        expect(originalClassCall).toBeDefined();
+        expect(originalClassCall[1][0]).toBe(JSON.stringify(classInfo));
+
+        // Cleanup
+        const s = fuotaManager.activeSessions.get(DEV);
+        if (s) { fuotaManager._clearTimeouts(s); fuotaManager.activeSessions.delete(DEV); }
+    });
+
+    it('does not make an original_class_info DB call when switchToClassC returns null', async () => {
+        const DEV = 'DEAD000000000051';
+        const { sessionId } = fuotaManager.storeFirmware('test.bin', Buffer.alloc(49));
+        // switchToClassC already mocked to return null by default
+
+        const freshTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        pool.query
+            .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+            .mockResolvedValueOnce({ rows: [{ id: 'uuid-51' }] })
+            .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+            .mockResolvedValueOnce({ rows: [{ config_updated_at: freshTime }] })
+            .mockResolvedValueOnce({ rows: [] });
+
+        await fuotaManager.startSession(sessionId, DEV);
+
+        const originalClassCall = pool.query.mock.calls.find(
+            ([sql]) => typeof sql === 'string' && sql.includes('original_class_info')
+        );
+        expect(originalClassCall).toBeUndefined();
+
+        const s = fuotaManager.activeSessions.get(DEV);
+        if (s) { fuotaManager._clearTimeouts(s); fuotaManager.activeSessions.delete(DEV); }
+    });
 });
 
 // ---------------------------------------------------------------------------

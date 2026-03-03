@@ -110,6 +110,10 @@ ALTER TABLE waveforms ADD COLUMN IF NOT EXISTS final_data_bytes BYTEA;
 -- block_interval_ms: per-session block interval preserved so recovery uses the same cadence.
 ALTER TABLE fuota_sessions ADD COLUMN IF NOT EXISTS firmware_data BYTEA;
 ALTER TABLE fuota_sessions ADD COLUMN IF NOT EXISTS block_interval_ms INTEGER;
+-- original_class_info: stores the pre-FUOTA device class profile (ThingPark profileId +
+-- deviceRef, or ChirpStack class string) at session start so recovery after a backend
+-- restart can restore the correct Class A profile instead of the in-flight Class C one.
+ALTER TABLE fuota_sessions ADD COLUMN IF NOT EXISTS original_class_info JSONB;
 
 -- API Keys Table
 -- Stores SHA-256 hashes of API keys — the raw key is never persisted.
