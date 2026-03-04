@@ -102,7 +102,7 @@ const FIRMWARE_CATALOG = [
     region: 'EU868',
     description: 'European — Power & Transmission Module',
     filename: 'TPMfw_2-35_Upgrade_Common_868.bin',
-    defaultIntervalMs: 5000,
+    defaultIntervalMs: 60000,
   },
   {
     id: 'tpm-915',
@@ -126,6 +126,15 @@ const FIRMWARE_CATALOG = [
 // Helpers
 // ---------------------------------------------------------------------------
 
+
+/** Mirror of backend isClassAOnly — TPM firmware on EU868 runs in Class A mode. */
+function isClassAOnlyFirmware(firmwareName: string, ismBand: string): boolean {
+  const name = (firmwareName || '').toUpperCase();
+  const band = (ismBand || '').toUpperCase();
+  const isTpm   = name.includes('TPM');
+  const isEu868 = band.includes('868') || name.includes('868');
+  return isTpm && isEu868;
+}
 
 function stateBadgeClass(state: FuotaState | string): string {
   switch (state) {
@@ -360,6 +369,7 @@ export default function FUOTAManager({ socket }: Props) {
       if (!uploadRes.ok) throw new Error(json.error || 'Upload failed');
       setFirmwareInfo({ ...json, name: entry.filename });
       setBlockIntervalMs(entry.defaultIntervalMs);
+      if (entry.region && entry.region !== 'All regions') setSelectedIsmBand(entry.region);
     } catch (err: unknown) {
       setUploadErr(err instanceof Error ? err.message : 'Failed to load firmware');
     } finally {
@@ -494,7 +504,8 @@ export default function FUOTAManager({ socket }: Props) {
   // Band-specific interval limits
   // -------------------------------------------------------------------------
 
-  const minIntervalMs = 5000;
+  const classAOnlyMode = isClassAOnlyFirmware(firmwareInfo?.name ?? '', selectedIsmBand);
+  const minIntervalMs = classAOnlyMode ? 60000 : 5000;
   const maxIntervalMs = 180000;
 
   // Re-clamp the current interval whenever the limits change (e.g. user switches firmware)
@@ -858,7 +869,7 @@ function DeviceProgressCard({
     devEui, state, blocksSent, totalBlocks, verifyAttempts,
     lastMissedCount, lastMissedBlocks, error, firmwareName, blockIntervalMs, classCConfigured,
     startedAt, blocksSentAtStart, blocksResentSoFar, confirmedRanges, configPollAttempt,
-    configCheckDone,
+    configCheckDone, classAOnly,
   } = progress;
   const pct = totalBlocks > 0 ? Math.min(100, Math.round((blocksSent / totalBlocks) * 100)) : 0;
   const isTerminal = isTerminalState(state);
@@ -941,9 +952,11 @@ function DeviceProgressCard({
           <span className={`px-2 py-0.5 rounded border shrink-0 ${
             classCOk
               ? 'bg-green-900/30 border-green-700 text-green-400'
+              : classAOnly
+              ? 'bg-blue-900/30 border-blue-700 text-blue-400'
               : 'bg-amber-900/30 border-amber-700 text-amber-400'
           }`}>
-            {classCOk ? 'Class C ✓' : 'Class A'}
+            {classCOk ? 'Class C ✓' : classAOnly ? 'Class A ✓' : 'Class A'}
           </span>
 
           <div className={connCls(initDone || initActive)} />

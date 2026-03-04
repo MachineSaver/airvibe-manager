@@ -15,22 +15,36 @@ const FUOTA_VERIFY_TIMEOUT_MS = parseInt(process.env.FUOTA_VERIFY_TIMEOUT_MS) ||
 const FUOTA_SESSION_TIMEOUT_MS= parseInt(process.env.FUOTA_SESSION_TIMEOUT_MS)|| 259200000; // 72 hours
 
 // Per-session interval clamp bounds (ms).
-// All bands share the same limits: min 5 s, max 3 min.
-// ThingPark handles duty-cycle compliance on the gateway side.
 const INTERVAL_LIMITS = {
-    US915: { min: 5_000, max: 180_000 },
-    EU868: { min: 5_000, max: 180_000 },
+    US915:    { min:  5_000, max: 180_000 },
+    EU868:    { min:  5_000, max: 180_000 },
+    TPM_EU868:{ min: 60_000, max: 180_000 }, // Class A only — slower cadence for ETSI duty-cycle
 };
 const DEFAULT_INTERVAL_LIMITS = { min: 5_000, max: 180_000 };
 
 /**
+ * Returns true when a firmware update must run in Class A mode (no Class C switch).
+ * Currently: any TPM firmware targeting EU868.
+ * @param {string|null|undefined} firmwareName
+ * @param {string|null|undefined} ismBand
+ */
+function isClassAOnly(firmwareName, ismBand) {
+    const name = (firmwareName || '').toUpperCase();
+    const band = (ismBand     || '').toUpperCase();
+    const isTpm  = name.includes('TPM');
+    const isEu868 = band.includes('868') || name.includes('868');
+    return isTpm && isEu868;
+}
+
+/**
  * Resolve min/max interval bounds for a session.
- * Priority: ismBand > infer from firmware filename > conservative fallback.
+ * Priority: TPM EU868 special case > ismBand > infer from firmware filename > fallback.
  * @param {string|null|undefined} ismBand
  * @param {string|null|undefined} firmwareName
  * @returns {{ min: number, max: number }}
  */
 function resolveIntervalLimits(ismBand, firmwareName) {
+    if (isClassAOnly(firmwareName, ismBand)) return INTERVAL_LIMITS.TPM_EU868;
     const band = ismBand || '';
     if (band.includes('915')) return INTERVAL_LIMITS.US915;
     if (band.includes('868')) return INTERVAL_LIMITS.EU868;
@@ -491,6 +505,7 @@ class FUOTAManager {
             blocksResentSoFar: 0,
             confirmedBlocks: new Set(),
             configCheckDone: false,
+            classAOnly: false,
             configPollAttempt: 0,
             initAttempts: 0,
             verifyAttempts: 0,
@@ -529,40 +544,52 @@ class FUOTAManager {
         session.configCheckDone = true;
         this._emitProgress(devEui);
 
-        // Resolve per-device Class C profile: auto-detected band first, then user selection.
-        const classCProfile = await resolveClassCProfile(devEui, ismBand);
+        // Determine whether this firmware update must stay in Class A mode.
+        // EU868 TPM updates do not require a Class C profile switch — the device receives
+        // blocks in its normal Class A RX windows at a slower cadence (60–180 s).
+        session.classAOnly = isClassAOnly(firmware.name, ismBand);
 
-        // Attempt Class C switch via the active network server client (non-blocking to session creation)
-        const csResult = await networkClient.switchToClassC(devEui, classCProfile);
-        session.originalClass    = csResult?.originalClass || null;
-        session.classCConfigured = !!csResult;
-
-        // Persist the original class info to DB immediately so a backend restart during FUOTA
-        // can restore the correct Class A profile instead of the in-flight Class C one.
-        if (session.originalClass && dbId) {
-            try {
-                await pool.query(
-                    `UPDATE fuota_sessions SET original_class_info = $1 WHERE id = $2`,
-                    [JSON.stringify(session.originalClass), dbId]
-                );
-            } catch (err) {
-                log.warn(`FUOTAManager: could not persist original_class_info for ${devEui}: ${err.message}`);
-            }
-        }
-
-        auditLogger.log('fuota_manager', 'class_c_switch', devEui, {
-            success: session.classCConfigured,
-            originalClass: session.originalClass,
-        });
-
-        if (!session.classCConfigured) {
-            log.warn(
-                `FUOTAManager: ${devEui} Class C switch failed — proceeding in Class A mode. ` +
-                `ThingPark/Basic Station queues only 1–2 downlinks per device; at the default ` +
-                `10 s block interval the queue will overflow immediately. ` +
-                `Set FUOTA_BLOCK_INTERVAL_MS=120000 (or higher) in .env for Class A, ` +
-                `or fix Class C switching via THINGPARK_CLASS_C_PROFILE and credentials.`
+        if (session.classAOnly) {
+            log.info(
+                `FUOTAManager: ${devEui} EU868 TPM firmware — proceeding in Class A mode ` +
+                `(no Class C switch; block interval ${session.blockIntervalMs} ms)`
             );
+            auditLogger.log('fuota_manager', 'class_a_only', devEui, { firmwareName: firmware.name });
+        } else {
+            // Resolve per-device Class C profile: auto-detected band first, then user selection.
+            const classCProfile = await resolveClassCProfile(devEui, ismBand);
+
+            // Attempt Class C switch via the active network server client.
+            const csResult = await networkClient.switchToClassC(devEui, classCProfile);
+            session.originalClass    = csResult?.originalClass || null;
+            session.classCConfigured = !!csResult;
+
+            // Persist the original class info to DB so a backend restart can restore it.
+            if (session.originalClass && dbId) {
+                try {
+                    await pool.query(
+                        `UPDATE fuota_sessions SET original_class_info = $1 WHERE id = $2`,
+                        [JSON.stringify(session.originalClass), dbId]
+                    );
+                } catch (err) {
+                    log.warn(`FUOTAManager: could not persist original_class_info for ${devEui}: ${err.message}`);
+                }
+            }
+
+            auditLogger.log('fuota_manager', 'class_c_switch', devEui, {
+                success: session.classCConfigured,
+                originalClass: session.originalClass,
+            });
+
+            if (!session.classCConfigured) {
+                log.warn(
+                    `FUOTAManager: ${devEui} Class C switch failed — proceeding in Class A mode. ` +
+                    `ThingPark/Basic Station queues only 1–2 downlinks per device; at the default ` +
+                    `10 s block interval the queue will overflow immediately. ` +
+                    `Set FUOTA_BLOCK_INTERVAL_MS=120000 (or higher) in .env for Class A, ` +
+                    `or fix Class C switching via THINGPARK_CLASS_C_PROFILE and credentials.`
+                );
+            }
         }
 
         // Send init downlink then wait for 0x10 ACK
@@ -1172,6 +1199,7 @@ class FUOTAManager {
                   blocksResentSoFar: session.blocksResentSoFar ?? 0,
                   confirmedRanges: this._blocksToRanges(session.confirmedBlocks),
                   configCheckDone: session.configCheckDone ?? false,
+                  classAOnly: session.classAOnly ?? false,
                   configPollAttempt: session.configPollAttempt ?? 0,
                   error: session.error,
                   firmwareName: session.firmwareName,
@@ -1246,6 +1274,7 @@ class FUOTAManager {
                 blocksResentSoFar: s.blocksResentSoFar ?? 0,
                 confirmedRanges: this._blocksToRanges(s.confirmedBlocks),
                 configCheckDone: s.configCheckDone ?? false,
+                classAOnly: s.classAOnly ?? false,
                 configPollAttempt: s.configPollAttempt ?? 0,
                 error: s.error,
                 blockIntervalMs: s.blockIntervalMs,
@@ -1295,5 +1324,6 @@ class FUOTAManager {
 
 const _instance = new FUOTAManager();
 _instance.resolveIntervalLimits = resolveIntervalLimits;
+_instance.isClassAOnly          = isClassAOnly;
 _instance.initAckWaitMs = initAckWaitMs;
 module.exports = _instance;

@@ -818,13 +818,14 @@ describe('FUOTAManager config pre-flight poll', () => {
     // -----------------------------------------------------------------------
 
     describe('resolveIntervalLimits', () => {
-        const UNIFIED = { min: 5000, max: 180000 };
+        const UNIFIED    = { min: 5000,  max: 180000 };
+        const TPM_EU868  = { min: 60000, max: 180000 };
 
         it('returns unified limits when ismBand is US915', () => {
             expect(fuotaManager.resolveIntervalLimits('US915', 'fw.bin')).toEqual(UNIFIED);
         });
 
-        it('returns unified limits when ismBand is EU868', () => {
+        it('returns unified limits when ismBand is EU868 with non-TPM firmware', () => {
             expect(fuotaManager.resolveIntervalLimits('EU868', 'fw.bin')).toEqual(UNIFIED);
         });
 
@@ -833,8 +834,18 @@ describe('FUOTAManager config pre-flight poll', () => {
                 .toEqual(UNIFIED);
         });
 
-        it('infers limits from 868 firmware filename when ismBand is absent', () => {
+        it('returns TPM_EU868 limits (60–180 s) for TPM EU868 firmware name, no ismBand', () => {
             expect(fuotaManager.resolveIntervalLimits(null, 'TPMfw_2-35_Upgrade_Common_868.bin'))
+                .toEqual(TPM_EU868);
+        });
+
+        it('returns TPM_EU868 limits when ismBand=EU868 AND firmware is TPM', () => {
+            expect(fuotaManager.resolveIntervalLimits('EU868', 'TPMfw_2-35_Upgrade_Common_868.bin'))
+                .toEqual(TPM_EU868);
+        });
+
+        it('returns unified limits for VSM EU868 (not TPM)', () => {
+            expect(fuotaManager.resolveIntervalLimits('EU868', 'VSMfw_1-27Upgrade_Common.bin'))
                 .toEqual(UNIFIED);
         });
 
@@ -846,6 +857,99 @@ describe('FUOTAManager config pre-flight poll', () => {
         it('ismBand takes precedence over firmware filename', () => {
             expect(fuotaManager.resolveIntervalLimits('US915', 'VSMfw_1-27Upgrade_Common.bin'))
                 .toEqual(UNIFIED);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // isClassAOnly — Class A mode flag for EU868 TPM firmware
+    // -----------------------------------------------------------------------
+
+    describe('isClassAOnly', () => {
+        it('returns true for TPM EU868 via firmware filename alone', () => {
+            expect(fuotaManager.isClassAOnly('TPMfw_2-35_Upgrade_Common_868.bin', null)).toBe(true);
+        });
+
+        it('returns true for TPM firmware when ismBand is EU868', () => {
+            expect(fuotaManager.isClassAOnly('TPMfw_2-35.bin', 'EU868')).toBe(true);
+        });
+
+        it('returns false for TPM US915 (not EU868)', () => {
+            expect(fuotaManager.isClassAOnly('TPMfw_2-35_Upgrade_Common_915.bin', 'US915')).toBe(false);
+        });
+
+        it('returns false for VSM EU868 (not TPM)', () => {
+            expect(fuotaManager.isClassAOnly('VSMfw_1-27Upgrade_Common.bin', 'EU868')).toBe(false);
+        });
+
+        it('returns false for non-TPM firmware with EU868 in name', () => {
+            expect(fuotaManager.isClassAOnly('fw_868.bin', null)).toBe(false);
+        });
+
+        it('returns false when no firmware name and no ismBand', () => {
+            expect(fuotaManager.isClassAOnly(null, null)).toBe(false);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // startSession — Class A only path for EU868 TPM firmware
+    // -----------------------------------------------------------------------
+
+    describe('startSession Class A only (EU868 TPM)', () => {
+        beforeEach(() => { fuotaManager.io = mockIo; });
+        afterEach(() => { fuotaManager.io = null; });
+
+        it('skips Class C switch for EU868 TPM firmware and sets classAOnly=true', async () => {
+            const DEV = 'DEAD000000000060';
+            const { sessionId } = fuotaManager.storeFirmware(
+                'TPMfw_2-35_Upgrade_Common_868.bin', Buffer.alloc(49)
+            );
+            const freshTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+            const networkClient = require('../src/services/networkServerClient');
+            const switchSpy = jest.spyOn(networkClient, 'switchToClassC');
+
+            pool.query
+                .mockResolvedValueOnce({ rows: [], rowCount: 0 })           // upsert device
+                .mockResolvedValueOnce({ rows: [{ id: 'uuid-60' }] })       // session INSERT
+                .mockResolvedValueOnce({ rows: [], rowCount: 1 })           // firmware_data UPDATE
+                .mockResolvedValueOnce({ rows: [{ config_updated_at: freshTime }] }); // _prefillConfig fresh
+
+            await fuotaManager.startSession(sessionId, DEV, 60000, 'EU868');
+
+            expect(switchSpy).not.toHaveBeenCalled();
+            const session = fuotaManager.activeSessions.get(DEV);
+            expect(session?.classAOnly).toBe(true);
+            expect(session?.classCConfigured).toBe(false);
+
+            switchSpy.mockRestore();
+            const s = fuotaManager.activeSessions.get(DEV);
+            if (s) { fuotaManager._clearTimeouts(s); fuotaManager.activeSessions.delete(DEV); }
+        });
+
+        it('still calls Class C switch for US915 TPM firmware', async () => {
+            const DEV = 'DEAD000000000061';
+            const { sessionId } = fuotaManager.storeFirmware(
+                'TPMfw_2-35_Upgrade_Common_915.bin', Buffer.alloc(49)
+            );
+            const freshTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+            const networkClient = require('../src/services/networkServerClient');
+            const switchSpy = jest.spyOn(networkClient, 'switchToClassC').mockResolvedValue(null);
+
+            pool.query
+                .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+                .mockResolvedValueOnce({ rows: [{ id: 'uuid-61' }] })
+                .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+                .mockResolvedValueOnce({ rows: [{ config_updated_at: freshTime }] }) // _prefillConfig fresh
+                .mockResolvedValueOnce({ rows: [] });                                // resolveClassCProfile
+
+            await fuotaManager.startSession(sessionId, DEV, 10000, 'US915');
+
+            expect(switchSpy).toHaveBeenCalled();
+            const session = fuotaManager.activeSessions.get(DEV);
+            expect(session?.classAOnly).toBe(false);
+
+            switchSpy.mockRestore();
+            const s = fuotaManager.activeSessions.get(DEV);
+            if (s) { fuotaManager._clearTimeouts(s); fuotaManager.activeSessions.delete(DEV); }
         });
     });
 
