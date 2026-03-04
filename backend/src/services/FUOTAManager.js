@@ -322,6 +322,7 @@ class FUOTAManager {
                     lastMissedBlocks:[],
                     error:           null,
                     aborted:         false,
+                    configCheckDone: true,   // recovery skips _prefillConfig
                     classCConfigured:false,
                     originalClass:   null,
                     _ackTimeout:     null,
@@ -489,6 +490,7 @@ class FUOTAManager {
             blocksSentAtStart: 0,
             blocksResentSoFar: 0,
             confirmedBlocks: new Set(),
+            configCheckDone: false,
             configPollAttempt: 0,
             initAttempts: 0,
             verifyAttempts: 0,
@@ -521,6 +523,11 @@ class FUOTAManager {
 
         // Guard: session may have been aborted or superseded during config poll
         if (!this.activeSessions.has(devEui) || session.aborted) return;
+
+        // Mark config check as complete and notify the frontend so it never
+        // shows Config ✓ before _prefillConfig has actually run.
+        session.configCheckDone = true;
+        this._emitProgress(devEui);
 
         // Resolve per-device Class C profile: auto-detected band first, then user selection.
         const classCProfile = await resolveClassCProfile(devEui, ismBand);
@@ -1164,6 +1171,7 @@ class FUOTAManager {
                   lastMissedBlocks: session.lastMissedBlocks,
                   blocksResentSoFar: session.blocksResentSoFar ?? 0,
                   confirmedRanges: this._blocksToRanges(session.confirmedBlocks),
+                  configCheckDone: session.configCheckDone ?? false,
                   configPollAttempt: session.configPollAttempt ?? 0,
                   error: session.error,
                   firmwareName: session.firmwareName,
@@ -1237,6 +1245,7 @@ class FUOTAManager {
                 lastMissedBlocks: s.lastMissedBlocks,
                 blocksResentSoFar: s.blocksResentSoFar ?? 0,
                 confirmedRanges: this._blocksToRanges(s.confirmedBlocks),
+                configCheckDone: s.configCheckDone ?? false,
                 configPollAttempt: s.configPollAttempt ?? 0,
                 error: s.error,
                 blockIntervalMs: s.blockIntervalMs,

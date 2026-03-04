@@ -44,6 +44,7 @@ interface DeviceProgress {
   blocksSentAtStart?: number;
   blocksResentSoFar?: number;
   confirmedRanges?: [number, number][];
+  configCheckDone?: boolean;
   configPollAttempt?: number;
 }
 
@@ -857,6 +858,7 @@ function DeviceProgressCard({
     devEui, state, blocksSent, totalBlocks, verifyAttempts,
     lastMissedCount, lastMissedBlocks, error, firmwareName, blockIntervalMs, classCConfigured,
     startedAt, blocksSentAtStart, blocksResentSoFar, confirmedRanges, configPollAttempt,
+    configCheckDone,
   } = progress;
   const pct = totalBlocks > 0 ? Math.min(100, Math.round((blocksSent / totalBlocks) * 100)) : 0;
   const isTerminal = isTerminalState(state);
@@ -867,7 +869,8 @@ function DeviceProgressCard({
   const classCOk = !!classCConfigured;
 
   // Whether each step has been completed (past)
-  const configPollDone = ['initializing', 'waiting_ack', 'sending_blocks', 'resending', 'verifying', 'complete', 'failed', 'aborted'].includes(state);
+  const configPollDone = !!configCheckDone ||
+    ['waiting_ack', 'sending_blocks', 'resending', 'verifying', 'complete', 'failed', 'aborted'].includes(state);
   const initDone   = ['sending_blocks', 'resending', 'verifying', 'complete', 'failed', 'aborted'].includes(state);
   const blocksDone = ['verifying', 'complete'].includes(state) ||
                      (isFailed && blocksSent > 0 && blocksSent === totalBlocks);
