@@ -46,6 +46,7 @@ interface DeviceProgress {
   confirmedRanges?: [number, number][];
   configCheckDone?: boolean;
   configPollAttempt?: number;
+  classAOnly?: boolean;
 }
 
 interface Device {
