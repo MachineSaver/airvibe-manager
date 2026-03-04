@@ -188,6 +188,17 @@ class ThingParkClient {
                 log.warn(`ThingParkClient: setProfile failed for ref ${deviceRef} → ${profileId} (${res?.status}): ${text}`);
                 return false;
             }
+            // Verify the response body reflects the new profile — ThingPark could return
+            // 200 OK but silently ignore the change (e.g. bad field name, missing fields).
+            const json = await res.json().catch(() => null);
+            const applied = json?.deviceProfileId;
+            if (applied && applied !== profileId) {
+                log.warn(
+                    `ThingParkClient: setProfile ref ${deviceRef} returned 200 but ` +
+                    `deviceProfileId is '${applied}', not '${profileId}' — treating as failure`
+                );
+                return false;
+            }
             return true;
         } catch (err) {
             log.warn(`ThingParkClient: setProfile error for ref ${deviceRef}: ${err.message}`);
