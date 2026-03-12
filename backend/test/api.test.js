@@ -31,6 +31,11 @@ jest.mock('../src/services/WaveformManager', () => ({
     processPacket: jest.fn(),
 }));
 
+jest.mock('../src/services/SpectrumProcessor', () => ({
+    processWaveform: jest.fn().mockResolvedValue(undefined),
+    recoverOrphanedWaveforms: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('../src/services/DemoSimulator', () => ({
     start: jest.fn().mockReturnValue({ started: true }),
     stop: jest.fn().mockReturnValue({ stopped: true }),
@@ -278,6 +283,113 @@ describe('GET /api/devices/:devEui/waveforms', () => {
         expect(res.status).toBe(200);
         expect(res.body).toEqual([]);
         expect(res.headers['x-total-count']).toBe('0');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/waveforms/:id/spectra
+// ---------------------------------------------------------------------------
+
+describe('GET /api/waveforms/:id/spectra', () => {
+    /** Build a float32 LE Buffer from a JS number array. */
+    function makeFloat32Buf(values) {
+        const buf = Buffer.allocUnsafe(values.length * 4);
+        values.forEach((v, i) => buf.writeFloatLE(v, i * 4));
+        return buf;
+    }
+
+    /** Minimal spectrum DB row with 3 bins. */
+    function makeSpectrumRow(axis, spectrumType) {
+        return {
+            axis,
+            spectrum_type: spectrumType,
+            num_bins: 3,
+            frequency_resolution_hz: 8,
+            frequencies: makeFloat32Buf([0, 8, 16]),
+            magnitudes:  makeFloat32Buf([0.1, 0.5, 0.2]),
+        };
+    }
+
+    it('returns 404 when the waveform does not exist', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [] }); // waveform check returns nothing
+
+        const res = await request(app).get('/api/waveforms/no-such-id/spectra');
+
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 200 with an empty array when waveform exists but spectra not yet computed', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ id: 'uuid-1' }] }) // waveform exists
+            .mockResolvedValueOnce({ rows: [] });                 // no spectra rows
+
+        const res = await request(app).get('/api/waveforms/uuid-1/spectra');
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual([]);
+    });
+
+    it('returns spectrum rows with camelCase fields and decoded float32 arrays', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ id: 'uuid-1' }] })
+            .mockResolvedValueOnce({ rows: [makeSpectrumRow(1, 'acceleration')] });
+
+        const res = await request(app).get('/api/waveforms/uuid-1/spectra');
+
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveLength(1);
+
+        const s = res.body[0];
+        expect(s.axis).toBe(1);
+        expect(s.spectrumType).toBe('acceleration');
+        expect(s.numBins).toBe(3);
+        expect(s.frequencyResolutionHz).toBe(8);
+        expect(Array.isArray(s.frequencies)).toBe(true);
+        expect(Array.isArray(s.magnitudes)).toBe(true);
+        expect(s.frequencies).toHaveLength(3);
+        expect(s.magnitudes).toHaveLength(3);
+    });
+
+    it('correctly decodes float32 LE values from BYTEA buffers', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ id: 'uuid-1' }] })
+            .mockResolvedValueOnce({ rows: [makeSpectrumRow(1, 'velocity')] });
+
+        const res = await request(app).get('/api/waveforms/uuid-1/spectra');
+        const s = res.body[0];
+
+        expect(s.frequencies[0]).toBeCloseTo(0, 3);
+        expect(s.frequencies[1]).toBeCloseTo(8, 3);
+        expect(s.frequencies[2]).toBeCloseTo(16, 3);
+        expect(s.magnitudes[1]).toBeCloseTo(0.5, 3);
+    });
+
+    it('returns all spectrum rows for a tri-axis waveform', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ id: 'uuid-1' }] })
+            .mockResolvedValueOnce({
+                rows: [
+                    makeSpectrumRow(1, 'acceleration'),
+                    makeSpectrumRow(1, 'velocity'),
+                    makeSpectrumRow(1, 'psd'),
+                    makeSpectrumRow(1, 'envelope'),
+                    makeSpectrumRow(2, 'acceleration'),
+                    makeSpectrumRow(2, 'velocity'),
+                    makeSpectrumRow(2, 'psd'),
+                    makeSpectrumRow(2, 'envelope'),
+                    makeSpectrumRow(3, 'acceleration'),
+                    makeSpectrumRow(3, 'velocity'),
+                    makeSpectrumRow(3, 'psd'),
+                    makeSpectrumRow(3, 'envelope'),
+                ],
+            });
+
+        const res = await request(app).get('/api/waveforms/uuid-1/spectra');
+
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveLength(12);
+        const axes = [...new Set(res.body.map(s => s.axis))].sort();
+        expect(axes).toEqual([1, 2, 3]);
     });
 });
 

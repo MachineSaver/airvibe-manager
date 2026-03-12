@@ -9,6 +9,7 @@ const { connectWithRetry } = require('./db');
 const apiKeyManager = require('./services/ApiKeyManager');
 const fuotaManager = require('./services/FUOTAManager');
 const waveformManager = require('./services/WaveformManager');
+const spectrumProcessor = require('./services/SpectrumProcessor');
 const mqttClient = require('./mqttClient');
 const pki = require('./pki');
 
@@ -43,6 +44,7 @@ const domain = process.env.DOMAIN || 'localhost';
     });
 
     await fuotaManager.init(io);
+    await spectrumProcessor.recoverOrphanedWaveforms();
 
     try {
         log.info(`Checking/Initializing PKI for domain: ${domain}`);

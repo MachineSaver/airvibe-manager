@@ -142,3 +142,20 @@ BEGIN
             NOT VALID;
     END IF;
 END $$;
+
+-- Computed spectra for completed waveforms (acceleration, velocity, PSD, envelope).
+-- Cascade-deleted with the parent waveform — no separate cleanup needed.
+CREATE TABLE IF NOT EXISTS waveform_spectra (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    waveform_id             UUID NOT NULL REFERENCES waveforms(id) ON DELETE CASCADE,
+    axis                    SMALLINT NOT NULL,
+    spectrum_type           VARCHAR(20) NOT NULL,
+    num_bins                INTEGER NOT NULL,
+    frequency_resolution_hz REAL NOT NULL,
+    frequencies             BYTEA NOT NULL,
+    magnitudes              BYTEA NOT NULL,
+    computed_at             TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(waveform_id, axis, spectrum_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_waveform_spectra_waveform ON waveform_spectra(waveform_id);

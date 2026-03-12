@@ -413,6 +413,34 @@ app.get('/api/waveforms/:id', async (req, res) => {
     }
 });
 
+app.get('/api/waveforms/:id/spectra', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const wfRes = await pool.query(`SELECT id FROM waveforms WHERE id = $1`, [id]);
+        if (wfRes.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+        const spRes = await pool.query(
+            `SELECT axis, spectrum_type, num_bins, frequency_resolution_hz, frequencies, magnitudes
+             FROM waveform_spectra WHERE waveform_id = $1
+             ORDER BY axis, spectrum_type`,
+            [id],
+        );
+
+        const spectra = spRes.rows.map(row => ({
+            axis: row.axis,
+            spectrumType: row.spectrum_type,
+            numBins: row.num_bins,
+            frequencyResolutionHz: row.frequency_resolution_hz,
+            frequencies: _decodeFloat32Buffer(row.frequencies),
+            magnitudes: _decodeFloat32Buffer(row.magnitudes),
+        }));
+
+        res.json(spectra);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ---------------------------------------------------------------------------
 // Routes — devices
 // ---------------------------------------------------------------------------
@@ -804,6 +832,18 @@ io.on('connection', (socket) => {
         }
     });
 });
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function _decodeFloat32Buffer(buf) {
+    const out = [];
+    for (let i = 0; i + 3 < buf.length; i += 4) {
+        out.push(buf.readFloatLE(i));
+    }
+    return out;
+}
 
 // ---------------------------------------------------------------------------
 // Exports

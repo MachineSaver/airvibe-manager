@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import SegmentMap from './SegmentMap';
-import WaveformChart from './WaveformChart';
+import WaveformChart, { ChartMode, SpectrumAxisData } from './WaveformChart';
 import { deinterleaveWaveform } from '@/lib/deinterleave';
 
 interface Waveform {
@@ -27,11 +27,19 @@ interface Waveform {
     requested_segments?: number[];
 }
 
+interface SpectrumRow {
+    axis: number;
+    spectrumType: string;
+    numBins: number;
+    frequencyResolutionHz: number;
+    frequencies: number[];
+    magnitudes: number[];
+}
+
 function processChartData(wf: Waveform): { axis1: number[], axis2: number[], axis3: number[] } | null {
     if (!wf.final_data?.raw_hex || !wf.metadata) return null;
     return deinterleaveWaveform(wf.final_data.raw_hex, wf.metadata.axisMask);
 }
-
 
 interface Device {
     dev_eui: string;
@@ -39,6 +47,24 @@ interface Device {
     downlink_count: number;
     last_seen: string;
 }
+
+type ViewMode = 'time' | 'acceleration' | 'velocity' | 'psd' | 'envelope';
+
+const VIEW_MODES: { id: ViewMode; label: string }[] = [
+    { id: 'time',         label: 'Acceleration Waveform' },
+    { id: 'envelope',     label: 'Envelope' },
+    { id: 'acceleration', label: 'Acceleration Spectrum' },
+    { id: 'velocity',     label: 'Velocity Spectrum' },
+    { id: 'psd',          label: 'PSD' },
+];
+
+const SPECTRUM_TYPE_MAP: Record<ViewMode, string> = {
+    time:         '',
+    acceleration: 'acceleration',
+    velocity:     'velocity',
+    psd:          'psd',
+    envelope:     'envelope',
+};
 
 export default function WaveformsView() {
     const [waveforms, setWaveforms] = useState<Waveform[]>([]);
@@ -48,6 +74,8 @@ export default function WaveformsView() {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedWaveform, setSelectedWaveform] = useState<Waveform | null>(null);
     const [chartData, setChartData] = useState<{ axis1: number[], axis2: number[], axis3: number[] } | null>(null);
+    const [viewMode, setViewMode] = useState<ViewMode>('time');
+    const [spectraRows, setSpectraRows] = useState<SpectrumRow[]>([]);
 
     const fetchDevices = useCallback(async () => {
         try {
@@ -87,6 +115,20 @@ export default function WaveformsView() {
         }
     }, []);
 
+    const fetchSpectra = useCallback(async (id: string) => {
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+            const res = await fetch(`${apiUrl}/api/waveforms/${id}/spectra`);
+            if (res.ok) {
+                setSpectraRows(await res.json());
+            } else {
+                setSpectraRows([]);
+            }
+        } catch {
+            setSpectraRows([]);
+        }
+    }, []);
+
     useEffect(() => {
         const timeout = setTimeout(fetchWaveforms, 0);
         const interval = setInterval(fetchWaveforms, 2000);
@@ -103,7 +145,6 @@ export default function WaveformsView() {
     // was picked, auto-select the best one (active > most recent)
     const effectiveSelectedId = (() => {
         if (selectedId) {
-            // Validate that selectedId still belongs to the selected device (or no device filter)
             if (!selectedEui) return selectedId;
             const wf = waveforms.find(w => w.id === selectedId);
             if (wf && wf.device_eui === selectedEui) return selectedId;
@@ -124,14 +165,26 @@ export default function WaveformsView() {
             const timeout = setTimeout(() => {
                 setSelectedWaveform(null);
                 setChartData(null);
+                setSpectraRows([]);
             }, 0);
             return () => clearTimeout(timeout);
         }
     }, [effectiveSelectedId, fetchWaveformDetail]);
 
+    // Fetch spectra whenever selected waveform changes and it is complete
+    useEffect(() => {
+        if (effectiveSelectedId && selectedWaveform?.status === 'complete') {
+            const timeout = setTimeout(() => fetchSpectra(effectiveSelectedId), 0);
+            return () => clearTimeout(timeout);
+        } else {
+            const timeout = setTimeout(() => setSpectraRows([]), 0);
+            return () => clearTimeout(timeout);
+        }
+    }, [effectiveSelectedId, selectedWaveform?.status, fetchSpectra]);
+
     const handleDeviceClick = (devEui: string) => {
         setSelectedEui(devEui);
-        setSelectedId(null); // Reset so auto-select picks the best transaction
+        setSelectedId(null);
     };
 
     const handleChevronClick = (e: React.MouseEvent, devEui: string) => {
@@ -143,6 +196,18 @@ export default function WaveformsView() {
         setSelectedEui(devEui);
         setSelectedId(wfId);
     };
+
+    // Build per-axis spectrum data for the current view mode
+    const spectrumAxes: SpectrumAxisData[] = useMemo(() => {
+        if (viewMode === 'time') return [];
+        const targetType = SPECTRUM_TYPE_MAP[viewMode];
+        return spectraRows
+            .filter(r => r.spectrumType === targetType)
+            .sort((a, b) => a.axis - b.axis)
+            .map(r => ({ axisNum: r.axis, frequencies: r.frequencies, magnitudes: r.magnitudes }));
+    }, [viewMode, spectraRows]);
+
+    const spectraReady = spectraRows.length > 0;
 
     return (
         <div className="flex flex-col md:flex-row h-full bg-[#1e1e1e] text-gray-300 font-sans overflow-hidden">
@@ -162,7 +227,6 @@ export default function WaveformsView() {
 
                         return (
                             <div key={d.dev_eui}>
-                                {/* Device card row */}
                                 <div
                                     onClick={() => handleDeviceClick(d.dev_eui)}
                                     className={`flex items-center cursor-pointer rounded transition-colors ${isSelected ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50' : 'text-gray-400 hover:bg-[#2a2a2b] border border-transparent'}`}
@@ -174,7 +238,6 @@ export default function WaveformsView() {
                                             <span style={{ color: '#9333ea' }}>↓{d.downlink_count}</span>
                                         </div>
                                     </div>
-                                    {/* Chevron toggle */}
                                     {deviceWaveforms.length > 0 && (
                                         <button
                                             onClick={(e) => handleChevronClick(e, d.dev_eui)}
@@ -193,7 +256,6 @@ export default function WaveformsView() {
                                     )}
                                 </div>
 
-                                {/* Expanded transaction history */}
                                 {isExpanded && (
                                     <div className="pl-3 space-y-1 mt-1 max-h-[280px] overflow-y-auto">
                                         {deviceWaveforms.length === 0 && (
@@ -302,19 +364,58 @@ export default function WaveformsView() {
                             />
                         </div>
 
-                        {chartData && selectedWaveform.metadata ? (
-                            <div className="bg-[#252526] rounded border border-[#333] p-4 flex-1 min-h-[400px]">
-                                <h3 className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wider">Waveform Data</h3>
-                                <WaveformChart
-                                    data={chartData}
-                                    sampleRate={selectedWaveform.metadata.sampleRate}
-                                />
+                        {/* View selector + chart */}
+                        <div className="bg-[#252526] rounded border border-[#333] p-4 flex-1 min-h-[460px] flex flex-col gap-3">
+                            {/* Selector bar */}
+                            <div className="flex flex-wrap gap-1.5">
+                                {VIEW_MODES.map(vm => (
+                                    <button
+                                        key={vm.id}
+                                        onClick={() => setViewMode(vm.id)}
+                                        disabled={vm.id !== 'time' && !spectraReady}
+                                        className={`px-3 py-1 rounded text-xs font-medium transition-colors
+                                            ${viewMode === vm.id
+                                                ? 'bg-blue-600 text-white'
+                                                : vm.id !== 'time' && !spectraReady
+                                                    ? 'bg-[#1e1e1e] text-gray-600 cursor-not-allowed border border-[#333]'
+                                                    : 'bg-[#1e1e1e] text-gray-400 hover:bg-[#37373d] border border-[#3e3e42]'
+                                            }`}
+                                    >
+                                        {vm.label}
+                                    </button>
+                                ))}
                             </div>
-                        ) : (
-                            <div className="bg-[#252526] rounded border border-[#333] p-12 flex items-center justify-center text-gray-500 flex-1 text-sm">
-                                {selectedWaveform.status === 'complete' ? 'Processing visualization...' : 'Waiting for completion to visualize waveform...'}
-                            </div>
-                        )}
+
+                            {/* Chart area */}
+                            {viewMode === 'time' ? (
+                                chartData && selectedWaveform.metadata ? (
+                                    <WaveformChart
+                                        mode="time"
+                                        data={chartData}
+                                        sampleRate={selectedWaveform.metadata.sampleRate}
+                                    />
+                                ) : (
+                                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                                        {selectedWaveform.status === 'complete' ? 'Processing visualization...' : 'Waiting for completion to visualize waveform...'}
+                                    </div>
+                                )
+                            ) : (
+                                spectraReady && spectrumAxes.length > 0 ? (
+                                    <WaveformChart
+                                        mode={viewMode as ChartMode}
+                                        spectrumAxes={spectrumAxes}
+                                    />
+                                ) : spectraReady ? (
+                                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                                        No data for this spectrum type.
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                                        {selectedWaveform.status === 'complete' ? 'Computing spectra...' : 'Spectra available after waveform completes.'}
+                                    </div>
+                                )
+                            )}
+                        </div>
                     </>
                 ) : (
                     <div className="h-full flex items-center justify-center text-gray-500 text-sm">
@@ -325,3 +426,4 @@ export default function WaveformsView() {
         </div>
     );
 }
+

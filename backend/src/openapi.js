@@ -114,6 +114,17 @@ Keys are created via \`POST /api/keys\`. The raw key is returned exactly once at
                     },
                 },
             },
+            WaveformSpectrum: {
+                type: 'object',
+                properties: {
+                    axis:                   { type: 'integer', enum: [1, 2, 3] },
+                    spectrumType:           { type: 'string', enum: ['acceleration', 'velocity', 'psd', 'envelope'] },
+                    numBins:                { type: 'integer' },
+                    frequencyResolutionHz:  { type: 'number' },
+                    frequencies:            { type: 'array', items: { type: 'number' }, description: 'Frequency axis values in Hz' },
+                    magnitudes:             { type: 'array', items: { type: 'number' }, description: 'Amplitude values (units depend on spectrumType: g, mm/s, g²/Hz, g)' },
+                },
+            },
             Device: {
                 type: 'object',
                 properties: {
@@ -412,6 +423,32 @@ Keys are created via \`POST /api/keys\`. The raw key is returned exactly once at
                         description: 'CSV file with per-sample acceleration data',
                         content: {
                             'text/csv': { schema: { type: 'string' } },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    404: { $ref: '#/components/responses/NotFound' },
+                },
+            },
+        },
+
+        '/waveforms/{id}/spectra': {
+            get: {
+                tags: ['Waveforms'],
+                summary: 'Get computed spectra for a waveform',
+                operationId: 'getWaveformSpectra',
+                parameters: [
+                    { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+                ],
+                responses: {
+                    200: {
+                        description: 'Array of spectrum rows (acceleration, velocity, psd, envelope) per active axis',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'array',
+                                    items: { $ref: '#/components/schemas/WaveformSpectrum' },
+                                },
+                            },
                         },
                     },
                     401: { $ref: '#/components/responses/Unauthorized' },

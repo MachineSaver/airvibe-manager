@@ -2,6 +2,7 @@ const { pool } = require('../db');
 const codec = require('../codec/AirVibe_TS013_Codec');
 const auditLogger = require('./AuditLogger');
 const log = require('../logger').child({ module: 'WaveformManager' });
+const spectrumProcessor = require('./SpectrumProcessor');
 
 class WaveformManager {
     constructor() {
@@ -297,6 +298,9 @@ class WaveformManager {
             SET status = 'complete', final_data_bytes = $1, final_data = NULL
             WHERE id = $2
         `, [fullBuffer, waveformId]);
+
+        // Fire-and-forget: compute and persist spectra.  Never throws to this path.
+        spectrumProcessor.processWaveform(waveformId);
     }
 
     async findPendingWaveformId(devEui, txId) {
