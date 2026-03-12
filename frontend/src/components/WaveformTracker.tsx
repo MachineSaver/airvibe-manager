@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSettings, AccelUnit } from '@/contexts/SettingsContext';
 import {
   COL,
   type ParamsPacket,
@@ -16,6 +17,15 @@ import {
   downloadText,
   EXAMPLE_PACKETS,
 } from '../utils/waveformTracker';
+
+// mg → display unit conversion (same factors as WaveformChart)
+const ACCEL_FROM_MG: Record<AccelUnit, number> = {
+    'g':        1 / 1000,
+    'mg':       1,
+    'm/s²':     9.81  / 1000,
+    'mm/s²':    9810  / 1000,
+    'inch/s²':  386.09 / 1000,
+};
 
 // --- SVG waveform plot ----------------------------------------------------
 function useResize(elRef: React.RefObject<HTMLDivElement | null>): number {
@@ -34,35 +44,40 @@ function useResize(elRef: React.RefObject<HTMLDivElement | null>): number {
 function SvgWave({ tx }: { tx: Transaction }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const width = useResize(hostRef);
+  const { settings } = useSettings();
   const height = 320;
-  const pad = { l: 50, r: 16, t: 12, b: 28 };
+  const pad = { l: 58, r: 16, t: 12, b: 28 };
   const wf = useMemo(() => buildWaveformForPlot(tx), [tx]);
   const contentW = Math.max(10, width - pad.l - pad.r);
   const contentH = Math.max(10, height - pad.t - pad.b);
 
   if (!wf) return <div ref={hostRef} style={{ height }} />;
 
+  const conv = ACCEL_FROM_MG[settings.accelUnit];
   const N = wf.totalSamples || 1;
   const xs = (i: number) => pad.l + (i / (N - 1 || 1)) * contentW;
   const isTri = tx.axisMask === 0x07;
   const activeAxes = isTri ? [0, 1, 2] : (tx.axisMask & 0x01) ? [0] : (tx.axisMask & 0x02) ? [1] : (tx.axisMask & 0x04) ? [2] : [0];
-  const allY = activeAxes.flatMap(ai => wf.axis[ai]).filter(v => !isNaN(v));
+  const convertAxis = (arr: number[]) => arr.map(v => isNaN(v) ? v : v * conv);
+  const allY = activeAxes.flatMap(ai => convertAxis(wf.axis[ai])).filter(v => !isNaN(v));
   let ymin = Math.min(...allY, 0);
   let ymax = Math.max(...allY, 0);
   if (ymin === ymax) { ymin = -1; ymax = 1; }
   const ys = (v: number) => pad.t + (1 - (v - ymin) / (ymax - ymin)) * contentH;
   const pathD = (arr: number[]) => {
+    const converted = convertAxis(arr);
     let d = '';
-    for (let i = 0; i < arr.length; i++) {
-      if (isNaN(arr[i])) continue;
-      const cmd = (i === 0 || isNaN(arr[i - 1])) ? 'M' : 'L';
-      d += `${cmd}${xs(i)},${ys(arr[i])}`;
+    for (let i = 0; i < converted.length; i++) {
+      if (isNaN(converted[i])) continue;
+      const cmd = (i === 0 || isNaN(converted[i - 1])) ? 'M' : 'L';
+      d += `${cmd}${xs(i)},${ys(converted[i])}`;
     }
     return d;
   };
   const clipId = `clip-${tx.txId}`;
   const axisColors = [COL.axis1, COL.axis2, COL.axis3];
   const axisLabels = ['Axis 1', 'Axis 2', 'Axis 3'];
+  const fmt = (v: number) => Math.abs(v) >= 1000 ? v.toExponential(1) : +v.toPrecision(3) + '';
 
   return (
     <div ref={hostRef} className="w-full">
@@ -81,12 +96,20 @@ function SvgWave({ tx }: { tx: Transaction }) {
         {activeAxes.map((ai) => (
           <path key={ai} fill="none" stroke={axisColors[ai]} strokeWidth="2" d={pathD(wf.axis[ai])} />
         ))}
-        {[ymin, 0, ymax].map((v, i) => (
+        {[ymin, (ymin + ymax) / 2, ymax].map((v, i) => (
           <g key={i}>
             <line x1={pad.l} x2={pad.l + contentW} y1={ys(v)} y2={ys(v)} stroke="#334155" strokeDasharray="3 4" />
-            <text x={pad.l - 6} y={ys(v) + 4} fontSize="10" textAnchor="end" fill="#94a3b8">{v}</text>
+            <text x={pad.l - 4} y={ys(v) + 4} fontSize="10" textAnchor="end" fill="#94a3b8">{fmt(v)}</text>
           </g>
         ))}
+        {/* Y-axis unit label */}
+        <text
+          x={12} y={pad.t + contentH / 2}
+          fontSize="10" fill="#64748b" textAnchor="middle"
+          transform={`rotate(-90, 12, ${pad.t + contentH / 2})`}
+        >
+          {settings.accelUnit}
+        </text>
         {activeAxes.map((ai, i) => (
           <g key={ai} transform={`translate(${pad.l + i * 90}, ${height - pad.b + 16})`}>
             <rect x={0} y={-10} width={18} height={3} fill={axisColors[ai]} />

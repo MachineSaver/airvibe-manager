@@ -160,8 +160,10 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
             freqUnit === 'CPM' ? [minHz * 60, maxHz * 60] : [minHz, maxHz];
 
         // ── Time domain ────────────────────────────────────────────────────
+        // Note: accelNorm (peak/RMS) is a spectral concept and does NOT apply
+        // to instantaneous time-domain samples — only unit conversion is used.
         if (mode === 'time' && data) {
-            const conv = ACCEL_FROM_MG[accelUnit] * rms(accelNorm);
+            const conv = ACCEL_FROM_MG[accelUnit];
             const axes = [
                 { arr: data.axis1, label: 'Axis 1' },
                 { arr: data.axis2, label: 'Axis 2' },
@@ -178,8 +180,7 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
                 line: { color: AXIS_COLORS[i % 3], width: 1 },
                 hovertemplate: `%{y:.4g} ${accelUnit}<extra>${ax.label}</extra>`,
             }));
-            const yLbl = `Acceleration (${accelUnit}${accelNorm === 'rms' ? ' RMS' : ' peak'})`;
-            return { traces, layout: baseLayout('Time (s)', yLbl) };
+            return { traces, layout: baseLayout('Time (s)', `Acceleration (${accelUnit})`) };
         }
 
         if (!spectrumAxes || spectrumAxes.length === 0) {
