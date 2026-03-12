@@ -574,6 +574,7 @@ export default function WaveformsView() {
                                     <WaveformChart
                                         mode="envelope"
                                         spectrumAxes={envelopeAxes}
+                                        xRangeHz={[envelopeHp, envelopeLp]}
                                     />
                                 ) : selectedWaveform.status === 'complete' ? (
                                     <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">

@@ -17,10 +17,12 @@ export interface SpectrumAxisData {
 }
 
 interface WaveformChartProps {
-    mode:          ChartMode;
-    data?:         { axis1: number[]; axis2: number[]; axis3: number[] };
-    sampleRate?:   number;
-    spectrumAxes?: SpectrumAxisData[];
+    mode:           ChartMode;
+    data?:          { axis1: number[]; axis2: number[]; axis3: number[] };
+    sampleRate?:    number;
+    spectrumAxes?:  SpectrumAxisData[];
+    /** Override the X-axis display range (Hz). When provided, takes precedence over settings frequency ranges. */
+    xRangeHz?:      [number, number];
 }
 
 // ── Axis palette ─────────────────────────────────────────────────────────────
@@ -138,6 +140,7 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
     data,
     sampleRate = 1,
     spectrumAxes,
+    xRangeHz,
 }) => {
     const { settings } = useSettings();
 
@@ -239,7 +242,10 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
         // ── Envelope spectrum ─────────────────────────────────────────────
         if (mode === 'envelope') {
             const conv   = ACCEL_FROM_G[accelUnit] * rms(accelNorm);
-            const xRange = freqRange(envelopeFreqMin, envelopeFreqMax);
+            // Prefer the caller-supplied filter range over the global settings range.
+            const xRange = xRangeHz
+                ? freqRange(xRangeHz[0], xRangeHz[1])
+                : freqRange(envelopeFreqMin, envelopeFreqMax);
             const traces = spectrumAxes.map((ax, i) => ({
                 x: ax.frequencies.map(toFreqX),
                 y: ax.magnitudes.map(v => v * conv),
@@ -255,7 +261,7 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
         }
 
         return { traces: [], layout: baseLayout('', '') };
-    }, [mode, data, sampleRate, spectrumAxes, settings]);
+    }, [mode, data, sampleRate, spectrumAxes, settings, xRangeHz]);
 
     if (traces.length === 0) {
         return (
