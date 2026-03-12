@@ -173,6 +173,9 @@ services:
       # Must be shorter than the device's internal FUOTA deadline (~3 min observed).
       # Previous default of 300000 (5 min) caused the device to declare failure before verify arrived.
       - FUOTA_VERIFY_PRE_DELAY_MS=${FUOTA_VERIFY_PRE_DELAY_MS:-30000}
+      # FUOTA: hard session lifetime limit in ms. EU868 TPM firmware in Class A mode can take up to
+      # 3.5 days (84h) at 60-180 s block intervals; 120h (5 days) gives a safe 36h buffer (default: 432000000).
+      - FUOTA_SESSION_TIMEOUT_MS=${FUOTA_SESSION_TIMEOUT_MS:-432000000}
       # ThingPark integration (enables Class C auto-switch for FUOTA in ThingPark mode)
       - THINGPARK_BASE_URL=${THINGPARK_BASE_URL:-https://community.thingpark.io}
       - THINGPARK_CLIENT_ID=${THINGPARK_CLIENT_ID:-}

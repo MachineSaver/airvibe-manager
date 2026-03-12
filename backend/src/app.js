@@ -20,6 +20,7 @@ const apiKeyManager = require('./services/ApiKeyManager');
 const { requireApiKey } = require('./middleware/auth');
 const log = require('./logger').child({ module: 'app' });
 const { deinterleaveWaveform } = require('./utils/deinterleave');
+const { computeEnvelopeSpectrum } = require('./utils/fft');
 const swaggerUi = require('swagger-ui-express');
 const openApiSpec = require('./openapi');
 
@@ -434,6 +435,57 @@ app.get('/api/waveforms/:id/spectra', async (req, res) => {
             frequencies: _decodeFloat32Buffer(row.frequencies),
             magnitudes: _decodeFloat32Buffer(row.magnitudes),
         }));
+
+        res.json(spectra);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/waveforms/:id/envelope', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const hp = parseFloat(req.query.hp);
+        const lp = parseFloat(req.query.lp);
+
+        if (!isFinite(hp) || !isFinite(lp) || hp < 0 || lp <= hp) {
+            return res.status(400).json({ error: 'Invalid hp/lp: must be positive numbers with hp < lp' });
+        }
+
+        const result = await pool.query(
+            `SELECT id, metadata, final_data_bytes, final_data FROM waveforms WHERE id = $1`,
+            [id],
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+        const waveform = result.rows[0];
+        const rawHex = waveform.final_data_bytes
+            ? waveform.final_data_bytes.toString('hex')
+            : waveform.final_data?.raw_hex;
+
+        if (!rawHex) return res.json([]);
+
+        const { axisMask, sampleRate } = waveform.metadata;
+        const { axis1, axis2, axis3, isAxis1, isAxis2, isAxis3 } =
+            deinterleaveWaveform(rawHex, axisMask);
+
+        const axesData = [
+            { samples: axis1, active: isAxis1, axisNum: 1 },
+            { samples: axis2, active: isAxis2, axisNum: 2 },
+            { samples: axis3, active: isAxis3, axisNum: 3 },
+        ].filter(a => a.active);
+
+        const spectra = axesData.map(({ samples, axisNum }) => {
+            const { frequencies, magnitudes, numBins, freqResHz } =
+                computeEnvelopeSpectrum(samples, sampleRate, hp, lp);
+            return {
+                axis: axisNum,
+                frequencies: Array.from(frequencies),
+                magnitudes:  Array.from(magnitudes),
+                numBins,
+                frequencyResolutionHz: freqResHz,
+            };
+        });
 
         res.json(spectra);
     } catch (err) {

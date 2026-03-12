@@ -394,6 +394,71 @@ describe('GET /api/waveforms/:id/spectra', () => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/waveforms/:id/envelope — on-demand envelope with configurable HP/LP
+// ---------------------------------------------------------------------------
+
+describe('GET /api/waveforms/:id/envelope', () => {
+    /** Build a minimal single-axis int16 LE waveform buffer (N samples). */
+    function makeSineBytes(N, k0 = 4, amplitude = 800) {
+        const buf = Buffer.allocUnsafe(N * 2);
+        for (let n = 0; n < N; n++) {
+            const v = Math.round(amplitude * Math.cos(2 * Math.PI * k0 * n / N));
+            buf.writeInt16LE(Math.max(-32768, Math.min(32767, v)), n * 2);
+        }
+        return buf;
+    }
+
+    it('returns 404 when the waveform does not exist', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [] });
+
+        const res = await request(app).get('/api/waveforms/no-such/envelope?hp=500&lp=10000');
+
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 400 when hp >= lp', async () => {
+        const res = await request(app).get('/api/waveforms/uuid-1/envelope?hp=10000&lp=500');
+
+        expect(res.status).toBe(400);
+    });
+
+    it('returns 400 when hp or lp is non-numeric', async () => {
+        const res = await request(app).get('/api/waveforms/uuid-1/envelope?hp=abc&lp=10000');
+
+        expect(res.status).toBe(400);
+    });
+
+    it('returns per-axis envelope spectrum for a complete single-axis waveform', async () => {
+        const N = 64;
+        const buf = makeSineBytes(N, 8, 800); // carrier at bin 8 = 128 Hz for fs=1024
+
+        pool.query.mockResolvedValueOnce({
+            rows: [{
+                id:               'uuid-1',
+                final_data_bytes: buf,
+                final_data:       null,
+                metadata:         { axisMask: 0x01, sampleRate: 1024, samplesPerAxis: N },
+            }],
+        });
+
+        // hp=50 lp=400: the 128 Hz carrier is inside the passband for fs=1024
+        const res = await request(app).get('/api/waveforms/uuid-1/envelope?hp=50&lp=400');
+
+        expect(res.status).toBe(200);
+        expect(Array.isArray(res.body)).toBe(true);
+        expect(res.body).toHaveLength(1);
+
+        const s = res.body[0];
+        expect(s.axis).toBe(1);
+        expect(Array.isArray(s.frequencies)).toBe(true);
+        expect(Array.isArray(s.magnitudes)).toBe(true);
+        expect(s.numBins).toBeGreaterThan(0);
+        expect(typeof s.frequencyResolutionHz).toBe('number');
+        s.magnitudes.forEach(m => expect(m).toBeGreaterThanOrEqual(0));
+    });
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/fuota/sessions — filtering
 // ---------------------------------------------------------------------------
 

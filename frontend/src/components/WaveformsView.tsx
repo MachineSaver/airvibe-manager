@@ -66,6 +66,43 @@ const SPECTRUM_TYPE_MAP: Record<ViewMode, string> = {
     envelope:     'envelope',
 };
 
+type EnvelopePreset = 'default' | 'low-speed' | 'high-speed' | 'custom';
+
+interface EnvelopePresetDef {
+    id: EnvelopePreset;
+    label: string;
+    hp: number;
+    lp: number;
+    description: string | null;
+}
+
+const ENVELOPE_PRESETS: EnvelopePresetDef[] = [
+    {
+        id: 'default',
+        label: 'Default (500 Hz – 10 kHz)',
+        hp: 500, lp: 10000,
+        description: 'Standard Motors & Pumps.',
+    },
+    {
+        id: 'low-speed',
+        label: 'Low Speed (50 Hz – 1 kHz)',
+        hp: 50, lp: 1000,
+        description: 'Slow Applications. Gearbox output shafts, cooling tower fans, and rollers (< 600 RPM).',
+    },
+    {
+        id: 'high-speed',
+        label: 'High Speed (5 kHz – 20 kHz)',
+        hp: 5000, lp: 20000,
+        description: 'Early Warning. Compressors, high-speed spindles, or isolating bearing faults in noisy gearboxes.',
+    },
+    {
+        id: 'custom',
+        label: 'Custom',
+        hp: 500, lp: 10000,
+        description: null,
+    },
+];
+
 export default function WaveformsView() {
     const [waveforms, setWaveforms] = useState<Waveform[]>([]);
     const [devices, setDevices] = useState<Device[]>([]);
@@ -76,6 +113,14 @@ export default function WaveformsView() {
     const [chartData, setChartData] = useState<{ axis1: number[], axis2: number[], axis3: number[] } | null>(null);
     const [viewMode, setViewMode] = useState<ViewMode>('time');
     const [spectraRows, setSpectraRows] = useState<SpectrumRow[]>([]);
+
+    // Envelope filter state
+    const [envelopePreset, setEnvelopePreset] = useState<EnvelopePreset>('default');
+    const [envelopeHp, setEnvelopeHp] = useState(500);
+    const [envelopeLp, setEnvelopeLp] = useState(10000);
+    const [customHpInput, setCustomHpInput] = useState('500');
+    const [customLpInput, setCustomLpInput] = useState('10000');
+    const [envelopeAxes, setEnvelopeAxes] = useState<SpectrumAxisData[]>([]);
 
     const fetchDevices = useCallback(async () => {
         try {
@@ -126,6 +171,21 @@ export default function WaveformsView() {
             }
         } catch {
             setSpectraRows([]);
+        }
+    }, []);
+
+    const fetchEnvelope = useCallback(async (id: string, hp: number, lp: number) => {
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+            const res = await fetch(`${apiUrl}/api/waveforms/${id}/envelope?hp=${hp}&lp=${lp}`);
+            if (res.ok) {
+                const rows: Array<{ axis: number; frequencies: number[]; magnitudes: number[] }> = await res.json();
+                setEnvelopeAxes(rows.map(r => ({ axisNum: r.axis, frequencies: r.frequencies, magnitudes: r.magnitudes })));
+            } else {
+                setEnvelopeAxes([]);
+            }
+        } catch {
+            setEnvelopeAxes([]);
         }
     }, []);
 
@@ -182,6 +242,17 @@ export default function WaveformsView() {
         }
     }, [effectiveSelectedId, selectedWaveform?.status, fetchSpectra]);
 
+    // Fetch on-demand envelope whenever in envelope mode and filters change
+    useEffect(() => {
+        if (viewMode === 'envelope' && effectiveSelectedId && selectedWaveform?.status === 'complete') {
+            const timeout = setTimeout(() => fetchEnvelope(effectiveSelectedId, envelopeHp, envelopeLp), 0);
+            return () => clearTimeout(timeout);
+        } else if (viewMode !== 'envelope') {
+            const timeout = setTimeout(() => setEnvelopeAxes([]), 0);
+            return () => clearTimeout(timeout);
+        }
+    }, [viewMode, effectiveSelectedId, selectedWaveform?.status, envelopeHp, envelopeLp, fetchEnvelope]);
+
     const handleDeviceClick = (devEui: string) => {
         setSelectedEui(devEui);
         setSelectedId(null);
@@ -195,6 +266,34 @@ export default function WaveformsView() {
     const handleTransactionClick = (wfId: string, devEui: string) => {
         setSelectedEui(devEui);
         setSelectedId(wfId);
+    };
+
+    const handlePresetChange = (presetId: EnvelopePreset) => {
+        setEnvelopePreset(presetId);
+        if (presetId !== 'custom') {
+            const preset = ENVELOPE_PRESETS.find(p => p.id === presetId)!;
+            setEnvelopeHp(preset.hp);
+            setEnvelopeLp(preset.lp);
+            setCustomHpInput(String(preset.hp));
+            setCustomLpInput(String(preset.lp));
+        }
+    };
+
+    const handleApplyFilter = () => {
+        const hp = parseFloat(customHpInput);
+        const lp = parseFloat(customLpInput);
+        if (isFinite(hp) && isFinite(lp) && hp > 0 && lp > hp) {
+            setEnvelopeHp(hp);
+            setEnvelopeLp(lp);
+        }
+    };
+
+    const handleResetToDefault = () => {
+        setEnvelopePreset('default');
+        setEnvelopeHp(500);
+        setEnvelopeLp(10000);
+        setCustomHpInput('500');
+        setCustomLpInput('10000');
     };
 
     // Build per-axis spectrum data for the current view mode
@@ -386,6 +485,77 @@ export default function WaveformsView() {
                                 ))}
                             </div>
 
+                            {/* Envelope filter panel — only shown in envelope mode */}
+                            {viewMode === 'envelope' && (
+                                <div className="bg-[#1e1e1e] border border-[#3e3e42] rounded p-3 flex flex-col gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <label className="text-[10px] text-gray-400 uppercase tracking-wider shrink-0">Bandpass Filter</label>
+                                        <select
+                                            value={envelopePreset}
+                                            onChange={e => handlePresetChange(e.target.value as EnvelopePreset)}
+                                            className="bg-[#252526] border border-[#3e3e42] text-gray-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                                        >
+                                            {ENVELOPE_PRESETS.map(p => (
+                                                <option key={p.id} value={p.id}>{p.label}</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            onClick={handleResetToDefault}
+                                            className="ml-auto text-[10px] text-gray-500 hover:text-gray-300 border border-[#3e3e42] hover:border-gray-500 rounded px-2 py-1 transition-colors"
+                                        >
+                                            Reset to Default
+                                        </button>
+                                    </div>
+
+                                    {/* Description for named presets */}
+                                    {envelopePreset !== 'custom' && (() => {
+                                        const desc = ENVELOPE_PRESETS.find(p => p.id === envelopePreset)?.description;
+                                        return desc ? (
+                                            <p className="text-[10px] text-gray-500 italic">{desc}</p>
+                                        ) : null;
+                                    })()}
+
+                                    {/* Custom inputs */}
+                                    {envelopePreset === 'custom' && (
+                                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                                            <div className="flex items-center gap-1.5">
+                                                <label className="text-[10px] text-gray-400 shrink-0">HP (Hz)</label>
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    value={customHpInput}
+                                                    onChange={e => setCustomHpInput(e.target.value)}
+                                                    className="w-24 bg-[#252526] border border-[#3e3e42] text-gray-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                                                    placeholder="500"
+                                                />
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                                <label className="text-[10px] text-gray-400 shrink-0">LP (Hz)</label>
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    value={customLpInput}
+                                                    onChange={e => setCustomLpInput(e.target.value)}
+                                                    className="w-24 bg-[#252526] border border-[#3e3e42] text-gray-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                                                    placeholder="10000"
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={handleApplyFilter}
+                                                disabled={(() => {
+                                                    const hp = parseFloat(customHpInput);
+                                                    const lp = parseFloat(customLpInput);
+                                                    return !(isFinite(hp) && isFinite(lp) && hp > 0 && lp > hp);
+                                                })()}
+                                                className="px-3 py-1 rounded text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:bg-[#333] disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-colors"
+                                            >
+                                                Apply Filter
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Chart area */}
                             {viewMode === 'time' ? (
                                 chartData && selectedWaveform.metadata ? (
@@ -397,6 +567,21 @@ export default function WaveformsView() {
                                 ) : (
                                     <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
                                         {selectedWaveform.status === 'complete' ? 'Processing visualization...' : 'Waiting for completion to visualize waveform...'}
+                                    </div>
+                                )
+                            ) : viewMode === 'envelope' ? (
+                                envelopeAxes.length > 0 ? (
+                                    <WaveformChart
+                                        mode="envelope"
+                                        spectrumAxes={envelopeAxes}
+                                    />
+                                ) : selectedWaveform.status === 'complete' ? (
+                                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                                        Computing envelope…
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                                        Envelope available after waveform completes.
                                     </div>
                                 )
                             ) : (

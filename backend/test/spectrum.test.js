@@ -264,7 +264,8 @@ describe('computePSD', () => {
 describe('computeEnvelopeSpectrum', () => {
     it('reveals the modulation frequency for an AM-modulated carrier in the pass band', () => {
         // AM signal: x[n] = A*(1 + cos(2π*k_mod*n/N)) * cos(2π*k_c*n/N)
-        // Carrier k_c=32 → f_c=128 Hz (in bandpass 102–410 Hz).
+        // Carrier k_c=32 → f_c=128 Hz. Pass explicit hpHz=50, lpHz=400 so the
+        // carrier is inside the bandpass for this test's fs=1024 Hz signal.
         // Modulation k_mod=2 → f_mod=8 Hz.
         // After Hilbert envelope and detrend: residual ≈ A*cos(2π*f_mod*t).
         // The envelope spectrum peak should be near bin k_mod=2 (8 Hz).
@@ -277,7 +278,8 @@ describe('computeEnvelopeSpectrum', () => {
             samples.push(Math.max(-32768, Math.min(32767, Math.round(v))));
         }
 
-        const { frequencies, magnitudes } = computeEnvelopeSpectrum(samples, fs);
+        // hpHz=50 Hz, lpHz=400 Hz: carrier at 128 Hz is within the passband
+        const { frequencies, magnitudes } = computeEnvelopeSpectrum(samples, fs, 50, 400);
 
         // The largest peak should be near f_mod = 8 Hz (within ±1 bin)
         const peakBin = magnitudes.indexOf(Math.max(...magnitudes));
@@ -288,7 +290,8 @@ describe('computeEnvelopeSpectrum', () => {
     it('has all non-negative magnitudes', () => {
         const N = 128, fs = 1024;
         const samples = bufToSamples(makeSineBuffer(N, 16, 800)); // 128 Hz carrier
-        const { magnitudes } = computeEnvelopeSpectrum(samples, fs);
+        // Use an explicit bandpass that includes the 128 Hz carrier
+        const { magnitudes } = computeEnvelopeSpectrum(samples, fs, 50, 400);
         magnitudes.forEach(m => expect(m).toBeGreaterThanOrEqual(0));
     });
 
@@ -296,9 +299,25 @@ describe('computeEnvelopeSpectrum', () => {
         const N = 256, fs = 1024;
         const samples = bufToSamples(makeSineBuffer(N, 32, 500));
         const { frequencies: fAccel } = computeAccelerationSpectrum(samples, fs);
-        const { frequencies: fEnv } = computeEnvelopeSpectrum(samples, fs);
+        const { frequencies: fEnv } = computeEnvelopeSpectrum(samples, fs, 50, 400);
         expect(fEnv.length).toBe(fAccel.length);
         expect(fEnv[1]).toBeCloseTo(fAccel[1], 5);
+    });
+
+    it('respects explicit hpHz/lpHz — carrier below HP produces much less output than carrier in band', () => {
+        // Carrier k_c=32 → f_c=128 Hz (fs=1024, N=256)
+        const N = 256, k_c = 32, fs = 1024, A_mg = 1000;
+        const samples = bufToSamples(makeSineBuffer(N, k_c, A_mg));
+
+        // Passband that INCLUDES the carrier (50–200 Hz)
+        const { magnitudes: magIn } = computeEnvelopeSpectrum(samples, fs, 50, 200);
+        // Passband that EXCLUDES the carrier (200–400 Hz — carrier at 128 Hz is below HP)
+        const { magnitudes: magOut } = computeEnvelopeSpectrum(samples, fs, 200, 400);
+
+        const sumIn  = magIn.reduce((a, b) => a + b, 0);
+        const sumOut = magOut.reduce((a, b) => a + b, 0);
+        // In-band should produce significantly more total energy
+        expect(sumIn).toBeGreaterThan(sumOut * 5);
     });
 });
 

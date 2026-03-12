@@ -10,9 +10,8 @@ const log = require('../logger').child({ module: 'FUOTAManager' });
 const CHUNK_SIZE = 49; // data bytes per block; total downlink = 2-byte LE block_num + 49 bytes = 51 bytes
 
 const FUOTA_BLOCK_INTERVAL_MS = parseInt(process.env.FUOTA_BLOCK_INTERVAL_MS) || 10000;
-const FUOTA_ACK_TIMEOUT_MS    = parseInt(process.env.FUOTA_ACK_TIMEOUT_MS)    || 21600000; // 6 hours
 const FUOTA_VERIFY_TIMEOUT_MS = parseInt(process.env.FUOTA_VERIFY_TIMEOUT_MS) || 14400000; // 4 hours
-const FUOTA_SESSION_TIMEOUT_MS= parseInt(process.env.FUOTA_SESSION_TIMEOUT_MS)|| 259200000; // 72 hours
+const FUOTA_SESSION_TIMEOUT_MS= parseInt(process.env.FUOTA_SESSION_TIMEOUT_MS)|| 432000000; // 120 hours (5 days)
 
 // Per-session interval clamp bounds (ms).
 const INTERVAL_LIMITS = {
@@ -349,7 +348,7 @@ class FUOTAManager {
 
                 session._sessionTimeout = setTimeout(async () => {
                     if (this.activeSessions.has(devEui)) {
-                        await this._failSession(devEui, 'Session exceeded maximum lifetime (72h)');
+                        await this._failSession(devEui, `Session exceeded maximum lifetime (${FUOTA_SESSION_TIMEOUT_MS / 3600000}h)`);
                     }
                 }, FUOTA_SESSION_TIMEOUT_MS);
 
@@ -528,7 +527,7 @@ class FUOTAManager {
         // Overall session lifetime guard
         session._sessionTimeout = setTimeout(async () => {
             if (this.activeSessions.has(devEui)) {
-                await this._failSession(devEui, 'Session exceeded maximum lifetime (72h)');
+                await this._failSession(devEui, `Session exceeded maximum lifetime (${FUOTA_SESSION_TIMEOUT_MS / 3600000}h)`);
             }
         }, FUOTA_SESSION_TIMEOUT_MS);
 

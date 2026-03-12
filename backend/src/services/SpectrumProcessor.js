@@ -82,7 +82,7 @@ class SpectrumProcessor {
                     { type: 'acceleration', result: computeAccelerationSpectrum(samples, sampleRate) },
                     { type: 'velocity',     result: computeVelocitySpectrum(samples, sampleRate) },
                     { type: 'psd',          result: computePSD(samples, sampleRate) },
-                    { type: 'envelope',     result: computeEnvelopeSpectrum(samples, sampleRate) },
+                    { type: 'envelope',     result: computeEnvelopeSpectrum(samples, sampleRate, 500, 10000) },
                 ];
                 for (const { type, result } of specs) {
                     const { frequencies, magnitudes, numBins, freqResHz } = result;

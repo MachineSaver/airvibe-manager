@@ -240,13 +240,18 @@ function computePSD(samples, fs) {
  * One-sided envelope amplitude spectrum via Hilbert transform.
  * Units: g (peak)
  *
+ * @param {number[]} samples  mg values
+ * @param {number}   fs       sample rate Hz
+ * @param {number}   hpHz     bandpass high-pass cutoff in Hz (default 500)
+ * @param {number}   lpHz     bandpass low-pass cutoff in Hz (default 10000)
+ *
  * Processing chain:
  *   detrend → FFT (no window — Hilbert step)
- *   → bandpass 20–80% Nyquist + Hilbert modification
+ *   → bandpass [hpHz, lpHz] + Hilbert modification
  *   → IFFT → envelope |z[n]|
  *   → computeAccelerationSpectrum (windows and FFTs the envelope signal)
  */
-function computeEnvelopeSpectrum(samples, fs) {
+function computeEnvelopeSpectrum(samples, fs, hpHz = 500, lpHz = 10000) {
     const N = samples.length;
     const M = nextPow2(N);
 
@@ -261,15 +266,17 @@ function computeEnvelopeSpectrum(samples, fs) {
 
     _fftInPlace(re, im);
 
-    // Bandpass: 20–80% of Nyquist (fs/2)
-    const kLo = Math.round(0.2 * M / 2); // 10% of fs → bin index
-    const kHi = Math.round(0.8 * M / 2); // 40% of fs → bin index
+    // Convert Hz cutoffs to bin indices for the zero-padded length M.
+    // Bin spacing in the zero-padded FFT is fs/M Hz per bin.
+    const binPerHz = M / fs;
+    const kLo = Math.max(1,         Math.round(hpHz * binPerHz));
+    const kHi = Math.min(M / 2 - 1, Math.round(lpHz * binPerHz));
 
     // Analytic signal: keep only bandpass positive-frequency bins (doubled),
     // zero everything else (negative freqs, DC, out-of-band).
     const anaRe = new Float64Array(M);
     const anaIm = new Float64Array(M);
-    for (let k = kLo; k <= kHi && k < M / 2; k++) {
+    for (let k = kLo; k <= kHi; k++) {
         anaRe[k] = 2 * re[k];
         anaIm[k] = 2 * im[k];
     }

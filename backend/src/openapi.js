@@ -431,6 +431,32 @@ Keys are created via \`POST /api/keys\`. The raw key is returned exactly once at
             },
         },
 
+        '/waveforms/{id}/envelope': {
+            get: {
+                tags: ['Waveforms'],
+                summary: 'Compute on-demand envelope spectrum with configurable bandpass filter',
+                operationId: 'getWaveformEnvelope',
+                parameters: [
+                    { name: 'id',  in: 'path',  required: true,  schema: { type: 'string', format: 'uuid' } },
+                    { name: 'hp',  in: 'query', required: true,  schema: { type: 'number' }, description: 'High-pass cutoff in Hz (e.g. 500)' },
+                    { name: 'lp',  in: 'query', required: true,  schema: { type: 'number' }, description: 'Low-pass cutoff in Hz (e.g. 10000)' },
+                ],
+                responses: {
+                    200: {
+                        description: 'Per-axis envelope spectrum computed with the requested bandpass',
+                        content: {
+                            'application/json': {
+                                schema: { type: 'array', items: { $ref: '#/components/schemas/WaveformSpectrum' } },
+                            },
+                        },
+                    },
+                    400: { description: 'Invalid hp/lp parameters' },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    404: { $ref: '#/components/responses/NotFound' },
+                },
+            },
+        },
+
         '/waveforms/{id}/spectra': {
             get: {
                 tags: ['Waveforms'],
