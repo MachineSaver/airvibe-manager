@@ -99,6 +99,7 @@ function baseLayout(xLabel: string, yLabel: string, xRange?: [number, number]) {
             tickfont:   { color: TICK_COL, size: 10 },
             linecolor:  AXIS_COL,
             rangemode:  'tozero' as const,
+            autorange:  true,
         },
         hovermode:  'x unified' as const,
         hoverlabel: {
