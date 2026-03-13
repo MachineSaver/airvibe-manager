@@ -557,6 +557,165 @@ app.get('/api/devices/:devEui/messages', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Packet-type / fPort label lookups
+// ---------------------------------------------------------------------------
+
+const UPLINK_PACKET_NAMES = {
+    // ── Waveform packets ─────────────────────────────────────────────────────
+    '8:1':  'TWD — Waveform Data Segment',
+    '8:3':  'TWIU — Waveform Info Uplink',
+    '8:5':  'TWF — Waveform Final Segment',
+    // ── Vibration / status reports ───────────────────────────────────────────
+    '8:2':  'Overall Vibration Report',
+    '8:4':  'Sensor Configuration Report',
+    '8:7':  'Alarm-Triggered Vibration Report',
+    // ── FUOTA lifecycle ───────────────────────────────────────────────────────
+    '8:16': 'FUOTA Init ACK',                         // 0x10 — device ACKs init downlink, ready to receive blocks
+    '8:17': 'FUOTA Verification Response',            // 0x11 — device reports missed blocks (empty = all received, TPM begins flashing)
+    '8:18': 'FUOTA Upgrade Status',                   // 0x12 — TPM reports result after 2-3 min flash write (success or fail)
+    '8:19': 'FUOTA Stuck Timeout Error',              // 0x13 — US915 only: no downlinks received for 3 min during FUOTA
+    // ── Waveform error ────────────────────────────────────────────────────────
+    '8:21': 'Error — Waveform ACK Timeout',           // 0x15 — last TWF ACK downlink not received in time
+    // ── Configuration subsystem errors ───────────────────────────────────────
+    '8:22': 'Error — Config SPI Flash Init Failed',
+    '8:23': 'Error — Config SPI Flash ID Read Failed',
+    '8:24': 'Error — Config SPI Flash ID Unknown',
+    '8:25': 'Error — Config SPI Flash Page Read Failed',
+    '8:26': 'Error — Config SPI Flash Page Write Failed',
+    '8:27': 'Error — Config Block Signature Invalid',
+    '8:28': 'Error — Config Block Version Unsupported',
+    '8:29': 'Error — Config Block CRC Bad',
+    '8:30': 'Error — Config SPI Flash Erase Failed',
+    '8:31': 'Error — Config Block Write Verification Failed',
+    // ── Upgrade subsystem errors ──────────────────────────────────────────────
+    '8:50': 'Error — Upgrade Subsystem Init Failed',
+    '8:51': 'Error — Upgrade SPI Flash ID Read Failed',
+    '8:52': 'Error — Upgrade SPI Flash ID Unknown',
+    '8:53': 'Error — Upgrade SPI Flash Page Read Failed',
+    '8:54': 'Error — Upgrade SPI Flash Page Write Failed',
+    '8:55': 'Error — Upgrade SPI Flash Erase Failed',
+    '8:57': 'Error — VSM Bootloader Transaction Size Bad',
+    '8:58': 'Error — Upgrade Status Block Wrong Signature',
+    '8:59': 'Error — Upgrade Status Block CRC Bad',
+    '8:60': 'Error — SPI Flash Init Failed (generic)',
+    '8:61': 'Error — SPI Flash ID Read Failed (generic)',
+    '8:62': 'Error — SPI Flash ID Unknown (generic)',
+    '8:71': 'Error — Upgrade Image Area Load Failed',
+    '8:73': 'Error — UAIIB Signature Invalid',
+    '8:74': 'Error — UAIIB CRC Bad',
+    '8:75': 'Error — Upgrade Image CRC Mismatch',
+    '8:76': 'Error — UAIIB Device ID Mismatch',
+    '8:77': 'Error — Upgrade Image Size Invalid',
+};
+
+function uplinkPacketName(fport, packetType) {
+    if (fport == null && packetType == null) return 'No Application Payload (MAC only)';
+    const name = UPLINK_PACKET_NAMES[`${fport}:${packetType}`];
+    return name ?? `Unknown (fPort ${fport}, 0x${(packetType ?? 0).toString(16).toUpperCase().padStart(2, '0')})`;
+}
+
+const DOWNLINK_FPORT_NAMES = {
+    20: 'Waveform Control',
+    21: 'Missing Segments Request',
+    22: 'Command',
+    25: 'FUOTA Block Data',
+    30: 'Device Configuration',
+    31: 'Alarm Configuration',
+};
+
+const DOWNLINK_CMD22_NAMES = {
+    '01': 'Request Waveform Info',
+    '02': 'Request Configuration',
+    '03': 'Trigger New Capture',
+    '05': 'Initialize FUOTA Session',
+    '06': 'Verify FUOTA Data',
+};
+
+const DOWNLINK_CMD20_NAMES = {
+    '01': 'TWD Acknowledge',
+    '03': 'TWIU Acknowledge',
+};
+
+function downlinkFunctionName(fport, commandByte) {
+    const base = DOWNLINK_FPORT_NAMES[fport] ?? `Unknown (fPort ${fport})`;
+    if (fport === 22 && commandByte) {
+        const sub = DOWNLINK_CMD22_NAMES[commandByte];
+        return sub ? `${base}: ${sub}` : `${base}: Unknown (0x${commandByte.toUpperCase()})`;
+    }
+    if (fport === 20 && commandByte) {
+        const sub = DOWNLINK_CMD20_NAMES[commandByte];
+        return sub ? `${base}: ${sub}` : base;
+    }
+    return base;
+}
+
+// GET /api/devices/:devEui/uplink-stats
+app.get('/api/devices/:devEui/uplink-stats', async (req, res) => {
+    try {
+        const { devEui } = req.params;
+        const deviceCheck = await pool.query(
+            'SELECT dev_eui FROM devices WHERE dev_eui = $1', [devEui],
+        );
+        if (deviceCheck.rows.length === 0) return res.status(404).json({ error: 'Device not found' });
+
+        const result = await pool.query(
+            `SELECT fport, packet_type, COUNT(*) AS count, MAX(received_at) AS last_received
+             FROM messages
+             WHERE device_eui = $1 AND direction = 'uplink'
+             GROUP BY fport, packet_type
+             ORDER BY count DESC`,
+            [devEui],
+        );
+        res.json(result.rows.map(row => ({
+            fport:         row.fport,
+            packet_type:   row.packet_type,
+            packet_name:   uplinkPacketName(row.fport, row.packet_type),
+            count:         parseInt(row.count, 10),
+            last_received: row.last_received,
+        })));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/devices/:devEui/downlink-stats
+app.get('/api/devices/:devEui/downlink-stats', async (req, res) => {
+    try {
+        const { devEui } = req.params;
+        const deviceCheck = await pool.query(
+            'SELECT dev_eui FROM devices WHERE dev_eui = $1', [devEui],
+        );
+        if (deviceCheck.rows.length === 0) return res.status(404).json({ error: 'Device not found' });
+
+        const result = await pool.query(
+            `SELECT
+                 fport,
+                 CASE
+                     WHEN payload_hex IS NOT NULL AND length(payload_hex) >= 2
+                     THEN lower(substring(payload_hex, 1, 2))
+                     ELSE NULL
+                 END AS command_byte,
+                 COUNT(*) AS count,
+                 MAX(received_at) AS last_sent
+             FROM messages
+             WHERE device_eui = $1 AND direction = 'downlink'
+             GROUP BY fport, command_byte
+             ORDER BY count DESC`,
+            [devEui],
+        );
+        res.json(result.rows.map(row => ({
+            fport:         row.fport,
+            command_byte:  row.command_byte ? `0x${row.command_byte.toUpperCase()}` : null,
+            function_name: downlinkFunctionName(row.fport, row.command_byte),
+            count:         parseInt(row.count, 10),
+            last_sent:     row.last_sent,
+        })));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------------------------
 // Routes — messages
 // ---------------------------------------------------------------------------
 

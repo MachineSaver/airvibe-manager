@@ -148,13 +148,54 @@ Only loaded when `COMPOSE_PROFILES=full`.
 - **region_us915_0.toml**: US915 sub-band 2 channel plan
 
 ### AirVibe waveform protocol
-Messages arrive at the backend already in canonical format (hex payload in `DevEUI_uplink.payload_hex`). Key packet types:
-- `0x03` TWIU: Waveform metadata (segment count, sample rate, axis config)
-- `0x01` TWD: Data segment with 16-bit index
-- `0x05` TWF: Final segment marker
-- `0x02` REQ: Request missing segments (fPort 21)
+Messages arrive at the backend already in canonical format (hex payload in `DevEUI_uplink.payload_hex`). All uplinks are on **fPort 8**.
 
-Downlink commands target fPorts 20-22, 25, 30-31 with hex payloads. The adapter handles base64/hex conversion transparently.
+**Uplink packet types (all fPort 8):**
+
+_Waveform packets:_
+| Byte | Dec | Name | Description |
+|------|-----|------|-------------|
+| `0x01` | 1 | **TWD** — Waveform Data Segment | Non-final waveform data segment. Contains `transaction_id`, `segment_number`, `samples_i16[]`. |
+| `0x03` | 3 | **TWIU** — Waveform Info Uplink | Opens a waveform session. Contains `transaction_id`, `number_of_segments`, `sampling_rate_hz`, `axis_selection`, `hw_filter`. |
+| `0x05` | 5 | **TWF** — Waveform Final Segment | Last waveform data segment (`is_last_segment = true`). Same structure as TWD. |
+
+_Vibration / status reports:_
+| Byte | Dec | Name | Description |
+|------|-----|------|-------------|
+| `0x02` | 2 | **Overall Vibration Report** | Periodic summary: battery, temperature, `accel_mg_rms`, `velocity_mips_rms`, active alarms, status code. |
+| `0x04` | 4 | **Sensor Configuration Report** | Device reports current config: push mode, accel range, filters, waveform/vibration config, alarm thresholds, firmware versions. |
+| `0x07` | 7 | **Alarm-Triggered Vibration Report** | Same structure as 0x02, but only emitted when an alarm condition threshold is crossed. |
+
+_FUOTA lifecycle:_
+| Byte | Dec | Name | Description |
+|------|-----|------|-------------|
+| `0x10` | 16 | **FUOTA Init ACK** | Device ACKs the Initialize FUOTA Session downlink (0x0005); confirms ready to receive blocks. |
+| `0x11` | 17 | **FUOTA Verification Response** | Response to Verify FUOTA Data (0x0006). `missed_blocks[]`: empty = all received, TPM begins flash write (2-3 min). FUOTAManager calls `_completeSession` on empty response. |
+| `0x12` | 18 | **FUOTA Upgrade Status** | Sent by TPM after the flash write completes or fails. Indicates final upgrade result. |
+| `0x13` | 19 | **FUOTA Stuck Timeout Error** | US915 only. Sent once if no downlinks received for 3 minutes during FUOTA (expected: 1 downlink every 5-15 s). |
+
+_Device error report uplinks (0x15–0x4D): single byte packet type + optional detail. Sent once when an error condition is detected._
+| Byte | Dec | Description |
+|------|-----|-------------|
+| `0x15` | 21 | Waveform: Last TWF ACK downlink not received by timeout |
+| `0x16`–`0x1F` | 22–31 | Config subsystem errors (SPI Flash init/ID/read/write/erase/signature/version/CRC failures) |
+| `0x32`–`0x3E` | 50–62 | Upgrade subsystem errors (SPI Flash failures, VSM bootloader, status block errors — some internal, never reported outside TPM) |
+| `0x47` | 71 | Upgrade image area load failed |
+| `0x49`–`0x4D` | 73–77 | UAIIB/image verification failures (signature, CRC, Device ID mismatch, size invalid) |
+
+Full per-error-code descriptions are in `UPLINK_PACKET_NAMES` in `backend/src/app.js`.
+
+**Downlink fPorts and commands:**
+| fPort | Name | Command bytes |
+|-------|------|---------------|
+| 20 | **Waveform Control** | `0x01` = Waveform Data ACK (all segments received); `0x03` = Waveform Info ACK (TWIU received) |
+| 21 | **Request Missing Segments** | List of missing segment indices (8-bit or 16-bit per mode byte) |
+| 22 | **Command** | `0x0001` = Request Waveform Info; `0x0002` = Request Configuration; `0x0003` = Trigger New Capture; `0x0005` = **Initialize FUOTA Session** (device enters Class C, responds with 0x10); `0x0006` = **Verify FUOTA Data** (device responds with 0x11) |
+| 25 | **FUOTA Block Data** | Raw firmware block payload |
+| 30 | **Device Configuration** | Full config struct (push mode, filters, waveform/vibration settings, alarms) |
+| 31 | **Alarm Configuration** | Alarm enable bitmask + per-parameter thresholds |
+
+The adapter handles base64/hex conversion transparently. Codec slugs (`request_waveform_info`, `init_upgrade_session`, etc.) are the stable identifiers used by `encodeDownlink`.
 
 ## Key Conventions
 

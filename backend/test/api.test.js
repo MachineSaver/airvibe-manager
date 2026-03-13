@@ -919,3 +919,193 @@ describe('PATCH /api/fuota/sessions/:devEui', () => {
         expect(res.body).toHaveProperty('error');
     });
 });
+
+// ---------------------------------------------------------------------------
+// GET /api/devices/:devEui/uplink-stats
+// ---------------------------------------------------------------------------
+
+describe('GET /api/devices/:devEui/uplink-stats', () => {
+    it('returns 404 when device does not exist', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [] });
+
+        const res = await request(app).get('/api/devices/UNKNOWN/uplink-stats');
+
+        expect(res.status).toBe(404);
+        expect(res.body).toHaveProperty('error');
+    });
+
+    it('returns 200 with array of uplink stat rows', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ dev_eui: DEV_EUI }] })
+            .mockResolvedValueOnce({ rows: [
+                { fport: 8, packet_type: 2,  count: '5900', last_received: '2026-03-13T19:39:00Z' },
+                { fport: 8, packet_type: 1,  count: '1200', last_received: '2026-03-13T17:15:00Z' },
+                { fport: null, packet_type: null, count: '800', last_received: '2026-03-13T12:00:00Z' },
+            ] });
+
+        const res = await request(app).get(`/api/devices/${DEV_EUI}/uplink-stats`);
+
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveLength(3);
+    });
+
+    it('assigns correct packet_name for known types', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ dev_eui: DEV_EUI }] })
+            .mockResolvedValueOnce({ rows: [
+                { fport: 8, packet_type: 2,  count: '100', last_received: null },
+                { fport: 8, packet_type: 1,  count: '50',  last_received: null },
+                { fport: 8, packet_type: 3,  count: '10',  last_received: null },
+                { fport: 8, packet_type: 4,  count: '5',   last_received: null },
+                { fport: 8, packet_type: 5,  count: '5',   last_received: null },
+                { fport: 8, packet_type: 7,  count: '3',   last_received: null },
+                { fport: 8, packet_type: 16, count: '2',   last_received: null },
+                { fport: 8, packet_type: 17, count: '2',   last_received: null },
+                { fport: 8, packet_type: 18, count: '1',   last_received: null },
+                { fport: 8, packet_type: 19, count: '1',   last_received: null },
+                { fport: 8, packet_type: 21, count: '1',   last_received: null },
+            ] });
+
+        const res = await request(app).get(`/api/devices/${DEV_EUI}/uplink-stats`);
+        const byType = Object.fromEntries(res.body.map(r => [r.packet_type, r.packet_name]));
+
+        expect(byType[2]).toBe('Overall Vibration Report');
+        expect(byType[1]).toBe('TWD — Waveform Data Segment');
+        expect(byType[3]).toBe('TWIU — Waveform Info Uplink');
+        expect(byType[4]).toBe('Sensor Configuration Report');
+        expect(byType[5]).toBe('TWF — Waveform Final Segment');
+        expect(byType[7]).toBe('Alarm-Triggered Vibration Report');
+        expect(byType[16]).toBe('FUOTA Init ACK');
+        expect(byType[17]).toBe('FUOTA Verification Response');
+        expect(byType[18]).toBe('FUOTA Upgrade Status');
+        expect(byType[19]).toBe('FUOTA Stuck Timeout Error');
+        expect(byType[21]).toBe('Error — Waveform ACK Timeout');
+    });
+
+    it('assigns "No Application Payload" for null fport and null packet_type', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ dev_eui: DEV_EUI }] })
+            .mockResolvedValueOnce({ rows: [
+                { fport: null, packet_type: null, count: '800', last_received: null },
+            ] });
+
+        const res = await request(app).get(`/api/devices/${DEV_EUI}/uplink-stats`);
+
+        expect(res.body[0].packet_name).toBe('No Application Payload (MAC only)');
+    });
+
+    it('assigns an Unknown label for unrecognised packet types', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ dev_eui: DEV_EUI }] })
+            .mockResolvedValueOnce({ rows: [
+                { fport: 8, packet_type: 99, count: '5', last_received: null },
+            ] });
+
+        const res = await request(app).get(`/api/devices/${DEV_EUI}/uplink-stats`);
+
+        expect(res.body[0].packet_name).toMatch(/unknown/i);
+    });
+
+    it('returns count as a number and scopes query to devEui', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ dev_eui: DEV_EUI }] })
+            .mockResolvedValueOnce({ rows: [
+                { fport: 8, packet_type: 2, count: '42', last_received: '2026-03-13T00:00:00Z' },
+            ] });
+
+        const res = await request(app).get(`/api/devices/${DEV_EUI}/uplink-stats`);
+
+        expect(typeof res.body[0].count).toBe('number');
+        expect(res.body[0].count).toBe(42);
+        const [statsSql, statsParams] = pool.query.mock.calls[1];
+        expect(statsSql).toMatch(/device_eui/i);
+        expect(statsParams).toContain(DEV_EUI);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/devices/:devEui/downlink-stats
+// ---------------------------------------------------------------------------
+
+describe('GET /api/devices/:devEui/downlink-stats', () => {
+    it('returns 404 when device does not exist', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [] });
+
+        const res = await request(app).get('/api/devices/UNKNOWN/downlink-stats');
+
+        expect(res.status).toBe(404);
+        expect(res.body).toHaveProperty('error');
+    });
+
+    it('returns 200 with array of downlink stat rows', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ dev_eui: DEV_EUI }] })
+            .mockResolvedValueOnce({ rows: [
+                { fport: 25, command_byte: null, count: '5000', last_sent: '2026-03-10T21:12:00Z' },
+                { fport: 22, command_byte: '06', count: '1158', last_sent: '2026-03-10T21:48:00Z' },
+                { fport: 20, command_byte: '03', count:  '123', last_sent: '2026-03-13T17:15:00Z' },
+            ] });
+
+        const res = await request(app).get(`/api/devices/${DEV_EUI}/downlink-stats`);
+
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveLength(3);
+    });
+
+    it('assigns correct function_name for known fPorts and command bytes', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ dev_eui: DEV_EUI }] })
+            .mockResolvedValueOnce({ rows: [
+                { fport: 25, command_byte: null, count: '50', last_sent: null },
+                { fport: 22, command_byte: '06', count: '20', last_sent: null },
+                { fport: 22, command_byte: '01', count: '10', last_sent: null },
+                { fport: 22, command_byte: '02', count: '5',  last_sent: null },
+                { fport: 22, command_byte: '05', count: '5',  last_sent: null },
+                { fport: 21, command_byte: null, count: '40', last_sent: null },
+                { fport: 20, command_byte: '03', count: '15', last_sent: null },
+                { fport: 20, command_byte: '01', count: '5',  last_sent: null },
+            ] });
+
+        const res = await request(app).get(`/api/devices/${DEV_EUI}/downlink-stats`);
+        const byKey = Object.fromEntries(
+            res.body.map(r => [`${r.fport}:${r.command_byte ?? 'null'}`, r.function_name])
+        );
+
+        expect(byKey['25:null']).toBe('FUOTA Block Data');
+        expect(byKey['22:0x06']).toMatch(/Verify FUOTA Data/i);
+        expect(byKey['22:0x01']).toMatch(/Request Waveform Info/i);
+        expect(byKey['22:0x02']).toMatch(/Request Configuration/i);
+        expect(byKey['22:0x05']).toMatch(/Initialize FUOTA Session/i);
+        expect(byKey['21:null']).toBe('Missing Segments Request');
+        expect(byKey['20:0x03']).toMatch(/TWIU Acknowledge/i);
+        expect(byKey['20:0x01']).toMatch(/TWD Acknowledge/i);
+    });
+
+    it('formats command_byte as 0xNN uppercase in the response', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ dev_eui: DEV_EUI }] })
+            .mockResolvedValueOnce({ rows: [
+                { fport: 22, command_byte: '06', count: '10', last_sent: null },
+            ] });
+
+        const res = await request(app).get(`/api/devices/${DEV_EUI}/downlink-stats`);
+
+        expect(res.body[0].command_byte).toBe('0x06');
+    });
+
+    it('returns count as a number and scopes query to devEui', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ dev_eui: DEV_EUI }] })
+            .mockResolvedValueOnce({ rows: [
+                { fport: 25, command_byte: null, count: '99', last_sent: '2026-03-10T21:00:00Z' },
+            ] });
+
+        const res = await request(app).get(`/api/devices/${DEV_EUI}/downlink-stats`);
+
+        expect(typeof res.body[0].count).toBe('number');
+        expect(res.body[0].count).toBe(99);
+        const [statsSql, statsParams] = pool.query.mock.calls[1];
+        expect(statsSql).toMatch(/device_eui/i);
+        expect(statsParams).toContain(DEV_EUI);
+    });
+});

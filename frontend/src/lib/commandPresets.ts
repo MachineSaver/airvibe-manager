@@ -19,39 +19,39 @@ export interface CommandPreset {
 export const COMMAND_PRESETS: CommandPreset[] = [
   // ─── Port 22: Commands ───
   {
-    name: "Request Current TWF Info Packet",
+    name: "Request Waveform Info",
     fPort: 22,
     type: 'codec',
     codecInput: { command_id: "request_waveform_info", parameters: [] },
-    notes: "Requests the current Time Waveform configuration."
+    notes: "Requests the device to resend the TWIU (Waveform Info Uplink) for the current waveform session."
   },
   {
-    name: "Request Current Sensor Configuration Packet",
+    name: "Request Configuration",
     fPort: 22,
     type: 'codec',
     codecInput: { command_id: "request_config", parameters: [] },
-    notes: "Requests the current sensor configuration."
+    notes: "Requests the device to send its current Sensor Configuration Report (packet type 0x04)."
   },
   {
-    name: "Trigger New TWF Collection",
+    name: "Trigger New Capture",
     fPort: 22,
     type: 'codec',
     codecInput: { command_id: "request_new_capture", parameters: [] },
-    notes: "Triggers a new Time Waveform collection immediately."
+    notes: "Triggers an immediate new waveform collection. The device will start transmitting TWIU + TWD + TWF packets."
   },
   {
-    name: "Initialize TPM/VSM Update Session",
+    name: "Initialize FUOTA Session",
     fPort: 22,
     type: 'codec',
     codecInput: { command_id: "init_upgrade_session", parameters: ["229","255","02","00"] },
-    notes: "Warning - this will set the AirVibe into Class C Mode which will use more battery."
+    notes: "Starts a firmware update session. Device enters Class C mode and responds with a FUOTA Init ACK (0x10). Warning: Class C mode uses more battery."
   },
   {
-    name: "Verify Upgrade Image Data",
+    name: "Verify FUOTA Data",
     fPort: 22,
     type: 'codec',
     codecInput: { command_id: "verify_upgrade_data", parameters: [] },
-    notes: "Verifies the uploaded firmware image."
+    notes: "Instructs the device to verify received firmware blocks. Device responds with a FUOTA Verification Response (0x11) listing any missed blocks."
   },
 
   // ─── Port 31: Alarms ───
@@ -353,25 +353,25 @@ export const COMMAND_PRESETS: CommandPreset[] = [
 
   // ─── Port 20: Waveform Control ───
   {
-    name: "Waveform Control - TWI Acknowledge",
+    name: "Waveform Info ACK",
     fPort: 20,
     type: 'waveform_ack',
-    notes: "Signals receipt of waveform info. Command byte is 03.",
+    notes: "Acknowledges receipt of the TWIU (Waveform Info Uplink). Sent after the device opens a new waveform session. Opcode 0x03.",
     params: [{ label: "Waveform TXID (Hex)", key: "txid", type: "hex", placeholder: "FF", description: "1 Byte Hex" }]
   },
   {
-    name: "Waveform Control - TWD Acknowledge",
+    name: "Waveform Data ACK",
     fPort: 20,
     type: 'waveform_ack',
-    notes: "Signals verification of no missing segments. Command byte is 01.",
+    notes: "Acknowledges all waveform segments received (no missing segments). Opcode 0x01.",
     params: [{ label: "Waveform TXID (Hex)", key: "txid", type: "hex", placeholder: "FF", description: "1 Byte Hex" }]
   },
 
   // ─── Port 21: Missing Segments ───
   {
-    name: "Waveform Control - TWF Missing Segments",
+    name: "Request Missing Segments",
     fPort: 21,
     type: 'missed_segments',
-    notes: "Requests re-transmission of missing segments."
+    notes: "Requests re-transmission of specific missing waveform segments by index."
   }
 ];

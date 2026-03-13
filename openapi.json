@@ -173,6 +173,48 @@
           }
         }
       },
+      "WaveformSpectrum": {
+        "type": "object",
+        "properties": {
+          "axis": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3
+            ]
+          },
+          "spectrumType": {
+            "type": "string",
+            "enum": [
+              "acceleration",
+              "velocity",
+              "psd",
+              "envelope"
+            ]
+          },
+          "numBins": {
+            "type": "integer"
+          },
+          "frequencyResolutionHz": {
+            "type": "number"
+          },
+          "frequencies": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Frequency axis values in Hz"
+          },
+          "magnitudes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Amplitude values (units depend on spectrumType: g, mm/s, g²/Hz, g)"
+          }
+        }
+      },
       "Device": {
         "type": "object",
         "properties": {
@@ -742,6 +784,109 @@
         }
       }
     },
+    "/waveforms/{id}/envelope": {
+      "get": {
+        "tags": [
+          "Waveforms"
+        ],
+        "summary": "Compute on-demand envelope spectrum with configurable bandpass filter",
+        "operationId": "getWaveformEnvelope",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "hp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number"
+            },
+            "description": "High-pass cutoff in Hz (e.g. 500)"
+          },
+          {
+            "name": "lp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number"
+            },
+            "description": "Low-pass cutoff in Hz (e.g. 10000)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-axis envelope spectrum computed with the requested bandpass",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WaveformSpectrum"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid hp/lp parameters"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/waveforms/{id}/spectra": {
+      "get": {
+        "tags": [
+          "Waveforms"
+        ],
+        "summary": "Get computed spectra for a waveform",
+        "operationId": "getWaveformSpectra",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of spectrum rows (acceleration, velocity, psd, envelope) per active axis",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WaveformSpectrum"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/devices": {
       "get": {
         "tags": [
@@ -956,6 +1101,143 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/devices/{devEui}/uplink-stats": {
+      "get": {
+        "tags": [
+          "Devices"
+        ],
+        "summary": "Uplink packet type breakdown for a device",
+        "operationId": "getDeviceUplinkStats",
+        "parameters": [
+          {
+            "name": "devEui",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of uplink packet type counts with human-readable names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "fport": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "packet_type": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "packet_name": {
+                        "type": "string",
+                        "example": "TWIU — Waveform Info Uplink"
+                      },
+                      "count": {
+                        "type": "integer"
+                      },
+                      "last_received": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/devices/{devEui}/downlink-stats": {
+      "get": {
+        "tags": [
+          "Devices"
+        ],
+        "summary": "Downlink command breakdown for a device",
+        "operationId": "getDeviceDownlinkStats",
+        "parameters": [
+          {
+            "name": "devEui",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of downlink command counts with human-readable function names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "fport": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "command_byte": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "example": "0x06"
+                      },
+                      "function_name": {
+                        "type": "string",
+                        "example": "Command: Verify FUOTA Data"
+                      },
+                      "count": {
+                        "type": "integer"
+                      },
+                      "last_sent": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }

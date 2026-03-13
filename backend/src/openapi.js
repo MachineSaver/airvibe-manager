@@ -591,6 +591,76 @@ Keys are created via \`POST /api/keys\`. The raw key is returned exactly once at
             },
         },
 
+        '/devices/{devEui}/uplink-stats': {
+            get: {
+                tags: ['Devices'],
+                summary: 'Uplink packet type breakdown for a device',
+                operationId: 'getDeviceUplinkStats',
+                parameters: [
+                    { name: 'devEui', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                responses: {
+                    200: {
+                        description: 'Array of uplink packet type counts with human-readable names',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'array',
+                                    items: {
+                                        type: 'object',
+                                        properties: {
+                                            fport:         { type: ['integer', 'null'] },
+                                            packet_type:   { type: ['integer', 'null'] },
+                                            packet_name:   { type: 'string', example: 'TWIU — Waveform Info Uplink' },
+                                            count:         { type: 'integer' },
+                                            last_received: { type: ['string', 'null'], format: 'date-time' },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    404: { $ref: '#/components/responses/NotFound' },
+                },
+            },
+        },
+
+        '/devices/{devEui}/downlink-stats': {
+            get: {
+                tags: ['Devices'],
+                summary: 'Downlink command breakdown for a device',
+                operationId: 'getDeviceDownlinkStats',
+                parameters: [
+                    { name: 'devEui', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                responses: {
+                    200: {
+                        description: 'Array of downlink command counts with human-readable function names',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'array',
+                                    items: {
+                                        type: 'object',
+                                        properties: {
+                                            fport:         { type: ['integer', 'null'] },
+                                            command_byte:  { type: ['string', 'null'], example: '0x06' },
+                                            function_name: { type: 'string', example: 'Command: Verify FUOTA Data' },
+                                            count:         { type: 'integer' },
+                                            last_sent:     { type: ['string', 'null'], format: 'date-time' },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    401: { $ref: '#/components/responses/Unauthorized' },
+                    404: { $ref: '#/components/responses/NotFound' },
+                },
+            },
+        },
+
         // ------------------------------------------------------------------ messages
         '/messages': {
             get: {
