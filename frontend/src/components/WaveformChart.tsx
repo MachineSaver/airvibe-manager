@@ -99,7 +99,6 @@ function baseLayout(xLabel: string, yLabel: string, xRange?: [number, number]) {
             tickfont:   { color: TICK_COL, size: 10 },
             linecolor:  AXIS_COL,
             rangemode:  'tozero' as const,
-            autorange:  true,
         },
         hovermode:  'x unified' as const,
         hoverlabel: {
@@ -134,6 +133,22 @@ const PLOT_CONFIG = {
     responsive:  true,
     toImageButtonOptions: { format: 'png', scale: 2 },
 };
+
+// Spectrum modes produce non-negative magnitudes — inject an explicit yaxis.range
+// so Plotly rescales on every data change.  autorange:true is unreliable in
+// Plotly.react() once autorange was already true in the previous render.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function spectrumLayout(layout: any, traces: Array<{ y: number[] }>): any {
+    let maxY = 0;
+    for (const t of traces) {
+        const ys = t.y;
+        for (let i = 0; i < ys.length; i++) {
+            if (ys[i] > maxY) maxY = ys[i];
+        }
+    }
+    if (maxY <= 0) return layout;
+    return { ...layout, yaxis: { ...layout.yaxis, range: [0, maxY * 1.05] } };
+}
 
 // ── Component ──────────────────────────────────────────────────────────────────
 const WaveformChart: React.FC<WaveformChartProps> = ({
@@ -265,6 +280,13 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
         return { traces: [], layout: baseLayout('', '') };
     }, [mode, data, sampleRate, spectrumAxes, settings, xRangeHz]);
 
+    // For spectrum modes, pin an explicit y upper-bound so Plotly always rescales.
+    // Time-domain is skipped — it has negative values and Plotly ranges it naturally.
+    const finalLayout = useMemo(
+        () => mode === 'time' ? layout : spectrumLayout(layout, traces),
+        [mode, layout, traces],
+    );
+
     if (traces.length === 0) {
         return (
             <div className="w-full flex-1 min-h-[360px] rounded-xl border border-[#1e293b] bg-slate-950 flex items-center justify-center text-gray-500 text-sm">
@@ -277,7 +299,7 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
         <div className="w-full flex-1 min-h-[360px] rounded-xl border border-[#1e293b] overflow-hidden">
             <Plot
                 data={traces}
-                layout={layout}
+                layout={finalLayout}
                 config={PLOT_CONFIG}
                 style={{ width: '100%', height: '100%' }}
                 useResizeHandler
