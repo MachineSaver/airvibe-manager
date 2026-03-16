@@ -572,7 +572,7 @@ const UPLINK_PACKET_NAMES = {
     // ── FUOTA lifecycle ───────────────────────────────────────────────────────
     '8:16': 'FUOTA Init ACK',                         // 0x10 — device ACKs init downlink, ready to receive blocks
     '8:17': 'FUOTA Verification Response',            // 0x11 — device reports missed blocks (empty = all received, TPM begins flashing)
-    '8:18': 'FUOTA Upgrade Status',                   // 0x12 — TPM reports result after 2-3 min flash write (success or fail)
+    '8:18': 'FUOTA Update Status',                    // 0x12 — TPM reports result after 2-3 min flash write (success or fail)
     '8:19': 'FUOTA Stuck Timeout Error',              // 0x13 — US915 only: no downlinks received for 3 min during FUOTA
     // ── Waveform error ────────────────────────────────────────────────────────
     '8:21': 'Error — Waveform ACK Timeout',           // 0x15 — last TWF ACK downlink not received in time
@@ -615,25 +615,25 @@ function uplinkPacketName(fport, packetType) {
 }
 
 const DOWNLINK_FPORT_NAMES = {
-    20: 'Waveform Control',
-    21: 'Missing Segments Request',
-    22: 'Command',
-    25: 'FUOTA Block Data',
-    30: 'Device Configuration',
-    31: 'Alarm Configuration',
+    20: 'Waveform Control Downlink',
+    21: 'Missing Waveform Data Segments Downlink',
+    22: 'Command Downlink',
+    25: 'Update Data Downlink',
+    30: 'Configuration Downlink',
+    31: 'Alarm Configuration Downlink',
 };
 
 const DOWNLINK_CMD22_NAMES = {
     '01': 'Request Waveform Info',
     '02': 'Request Configuration',
     '03': 'Trigger New Capture',
-    '05': 'Initialize FUOTA Session',
-    '06': 'Verify FUOTA Data',
+    '05': 'Initialize Update Session',
+    '06': 'Verify Update Data',
 };
 
 const DOWNLINK_CMD20_NAMES = {
-    '01': 'TWD Acknowledge',
-    '03': 'TWIU Acknowledge',
+    '01': 'Waveform Data ACK',
+    '03': 'Waveform Info ACK',
 };
 
 function downlinkFunctionName(fport, commandByte) {

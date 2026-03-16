@@ -186,14 +186,14 @@ _Device error report uplinks (0x15–0x4D): single byte packet type + optional d
 Full per-error-code descriptions are in `UPLINK_PACKET_NAMES` in `backend/src/app.js`.
 
 **Downlink fPorts and commands:**
-| fPort | Name | Command bytes |
-|-------|------|---------------|
-| 20 | **Waveform Control** | `0x01` = Waveform Data ACK (all segments received); `0x03` = Waveform Info ACK (TWIU received) |
-| 21 | **Request Missing Segments** | List of missing segment indices (8-bit or 16-bit per mode byte) |
-| 22 | **Command** | `0x0001` = Request Waveform Info; `0x0002` = Request Configuration; `0x0003` = Trigger New Capture; `0x0005` = **Initialize FUOTA Session** (device enters Class C, responds with 0x10); `0x0006` = **Verify FUOTA Data** (device responds with 0x11) |
-| 25 | **FUOTA Block Data** | Raw firmware block payload |
-| 30 | **Device Configuration** | Full config struct (push mode, filters, waveform/vibration settings, alarms) |
-| 31 | **Alarm Configuration** | Alarm enable bitmask + per-parameter thresholds |
+| fPort | Name | Details |
+|-------|------|---------|
+| 20 | **Waveform Control Downlink** | `0x01` = Waveform Data ACK (all segments received, no missing); `0x03` = Waveform Info ACK (TWIU received) |
+| 21 | **Missing Waveform Data Segments Downlink** | List of missing waveform segment indices (8-bit or 16-bit per mode byte). Sent by WaveformManager when segments are missing after TWF. |
+| 22 | **Command Downlink** | `0x0001` = Request Waveform Info; `0x0002` = Request Configuration; `0x0003` = Trigger New Capture; `0x0005` = **Initialize Update Session** (device enters Class C, responds with 0x10); `0x0006` = **Verify Update Data** (device responds with 0x11) |
+| 25 | **Update Data Downlink** | Raw firmware block payload (FUOTA) |
+| 30 | **Configuration Downlink** | Full config struct (push mode, accel range, filters, waveform/vibration settings, alarms) |
+| 31 | **Alarm Configuration Downlink** | Alarm enable bitmask + per-parameter thresholds for temperature, acceleration, and velocity on all 3 axes |
 
 The adapter handles base64/hex conversion transparently. Codec slugs (`request_waveform_info`, `init_upgrade_session`, etc.) are the stable identifiers used by `encodeDownlink`.
 

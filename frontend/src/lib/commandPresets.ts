@@ -40,14 +40,14 @@ export const COMMAND_PRESETS: CommandPreset[] = [
     notes: "Triggers an immediate new waveform collection. The device will start transmitting TWIU + TWD + TWF packets."
   },
   {
-    name: "Initialize FUOTA Session",
+    name: "Initialize Update Session",
     fPort: 22,
     type: 'codec',
     codecInput: { command_id: "init_upgrade_session", parameters: ["229","255","02","00"] },
     notes: "Starts a firmware update session. Device enters Class C mode and responds with a FUOTA Init ACK (0x10). Warning: Class C mode uses more battery."
   },
   {
-    name: "Verify FUOTA Data",
+    name: "Verify Update Data",
     fPort: 22,
     type: 'codec',
     codecInput: { command_id: "verify_upgrade_data", parameters: [] },
@@ -369,9 +369,9 @@ export const COMMAND_PRESETS: CommandPreset[] = [
 
   // ─── Port 21: Missing Segments ───
   {
-    name: "Request Missing Segments",
+    name: "Missing Waveform Data Segments",
     fPort: 21,
     type: 'missed_segments',
-    notes: "Requests re-transmission of specific missing waveform segments by index."
+    notes: "Requests re-transmission of specific missing waveform data segments by index."
   }
 ];

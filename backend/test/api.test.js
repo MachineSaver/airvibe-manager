@@ -977,7 +977,7 @@ describe('GET /api/devices/:devEui/uplink-stats', () => {
         expect(byType[7]).toBe('Alarm-Triggered Vibration Report');
         expect(byType[16]).toBe('FUOTA Init ACK');
         expect(byType[17]).toBe('FUOTA Verification Response');
-        expect(byType[18]).toBe('FUOTA Upgrade Status');
+        expect(byType[18]).toBe('FUOTA Update Status');
         expect(byType[19]).toBe('FUOTA Stuck Timeout Error');
         expect(byType[21]).toBe('Error — Waveform ACK Timeout');
     });
@@ -1071,14 +1071,14 @@ describe('GET /api/devices/:devEui/downlink-stats', () => {
             res.body.map(r => [`${r.fport}:${r.command_byte ?? 'null'}`, r.function_name])
         );
 
-        expect(byKey['25:null']).toBe('FUOTA Block Data');
-        expect(byKey['22:0x06']).toMatch(/Verify FUOTA Data/i);
+        expect(byKey['25:null']).toBe('Update Data Downlink');
+        expect(byKey['22:0x06']).toMatch(/Verify Update Data/i);
         expect(byKey['22:0x01']).toMatch(/Request Waveform Info/i);
         expect(byKey['22:0x02']).toMatch(/Request Configuration/i);
-        expect(byKey['22:0x05']).toMatch(/Initialize FUOTA Session/i);
-        expect(byKey['21:null']).toBe('Missing Segments Request');
-        expect(byKey['20:0x03']).toMatch(/TWIU Acknowledge/i);
-        expect(byKey['20:0x01']).toMatch(/TWD Acknowledge/i);
+        expect(byKey['22:0x05']).toMatch(/Initialize Update Session/i);
+        expect(byKey['21:null']).toBe('Missing Waveform Data Segments Downlink');
+        expect(byKey['20:0x03']).toMatch(/Waveform Info ACK/i);
+        expect(byKey['20:0x01']).toMatch(/Waveform Data ACK/i);
     });
 
     it('formats command_byte as 0xNN uppercase in the response', async () => {
