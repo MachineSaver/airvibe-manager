@@ -1093,6 +1093,17 @@ describe('GET /api/devices/:devEui/downlink-stats', () => {
         expect(res.body[0].command_byte).toBe('0x06');
     });
 
+    it('only extracts command_byte for fPorts 20 and 22 — not for 21, 25, 30, 31', async () => {
+        pool.query
+            .mockResolvedValueOnce({ rows: [{ dev_eui: DEV_EUI }] })
+            .mockResolvedValueOnce({ rows: [] });
+
+        await request(app).get(`/api/devices/${DEV_EUI}/downlink-stats`);
+
+        const [statsSql] = pool.query.mock.calls[1];
+        expect(statsSql).toMatch(/fport in \(20, 22\)/i);
+    });
+
     it('returns count as a number and scopes query to devEui', async () => {
         pool.query
             .mockResolvedValueOnce({ rows: [{ dev_eui: DEV_EUI }] })

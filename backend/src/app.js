@@ -691,7 +691,7 @@ app.get('/api/devices/:devEui/downlink-stats', async (req, res) => {
             `SELECT
                  fport,
                  CASE
-                     WHEN payload_hex IS NOT NULL AND length(payload_hex) >= 2
+                     WHEN fport IN (20, 22) AND payload_hex IS NOT NULL AND length(payload_hex) >= 2
                      THEN lower(substring(payload_hex, 1, 2))
                      ELSE NULL
                  END AS command_byte,
