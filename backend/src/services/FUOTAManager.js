@@ -87,6 +87,9 @@ function initAckWaitMs(attemptNumber) {
 // FUOTA_VERIFY_TIMEOUT_MS evenly across attempts.
 const FUOTA_VERIFY_MAX_RETRIES  = parseInt(process.env.FUOTA_VERIFY_MAX_RETRIES)  || 10;
 const FUOTA_VERIFY_PRE_DELAY_MS    = parseInt(process.env.FUOTA_VERIFY_PRE_DELAY_MS)    || 30000;  // 30 s
+// After all blocks are confirmed (empty 0x11), the device writes to flash.
+// EU868 TPM takes ~2-3 min; allow 6 min for a generous safety margin.
+const FUOTA_FLASH_TIMEOUT_MS = parseInt(process.env.FUOTA_FLASH_TIMEOUT_MS) || 6 * 60 * 1000; // 6 min
 // After resending a missed-block batch, wait this long before issuing the next
 // 0x0600 verify command so the device has time to finish writing the blocks to
 // flash before it checks receipt (default 30 s).
@@ -646,6 +649,8 @@ class FUOTAManager {
                 this._handleInitAck(devEui, buf);
             } else if (packetType === 0x11) {
                 this._handleVerifyUplink(devEui, buf);
+            } else if (packetType === 0x12) {
+                this._handleFlashStatus(devEui, buf);
             }
         } catch (err) {
             log.error(`FUOTAManager.processPacket error: ${err.message}`);
@@ -850,8 +855,14 @@ class FUOTAManager {
         });
 
         if (result.missedFlag === 0 && result.count === 0) {
-            // All blocks received — device is applying the update
-            this._completeSession(devEui);
+            // All blocks received — device is writing firmware to flash.
+            // Wait for 0x12 Upgrade Status before declaring success.
+            session.state = 'flashing';
+            this._updateDb(session);
+            this._emitProgress(devEui);
+            auditLogger.log('fuota_manager', 'flash_write_started', devEui, {});
+            log.info(`FUOTAManager: ${devEui} all blocks confirmed — waiting for 0x12 flash status`);
+            this._startFlashTimeout(devEui);
         } else {
             // Update confirmed-received set before transitioning to resend.
             // missedFlag=0: complete list — all sent blocks NOT in the missed list are confirmed.
@@ -880,6 +891,44 @@ class FUOTAManager {
                 log.error(`FUOTAManager: resend error for ${devEui}: ${err.message}`);
                 this._failSession(devEui, err.message);
             });
+        }
+    }
+
+    /**
+     * Start the flash-write timeout after receiving an empty 0x11.
+     * If no 0x12 arrives within FUOTA_FLASH_TIMEOUT_MS the session is failed.
+     */
+    _startFlashTimeout(devEui) {
+        const session = this.activeSessions.get(devEui);
+        if (!session) return;
+        clearTimeout(session._flashTimeout);
+        session._flashTimeout = setTimeout(async () => {
+            if (this.activeSessions.get(devEui) !== session) return;
+            if (session.state !== 'flashing') return;
+            await this._failSession(devEui,
+                `No 0x12 upgrade status received within ${FUOTA_FLASH_TIMEOUT_MS / 60000} min of flash start`
+            );
+        }, FUOTA_FLASH_TIMEOUT_MS);
+    }
+
+    _handleFlashStatus(devEui, buf) {
+        const session = this.activeSessions.get(devEui);
+        if (!session) return;
+        if (session.state !== 'flashing') return;
+
+        clearTimeout(session._flashTimeout);
+        session._flashTimeout = null;
+
+        // byte[1] = status code; 0x00 = success
+        const statusCode = buf.length > 1 ? buf[1] : 0;
+        auditLogger.log('fuota_manager', 'flash_status_received', devEui, { statusCode });
+
+        if (statusCode === 0) {
+            log.info(`FUOTAManager: ${devEui} 0x12 flash status: success`);
+            this._completeSession(devEui);
+        } else {
+            log.error(`FUOTAManager: ${devEui} 0x12 flash status: failure code 0x${statusCode.toString(16)}`);
+            this._failSession(devEui, `Flash write failed with status code 0x${statusCode.toString(16)}`);
         }
     }
 
@@ -1120,9 +1169,11 @@ class FUOTAManager {
         clearTimeout(session._ackTimeout);
         clearTimeout(session._verifyTimeout);
         clearTimeout(session._sessionTimeout);
+        clearTimeout(session._flashTimeout);
         session._ackTimeout = null;
         session._verifyTimeout = null;
         session._sessionTimeout = null;
+        session._flashTimeout = null;
     }
 
     _sendDownlink(devEui, port, payloadBuf, confirmed = false) {

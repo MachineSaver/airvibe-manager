@@ -1236,6 +1236,125 @@ describe('FUOTAManager config pre-flight poll', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 0x12 Upgrade Status (flash-write result)
+// ---------------------------------------------------------------------------
+
+describe('FUOTAManager 0x12 Upgrade Status handling', () => {
+    // Default flash timeout (6 min)
+    const FLASH_TIMEOUT_MS = parseInt(process.env.FUOTA_FLASH_TIMEOUT_MS) || 6 * 60 * 1000;
+
+    beforeEach(() => { fuotaManager.io = mockIo; });
+    afterEach(() => { fuotaManager.io = null; });
+
+    /** Build a session that has just received an empty 0x11 and is now in 'flashing'. */
+    function makeFlashingSession(devEui) {
+        return {
+            ...makeVerifySession(devEui, 'flashing', 1),
+            _flashTimeout: null,
+        };
+    }
+
+    it('empty 0x11 (all blocks received) transitions to flashing, NOT complete', () => {
+        const DEV = 'FC00000000000001';
+        fuotaManager.activeSessions.set(DEV, makeVerifySession(DEV, 'verifying', 1));
+
+        // 0x11 with missedFlag=0 and count=0 → all blocks received
+        const emptyVerify = Buffer.from([0x11, 0x00, 0x00]);
+        fuotaManager.processPacket(`mqtt/things/${DEV}/uplink`,
+            JSON.stringify({ DevEUI_uplink: { payload_hex: emptyVerify.toString('hex') } }));
+
+        const s = fuotaManager.activeSessions.get(DEV);
+        // Session must still be active in 'flashing' state, not removed
+        expect(s).toBeDefined();
+        expect(s.state).toBe('flashing');
+
+        // Cleanup
+        if (s) { fuotaManager._clearTimeouts(s); fuotaManager.activeSessions.delete(DEV); }
+    });
+
+    it('0x12 with status=0 (success) calls _completeSession and removes the session', async () => {
+        const DEV = 'FC00000000000002';
+        fuotaManager.activeSessions.set(DEV, makeFlashingSession(DEV));
+
+        const upgradeSuccess = Buffer.from([0x12, 0x00]);
+        fuotaManager.processPacket(`mqtt/things/${DEV}/uplink`,
+            JSON.stringify({ DevEUI_uplink: { payload_hex: upgradeSuccess.toString('hex') } }));
+
+        // _completeSession is async — flush microtask queue
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // Session should be removed (complete)
+        expect(fuotaManager.activeSessions.has(DEV)).toBe(false);
+
+        // Progress emit should have state='complete'
+        const progressEmits = mockIo.emit.mock.calls
+            .filter(([ev]) => ev === 'fuota:progress')
+            .map(([, p]) => p);
+        expect(progressEmits.some(p => p.devEui === DEV && p.state === 'complete')).toBe(true);
+    });
+
+    it('0x12 with non-zero status code fails the session', async () => {
+        const DEV = 'FC00000000000003';
+        fuotaManager.activeSessions.set(DEV, makeFlashingSession(DEV));
+
+        const upgradeFail = Buffer.from([0x12, 0x02]); // status=2 → failure
+        fuotaManager.processPacket(`mqtt/things/${DEV}/uplink`,
+            JSON.stringify({ DevEUI_uplink: { payload_hex: upgradeFail.toString('hex') } }));
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // Session should be removed (failed)
+        expect(fuotaManager.activeSessions.has(DEV)).toBe(false);
+
+        const progressEmits = mockIo.emit.mock.calls
+            .filter(([ev]) => ev === 'fuota:progress')
+            .map(([, p]) => p);
+        expect(progressEmits.some(p => p.devEui === DEV && p.state === 'failed')).toBe(true);
+    });
+
+    it('flash timeout fails the session when no 0x12 arrives', async () => {
+        const DEV = 'FC00000000000004';
+        fuotaManager.activeSessions.set(DEV, makeFlashingSession(DEV));
+
+        // Manually trigger the flash wait (simulates _handleVerifyUplink starting the timer)
+        fuotaManager._startFlashTimeout(DEV);
+
+        // Before timeout — session still active
+        expect(fuotaManager.activeSessions.has(DEV)).toBe(true);
+
+        // Advance past flash timeout
+        await jest.advanceTimersByTimeAsync(FLASH_TIMEOUT_MS);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // Session should be failed
+        expect(fuotaManager.activeSessions.has(DEV)).toBe(false);
+        const progressEmits = mockIo.emit.mock.calls
+            .filter(([ev]) => ev === 'fuota:progress')
+            .map(([, p]) => p);
+        expect(progressEmits.some(p => p.devEui === DEV && p.state === 'failed')).toBe(true);
+    });
+
+    it('0x12 received while NOT in flashing state is ignored', () => {
+        const DEV = 'FC00000000000005';
+        fuotaManager.activeSessions.set(DEV, makeVerifySession(DEV, 'verifying', 1));
+
+        const upgradeSuccess = Buffer.from([0x12, 0x00]);
+        fuotaManager.processPacket(`mqtt/things/${DEV}/uplink`,
+            JSON.stringify({ DevEUI_uplink: { payload_hex: upgradeSuccess.toString('hex') } }));
+
+        // Session should remain in 'verifying' — 0x12 ignored when not flashing
+        const s = fuotaManager.activeSessions.get(DEV);
+        expect(s).toBeDefined();
+        expect(s.state).toBe('verifying');
+
+        fuotaManager.activeSessions.delete(DEV);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // updateBlockInterval — live session block-interval override
 // ---------------------------------------------------------------------------
 

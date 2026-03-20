@@ -15,6 +15,7 @@ type FuotaState =
   | 'sending_blocks'
   | 'verifying'
   | 'resending'
+  | 'flashing'
   | 'complete'
   | 'failed'
   | 'aborted';
@@ -190,6 +191,8 @@ function stateBadgeClass(state: FuotaState | string): string {
     case 'verifying':
     case 'resending':
       return 'bg-yellow-900/50 border-yellow-600 text-yellow-300';
+    case 'flashing':
+      return 'bg-orange-900/50 border-orange-600 text-orange-300';
     case 'failed':
     case 'aborted':
       return 'bg-red-900/50 border-red-600 text-red-400';
@@ -922,12 +925,13 @@ function DeviceProgressCard({
 
   // Whether each step has been completed (past)
   const configPollDone = !!configCheckDone ||
-    ['waiting_ack', 'sending_blocks', 'resending', 'verifying', 'complete', 'failed', 'aborted'].includes(state);
-  const initDone   = ['sending_blocks', 'resending', 'verifying', 'complete', 'failed', 'aborted'].includes(state);
-  const blocksDone = ['verifying', 'complete'].includes(state) ||
+    ['waiting_ack', 'sending_blocks', 'resending', 'verifying', 'flashing', 'complete', 'failed', 'aborted'].includes(state);
+  const initDone   = ['sending_blocks', 'resending', 'verifying', 'flashing', 'complete', 'failed', 'aborted'].includes(state);
+  const blocksDone = ['verifying', 'flashing', 'complete'].includes(state) ||
                      (isFailed && blocksSent > 0 && blocksSent === totalBlocks);
-  const resendDone = verifyAttempts > 1 && (state === 'verifying' || state === 'complete');
-  const verifyDone = state === 'complete';
+  const resendDone = verifyAttempts > 1 && (state === 'verifying' || state === 'flashing' || state === 'complete');
+  const verifyDone = state === 'flashing' || state === 'complete';
+  const flashDone  = state === 'complete';
 
   // Whether each step is currently active
   const configPollActive = state === 'config_poll';
@@ -935,6 +939,7 @@ function DeviceProgressCard({
   const blocksActive = state === 'sending_blocks';
   const resendActive = state === 'resending';
   const verifyActive = state === 'verifying';
+  const flashActive  = state === 'flashing';
 
   // Show resend node only when it has been (or is being) done
   const showResend = resendActive || resendDone || lastMissedCount > 0;
@@ -1035,11 +1040,22 @@ function DeviceProgressCard({
             Verify{verifyAttempts > 1 ? ` ×${verifyAttempts}` : ''}
           </span>
 
-          <div className={connCls(verifyDone || isFailed)} />
+          <div className={connCls(verifyDone || verifyActive)} />
+
+          {/* Flash */}
+          <span className={`px-2 py-0.5 rounded border shrink-0 ${
+            flashActive
+              ? 'bg-orange-900/40 border-orange-600 text-orange-300'
+              : badgeCls(flashDone, false, isFailed && verifyDone)
+          }`}>
+            Flash
+          </span>
+
+          <div className={connCls(flashDone || isFailed)} />
 
           {/* Done */}
           <span className={`px-2 py-0.5 rounded border shrink-0 ${
-            verifyDone
+            flashDone
               ? 'bg-green-900/40 border-green-600 text-green-400'
               : isFailed
               ? 'bg-red-900/30 border-red-700 text-red-400'
@@ -1097,8 +1113,11 @@ function DeviceProgressCard({
               </span>
             );
           })()}
+          {state === 'flashing' && (
+            <span className="text-orange-400">All blocks confirmed — writing firmware to flash…</span>
+          )}
           {state === 'complete' && (
-            <span className="text-green-400">All blocks confirmed — update applied</span>
+            <span className="text-green-400">Flash write confirmed — firmware update applied</span>
           )}
         </div>
 
