@@ -1240,8 +1240,8 @@ describe('FUOTAManager config pre-flight poll', () => {
 // ---------------------------------------------------------------------------
 
 describe('FUOTAManager 0x12 Upgrade Status handling', () => {
-    // Default flash timeout (6 min)
-    const FLASH_TIMEOUT_MS = parseInt(process.env.FUOTA_FLASH_TIMEOUT_MS) || 6 * 60 * 1000;
+    // Default flash timeout (20 min) — must match FUOTA_FLASH_TIMEOUT_MS default in FUOTAManager.js
+    const FLASH_TIMEOUT_MS = parseInt(process.env.FUOTA_FLASH_TIMEOUT_MS) || 20 * 60 * 1000;
 
     beforeEach(() => { fuotaManager.io = mockIo; });
     afterEach(() => { fuotaManager.io = null; });

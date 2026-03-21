@@ -87,9 +87,12 @@ function initAckWaitMs(attemptNumber) {
 // FUOTA_VERIFY_TIMEOUT_MS evenly across attempts.
 const FUOTA_VERIFY_MAX_RETRIES  = parseInt(process.env.FUOTA_VERIFY_MAX_RETRIES)  || 10;
 const FUOTA_VERIFY_PRE_DELAY_MS    = parseInt(process.env.FUOTA_VERIFY_PRE_DELAY_MS)    || 30000;  // 30 s
-// After all blocks are confirmed (empty 0x11), the device writes to flash.
-// EU868 TPM takes ~2-3 min; allow 6 min for a generous safety margin.
-const FUOTA_FLASH_TIMEOUT_MS = parseInt(process.env.FUOTA_FLASH_TIMEOUT_MS) || 6 * 60 * 1000; // 6 min
+// After all blocks are confirmed (empty 0x11), the device writes to flash and
+// then reboots before sending 0x12.  EU868 TPM flash takes ~2-3 min, but the
+// 0x12 uplink must propagate back through the LoRaWAN network after the device
+// reboots, which can add several minutes (especially if Class A restore has
+// already fired).  20 min gives a very generous safety margin.
+const FUOTA_FLASH_TIMEOUT_MS = parseInt(process.env.FUOTA_FLASH_TIMEOUT_MS) || 20 * 60 * 1000; // 20 min
 // After resending a missed-block batch, wait this long before issuing the next
 // 0x0600 verify command so the device has time to finish writing the blocks to
 // flash before it checks receipt (default 30 s).
