@@ -17,17 +17,17 @@ export default function DevTools() {
   ];
 
   return (
-    <div className="h-full flex flex-col bg-[#1e1e1e]">
+    <div className="h-full flex flex-col bg-[var(--av-bg-base)]">
       {/* Sub-tab bar */}
-      <div className="flex border-b border-[#333] bg-[#252526] shrink-0">
+      <div className="flex border-b border-[var(--av-border)] bg-[var(--av-bg-surface)] shrink-0">
         {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
             className={`px-4 py-2 text-xs font-medium transition-colors border-b-2 ${
               activeTab === t.key
-                ? 'border-cyan-500 text-cyan-400'
-                : 'border-transparent text-gray-500 hover:text-gray-300'
+                ? 'border-[var(--av-accent)] text-[var(--av-accent)]'
+                : 'border-transparent text-[var(--av-text-subtle)] hover:text-[var(--av-text-muted)]'
             }`}
           >
             {t.label}

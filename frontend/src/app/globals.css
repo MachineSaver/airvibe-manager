@@ -1,32 +1,63 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* ── AirVibe Design Tokens ─────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Backgrounds */
+  --av-bg-base:    #0F172A;
+  --av-bg-surface: #1E293B;
+  --av-bg-raised:  #334155;
+  --av-bg-hover:   #253047;
+
+  /* Text */
+  --av-text-primary: #F8FAFC;
+  --av-text-muted:   #94A3B8;
+  --av-text-subtle:  #475569;
+
+  /* Accents */
+  --av-accent:        #22C55E;
+  --av-accent-cyan:   #22D3EE;
+  --av-accent-amber:  #F59E0B;
+  --av-accent-red:    #EF4444;
+  --av-accent-purple: #A78BFA;
+
+  /* Borders */
+  --av-border:       rgba(255, 255, 255, 0.08);
+  --av-border-muted: rgba(255, 255, 255, 0.04);
+
+  /* Typography */
+  --av-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --av-font-mono: 'JetBrains Mono', 'Courier New', monospace;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--av-bg-base);
+  --color-foreground: var(--av-text-primary);
+  --font-sans: var(--av-font-sans);
+  --font-mono: var(--av-font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ── Base ──────────────────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--av-bg-base);
+  color: var(--av-text-primary);
+  font-family: var(--av-font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-* { scrollbar-width: thin; scrollbar-color: #4a4a4a #1e1e1e; }
+/* Monospace utility — apply to DevEUIs, hex values, frequencies */
+.font-data {
+  font-family: var(--av-font-mono);
+  color: var(--av-accent-cyan);
+  font-size: 0.8125rem;
+  letter-spacing: 0.01em;
+}
+
+/* ── Scrollbars ────────────────────────────────────────────────────── */
+* { scrollbar-width: thin; scrollbar-color: var(--av-bg-raised) var(--av-bg-surface); }
 *::-webkit-scrollbar { width: 6px; height: 6px; }
-*::-webkit-scrollbar-track { background: #1e1e1e; }
-*::-webkit-scrollbar-thumb { background-color: #4a4a4a; border-radius: 3px; }
-*::-webkit-scrollbar-thumb:hover { background-color: #5a5a5a; }
+*::-webkit-scrollbar-track { background: var(--av-bg-surface); }
+*::-webkit-scrollbar-thumb { background-color: var(--av-bg-raised); border-radius: 3px; }
+*::-webkit-scrollbar-thumb:hover { background-color: var(--av-text-subtle); }

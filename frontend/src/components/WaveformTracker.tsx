@@ -148,7 +148,7 @@ function SegmentsGrid({ tx }: { tx: Transaction }) {
 function CodeHex({ bytes }: { bytes: Uint8Array }) {
   if (!bytes) return null;
   const s = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
-  return <code className="text-xs break-words whitespace-pre-wrap font-mono text-slate-500">{s}</code>;
+  return <code className="text-xs break-words whitespace-pre-wrap font-mono text-[var(--av-text-subtle)]">{s}</code>;
 }
 
 // --- Legend ----------------------------------------------------------------
@@ -162,7 +162,7 @@ function Legend() {
   return (
     <div className="flex flex-wrap gap-3">
       {items.map(({ color, label }) => (
-        <div key={label} className="flex items-center gap-1.5 text-xs text-slate-500">
+        <div key={label} className="flex items-center gap-1.5 text-xs text-[var(--av-text-subtle)]">
           <span className="w-3 h-3 rounded-full inline-block" style={{ background: color }} />
           {label}
         </div>
@@ -217,38 +217,38 @@ export default function WaveformTracker() {
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="flex items-center gap-4 mb-6">
-        <h4 className="text-2xl font-bold text-slate-200">Waveform Tracker</h4>
-        <div className="h-px bg-[#333] flex-1"></div>
+        <h4 className="text-2xl font-bold text-[var(--av-text-primary)]">Waveform Tracker</h4>
+        <div className="h-px bg-[var(--av-border)] flex-1"></div>
       </div>
-      <p className="text-sm text-gray-400 mb-4">
+      <p className="text-sm text-[var(--av-text-subtle)] mb-4">
         Paste hex-encoded uplink packets (Types 01, 03, 05) to decode, assemble, and visualize time waveform data.
       </p>
 
-      <div className="bg-[#252526] rounded-lg border border-[#333] overflow-hidden">
+      <div className="bg-[var(--av-bg-surface)] rounded-lg border border-[var(--av-border)] overflow-hidden">
         {/* Input area */}
         <div className="px-4 py-4 space-y-3">
           <textarea
-            className="w-full h-32 rounded-md border border-[#444] bg-[#1e1e1e] p-3 font-mono text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
+            className="w-full h-32 rounded-md border border-[var(--av-border)] bg-[var(--av-bg-base)] p-3 font-mono text-xs text-[var(--av-text-muted)] placeholder-[var(--av-text-subtle)] focus:outline-none focus:border-[var(--av-accent-cyan)] resize-y"
             placeholder="Paste hex packets here, one per line (e.g., 03210000070003814e200015)"
             value={hexInput}
             onChange={e => setHexInput(e.target.value)}
           />
           <div className="flex gap-2 flex-wrap">
             <button
-              className="px-3 py-1.5 rounded-md text-sm font-medium bg-[#37373d] text-gray-300 hover:bg-[#444] transition-colors"
+              className="px-3 py-1.5 rounded-md text-sm font-medium bg-[var(--av-bg-raised)] text-[var(--av-text-muted)] hover:bg-[var(--av-bg-hover)] border border-[var(--av-border)] transition-colors"
               onClick={() => setHexInput(EXAMPLE_PACKETS)}
             >
               Fill Example
             </button>
             <button
-              className="px-3 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              className="px-3 py-1.5 rounded-md text-sm font-medium bg-[var(--av-accent-cyan)] text-[var(--av-bg-base)] hover:opacity-90 transition-opacity"
               onClick={onIngest}
             >
               Ingest
             </button>
             {log.length > 0 && (
               <button
-                className="px-3 py-1.5 rounded-md text-sm font-medium bg-[#37373d] text-gray-300 hover:bg-[#444] transition-colors"
+                className="px-3 py-1.5 rounded-md text-sm font-medium bg-[var(--av-bg-raised)] text-[var(--av-text-muted)] hover:bg-[var(--av-bg-hover)] border border-[var(--av-border)] transition-colors"
                 onClick={onReset}
               >
                 Reset
@@ -256,28 +256,28 @@ export default function WaveformTracker() {
             )}
           </div>
           {error && (
-            <div className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-md px-3 py-2">{error}</div>
+            <div className="text-sm text-[var(--av-accent-red)] bg-[var(--av-accent-red)]/10 border border-[var(--av-accent-red)]/40 rounded-md px-3 py-2">{error}</div>
           )}
         </div>
 
         {/* Transactions */}
         {activeTxIds.length > 0 && (
-          <div className="border-t border-[#333] divide-y divide-[#333]">
+          <div className="border-t border-[var(--av-border)] divide-y divide-[var(--av-border)]">
             {activeTxIds.map(txId => {
               const tx = waves[txId];
               return (
                 <div key={txId} className="px-4 py-4 space-y-4">
                   {/* Transaction header */}
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-sm font-semibold text-gray-200">
+                    <span className="text-sm font-semibold text-[var(--av-text-primary)]">
                       Transaction <span className="font-mono">0x{txId.toString(16).padStart(2, '0')}</span>
                     </span>
                     {tx.params ? (
-                      <span className="text-xs font-mono text-gray-400 bg-[#37373d] px-2 py-1 rounded">
+                      <span className="text-xs font-mono text-[var(--av-text-muted)] bg-[var(--av-bg-raised)] border border-[var(--av-border)] px-2 py-1 rounded">
                         {tx.params.AxisSelectionText} &middot; {tx.sr} Hz &middot; {tx.expected} segs &middot; {tx.samplesPerAxis} samples/axis
                       </span>
                     ) : (
-                      <span className="text-xs text-amber-400 bg-amber-900/30 px-2 py-1 rounded">Waiting for Time Waveform Information Uplink (Type 03)</span>
+                      <span className="text-xs text-[var(--av-accent-amber)] bg-[var(--av-accent-amber)]/10 border border-[var(--av-accent-amber)]/30 px-2 py-1 rounded">Waiting for Time Waveform Information Uplink (Type 03)</span>
                     )}
                   </div>
 
@@ -285,7 +285,7 @@ export default function WaveformTracker() {
                   {tx.expected != null && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Segment Map</span>
+                        <span className="text-xs font-medium text-[var(--av-text-subtle)] uppercase tracking-wider">Segment Map</span>
                         <Legend />
                       </div>
                       <SegmentsGrid tx={tx} />
@@ -295,10 +295,10 @@ export default function WaveformTracker() {
                   {/* Suggested downlinks */}
                   {tx.downlinks.length > 0 && (
                     <div>
-                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wider block mb-2">Suggested Downlinks</span>
+                      <span className="text-xs font-medium text-[var(--av-text-subtle)] uppercase tracking-wider block mb-2">Suggested Downlinks</span>
                       <div className="flex flex-wrap gap-2">
                         {tx.downlinks.map((d, i) => (
-                          <span key={i} className="inline-flex items-center gap-1.5 text-xs bg-[#37373d] text-gray-300 rounded px-2 py-1 font-mono">
+                          <span key={i} className="inline-flex items-center gap-1.5 text-xs bg-[var(--av-bg-raised)] border border-[var(--av-border)] text-[var(--av-text-muted)] rounded px-2 py-1 font-mono">
                             {d.label} &middot; Port {d.port} &middot; {d.hex}
                           </span>
                         ))}
@@ -308,7 +308,7 @@ export default function WaveformTracker() {
 
                   {/* Waveform plot */}
                   {tx.params && (
-                    <div className="rounded-md border border-[#333] overflow-hidden">
+                    <div className="rounded-md border border-[var(--av-border)] overflow-hidden">
                       <SvgWave tx={tx} />
                     </div>
                   )}
@@ -316,7 +316,7 @@ export default function WaveformTracker() {
                   {/* CSV download */}
                   {tx.complete && (
                     <button
-                      className="px-3 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                      className="px-3 py-1.5 rounded-md text-sm font-medium bg-[var(--av-accent)] text-[var(--av-bg-base)] hover:opacity-90 transition-opacity"
                       onClick={() => handleDownload(tx)}
                     >
                       Download Waveform CSV
@@ -325,13 +325,13 @@ export default function WaveformTracker() {
 
                   {/* Packet log */}
                   <details>
-                    <summary className="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-300 transition-colors">
+                    <summary className="cursor-pointer text-xs font-medium text-[var(--av-text-subtle)] hover:text-[var(--av-text-muted)] transition-colors">
                       Packet log ({tx.segments.size} segments)
                     </summary>
                     <div className="mt-2 space-y-2">
                       {[...tx.segments.entries()].sort((a, b) => a[0] - b[0]).map(([segNo, pkt]) => (
-                        <div key={segNo} className="rounded-md bg-[#1e1e1e] border border-[#333] p-3">
-                          <div className="text-xs text-gray-400 mb-1">
+                        <div key={segNo} className="rounded-md bg-[var(--av-bg-base)] border border-[var(--av-border)] p-3">
+                          <div className="text-xs text-[var(--av-text-subtle)] mb-1">
                             Segment {segNo} &middot; Type {pkt.PacketType === 5 ? '05 (last)' : '01'}
                           </div>
                           <CodeHex bytes={pkt._raw} />
@@ -347,14 +347,14 @@ export default function WaveformTracker() {
 
         {/* Ingested packet summary */}
         {log.length > 0 && (
-          <div className="px-4 py-3 border-t border-[#333] bg-[#1e1e1e]">
+          <div className="px-4 py-3 border-t border-[var(--av-border)] bg-[var(--av-bg-base)]">
             <details>
-              <summary className="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-300 transition-colors">
+              <summary className="cursor-pointer text-xs font-medium text-[var(--av-text-subtle)] hover:text-[var(--av-text-muted)] transition-colors">
                 All ingested packets ({log.length})
               </summary>
               <div className="mt-2 space-y-1">
                 {log.map((p, idx) => (
-                  <div key={idx} className="text-xs text-gray-400">
+                  <div key={idx} className="text-xs text-[var(--av-text-subtle)]">
                     Type {p.PacketType.toString(16).padStart(2, '0').toUpperCase()} &middot; TxID {p.TransactionID} &middot; Seg {p.SegmentNumber}
                     {p.LastSegment ? ' (last)' : ''}
                     {p.PacketType === 3 && ` · ${(p as ParamsPacket).AxisSelectionText}, ${(p as ParamsPacket).NumberOfSegments} segs, ${(p as ParamsPacket).SamplingRate_Hz} Hz`}
@@ -366,14 +366,14 @@ export default function WaveformTracker() {
         )}
 
         {/* Help section */}
-        <div className="px-4 py-5 border-t border-[#333] bg-[#1e1e1e]">
-          <h5 className="text-sm font-semibold text-gray-300 mb-2">How does this work?</h5>
-          <p className="text-sm text-gray-400 leading-relaxed mb-2">
-            Time waveform data is transmitted from the sensor as a series of LoRaWAN uplinks. A <strong className="text-gray-300">Type 03</strong> packet
-            announces the transfer parameters (axes, sampling rate, segment count). <strong className="text-gray-300">Type 01</strong> packets carry
-            the actual sample data, and a final <strong className="text-gray-300">Type 05</strong> packet signals the end of the transfer.
+        <div className="px-4 py-5 border-t border-[var(--av-border)] bg-[var(--av-bg-base)]">
+          <h5 className="text-sm font-semibold text-[var(--av-text-muted)] mb-2">How does this work?</h5>
+          <p className="text-sm text-[var(--av-text-subtle)] leading-relaxed mb-2">
+            Time waveform data is transmitted from the sensor as a series of LoRaWAN uplinks. A <strong className="text-[var(--av-text-muted)]">Type 03</strong> packet
+            announces the transfer parameters (axes, sampling rate, segment count). <strong className="text-[var(--av-text-muted)]">Type 01</strong> packets carry
+            the actual sample data, and a final <strong className="text-[var(--av-text-muted)]">Type 05</strong> packet signals the end of the transfer.
           </p>
-          <p className="text-sm text-gray-400 leading-relaxed">
+          <p className="text-sm text-[var(--av-text-subtle)] leading-relaxed">
             Paste packets in order as they arrive. The tracker assembles them, highlights missing segments, suggests
             the appropriate downlink responses, and plots the reconstructed waveform. When all segments are received,
             you can export the assembled data as CSV.

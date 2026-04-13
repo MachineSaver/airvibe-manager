@@ -85,7 +85,7 @@ function SummaryBar({ states, totalSegments }: { states: SegState[], totalSegmen
                             const end = ((i + 1) / n * 100).toFixed(2);
                             return `${COLORS[state].bg} ${start}% ${end}%`;
                         }).join(', ')})`
-                        : '#1e1e1e',
+                        : 'var(--av-bg-base)',
                 }}
             />
         </div>
@@ -95,7 +95,7 @@ function SummaryBar({ states, totalSegments }: { states: SegState[], totalSegmen
 function CircleGrid({ states }: { states: SegState[] }) {
     return (
         <div>
-            <div className="flex flex-wrap gap-1 p-3 bg-[#1e1e1e] rounded-lg border border-[#333]">
+            <div className="flex flex-wrap gap-1 p-3 bg-[var(--av-bg-base)] rounded-lg border border-[var(--av-border)]">
                 {states.map((state, i) => {
                     const { bg, border } = COLORS[state];
                     return (

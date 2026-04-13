@@ -309,15 +309,15 @@ export default function WaveformsView() {
     const spectraReady = spectraRows.length > 0;
 
     return (
-        <div className="flex flex-col md:flex-row h-full bg-[#1e1e1e] text-gray-300 font-sans overflow-hidden">
+        <div className="flex flex-col md:flex-row h-full bg-[var(--av-bg-base)] text-[var(--av-text-muted)] overflow-hidden">
             {/* Device Sidebar */}
-            <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-[#333] flex flex-col shrink-0 max-h-64 md:max-h-none">
-                <div className="p-3 border-b border-[#333] bg-[#252526]">
-                    <h2 className="text-xs font-semibold text-gray-200">Devices</h2>
+            <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-[var(--av-border)] flex flex-col shrink-0 max-h-64 md:max-h-none">
+                <div className="p-3 border-b border-[var(--av-border)] bg-[var(--av-bg-surface)]">
+                    <h2 className="text-xs font-semibold text-[var(--av-text-primary)]">Devices</h2>
                 </div>
                 <div className="overflow-y-auto flex-1 p-1.5 space-y-1">
                     {devices.length === 0 && (
-                        <div className="text-gray-500 text-center mt-4 text-xs">No devices found.</div>
+                        <div className="text-[var(--av-text-subtle)] text-center mt-4 text-xs">No devices found.</div>
                     )}
                     {devices.map(d => {
                         const isSelected = selectedEui === d.dev_eui;
@@ -328,19 +328,19 @@ export default function WaveformsView() {
                             <div key={d.dev_eui}>
                                 <div
                                     onClick={() => handleDeviceClick(d.dev_eui)}
-                                    className={`flex items-center cursor-pointer rounded transition-colors ${isSelected ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50' : 'text-gray-400 hover:bg-[#2a2a2b] border border-transparent'}`}
+                                    className={`flex items-center cursor-pointer rounded transition-colors ${isSelected ? 'bg-[var(--av-accent)]/10 text-[var(--av-accent)] border border-[var(--av-accent)]/30' : 'text-[var(--av-text-muted)] hover:bg-[var(--av-bg-hover)] border border-transparent'}`}
                                 >
                                     <div className="flex-1 px-2 py-1.5 min-w-0">
                                         <div className="font-mono text-[10px] truncate">{d.dev_eui}</div>
                                         <div className="flex gap-2 text-[9px] mt-0.5">
-                                            <span style={{ color: '#0d9488' }}>↑{d.uplink_count}</span>
-                                            <span style={{ color: '#9333ea' }}>↓{d.downlink_count}</span>
+                                            <span className="text-[var(--av-accent-cyan)]">↑{d.uplink_count}</span>
+                                            <span className="text-[var(--av-accent-purple)]">↓{d.downlink_count}</span>
                                         </div>
                                     </div>
                                     {deviceWaveforms.length > 0 && (
                                         <button
                                             onClick={(e) => handleChevronClick(e, d.dev_eui)}
-                                            className="flex items-center justify-center min-w-[44px] min-h-[44px] shrink-0 text-gray-500 hover:text-gray-300 transition-colors"
+                                            className="flex items-center justify-center min-w-[44px] min-h-[44px] shrink-0 text-[var(--av-text-subtle)] hover:text-[var(--av-text-muted)] transition-colors"
                                             aria-label={isExpanded ? 'Collapse transactions' : 'Expand transactions'}
                                         >
                                             <svg
@@ -358,23 +358,23 @@ export default function WaveformsView() {
                                 {isExpanded && (
                                     <div className="pl-3 space-y-1 mt-1 max-h-[280px] overflow-y-auto">
                                         {deviceWaveforms.length === 0 && (
-                                            <div className="text-gray-500 text-[10px] px-2 py-1">No transactions</div>
+                                            <div className="text-[var(--av-text-subtle)] text-[10px] px-2 py-1">No transactions</div>
                                         )}
                                         {deviceWaveforms.map(wf => (
                                             <div
                                                 key={wf.id}
                                                 onClick={() => handleTransactionClick(wf.id, d.dev_eui)}
-                                                className={`px-2 py-1.5 rounded cursor-pointer transition-colors ${effectiveSelectedId === wf.id ? 'bg-[#37373d] border border-blue-500/50' : 'bg-[#252526] border border-[#333] hover:bg-[#2a2a2b]'}`}
+                                                className={`px-2 py-1.5 rounded cursor-pointer transition-colors ${effectiveSelectedId === wf.id ? 'bg-[var(--av-bg-raised)] border border-[var(--av-accent)]/30' : 'bg-[var(--av-bg-surface)] border border-[var(--av-border)] hover:bg-[var(--av-bg-hover)]'}`}
                                             >
                                                 <div className="flex justify-between items-center">
-                                                    <span className="font-mono text-blue-400 font-bold text-[10px]">#{wf.transaction_id}</span>
-                                                    <span className={`text-[9px] px-1 py-0.5 rounded-full uppercase ${wf.status === 'complete' ? 'bg-green-900/50 text-green-400' : wf.status === 'aborted' ? 'bg-red-900/50 text-red-400' : 'bg-yellow-900/50 text-yellow-400'}`}>
+                                                    <span className="font-mono text-[var(--av-accent-cyan)] font-bold text-[10px]">#{wf.transaction_id}</span>
+                                                    <span className={`text-[9px] px-1 py-0.5 rounded-full uppercase ${wf.status === 'complete' ? 'bg-[var(--av-accent)]/10 text-[var(--av-accent)]' : wf.status === 'aborted' ? 'bg-[var(--av-accent-red)]/10 text-[var(--av-accent-red)]' : 'bg-[var(--av-accent-amber)]/10 text-[var(--av-accent-amber)]'}`}>
                                                         {wf.status}
                                                     </span>
                                                 </div>
-                                                <div className="w-full bg-[#1e1e1e] rounded-full h-1 overflow-hidden mt-1">
+                                                <div className="w-full bg-[var(--av-bg-base)] rounded-full h-1 overflow-hidden mt-1">
                                                     <div
-                                                        className="bg-blue-500 h-full transition-all duration-500"
+                                                        className="bg-[var(--av-accent-cyan)] h-full transition-all duration-500"
                                                         style={{ width: `${(wf.received_segments_count / (wf.expected_segments || 1)) * 100}%` }}
                                                     />
                                                 </div>
@@ -392,21 +392,21 @@ export default function WaveformsView() {
             <div className="flex-1 flex flex-col overflow-y-auto p-6 gap-6">
                 {selectedWaveform ? (
                     <>
-                        <div className="bg-[#252526] rounded border border-[#333] p-6">
+                        <div className="bg-[var(--av-bg-surface)] rounded border border-[var(--av-border)] p-6">
                             <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                                 <div>
-                                    <h1 className="text-xl font-bold text-white mb-1">
+                                    <h1 className="text-xl font-bold text-[var(--av-text-primary)] mb-1">
                                         {new Date(selectedWaveform.start_time).toLocaleString()}
                                     </h1>
-                                    <div className="flex flex-wrap gap-4 text-xs text-gray-400">
-                                        <span>Tx #{selectedWaveform.transaction_id} · <span className="font-mono text-gray-300">{selectedWaveform.device_eui}</span></span>
+                                    <div className="flex flex-wrap gap-4 text-xs text-[var(--av-text-muted)]">
+                                        <span>Tx #{selectedWaveform.transaction_id} · <span className="font-mono text-[var(--av-accent-cyan)]">{selectedWaveform.device_eui}</span></span>
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <div className="text-2xl font-mono font-bold text-blue-400">
-                                        {selectedWaveform.received_segments_count} <span className="text-sm text-gray-500">/ {selectedWaveform.expected_segments}</span>
+                                    <div className="text-2xl font-mono font-bold text-[var(--av-accent-cyan)]">
+                                        {selectedWaveform.received_segments_count} <span className="text-sm text-[var(--av-text-subtle)]">/ {selectedWaveform.expected_segments}</span>
                                     </div>
-                                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Segments</div>
+                                    <div className="text-[10px] text-[var(--av-text-subtle)] uppercase tracking-wider mb-2">Segments</div>
                                     {selectedWaveform.status === 'complete' && (
                                         <div className="flex flex-wrap gap-2">
                                             <button
@@ -414,7 +414,7 @@ export default function WaveformsView() {
                                                     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
                                                     window.open(`${apiUrl}/api/waveforms/${selectedWaveform.id}/download`, '_blank');
                                                 }}
-                                                className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                                                className="bg-[var(--av-accent)] hover:opacity-90 text-[var(--av-bg-base)] px-3 py-1 rounded text-xs font-semibold transition-opacity flex items-center gap-1"
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
                                                     <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -426,7 +426,7 @@ export default function WaveformsView() {
                                                     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
                                                     window.open(`${apiUrl}/api/waveforms/${selectedWaveform.id}/csv`, '_blank');
                                                 }}
-                                                className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                                                className="bg-[var(--av-bg-raised)] hover:bg-[var(--av-text-subtle)] border border-[var(--av-border)] text-[var(--av-text-primary)] px-3 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1"
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
                                                     <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -439,19 +439,19 @@ export default function WaveformsView() {
                             </div>
 
                             {selectedWaveform.metadata && (
-                                <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[#333]">
-                                    <span className="px-2 py-0.5 rounded text-[10px] bg-[#1e1e1e] border border-[#3e3e42] text-gray-300 font-mono">⚡ {selectedWaveform.metadata.sampleRate} Hz</span>
-                                    <span className="px-2 py-0.5 rounded text-[10px] bg-[#1e1e1e] border border-[#3e3e42] text-gray-300 font-mono">📊 {selectedWaveform.metadata.samplesPerAxis}</span>
-                                    <span className="px-2 py-0.5 rounded text-[10px] bg-[#1e1e1e] border border-[#3e3e42] text-gray-500 font-mono">Axis:</span>
-                                    <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${selectedWaveform.metadata.axisMask & 0x01 ? 'bg-green-900/30 border-green-700 text-green-400' : 'bg-[#1e1e1e] border-[#3e3e42] text-gray-600'}`}>1 {selectedWaveform.metadata.axisMask & 0x01 ? '✓' : '✗'}</span>
-                                    <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${selectedWaveform.metadata.axisMask & 0x02 ? 'bg-green-900/30 border-green-700 text-green-400' : 'bg-[#1e1e1e] border-[#3e3e42] text-gray-600'}`}>2 {selectedWaveform.metadata.axisMask & 0x02 ? '✓' : '✗'}</span>
-                                    <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${selectedWaveform.metadata.axisMask & 0x04 ? 'bg-green-900/30 border-green-700 text-green-400' : 'bg-[#1e1e1e] border-[#3e3e42] text-gray-600'}`}>3 {selectedWaveform.metadata.axisMask & 0x04 ? '✓' : '✗'}</span>
+                                <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[var(--av-border)]">
+                                    <span className="px-2 py-0.5 rounded text-[10px] bg-[var(--av-bg-base)] border border-[var(--av-border)] text-[var(--av-accent-cyan)] font-mono">{selectedWaveform.metadata.sampleRate} Hz</span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] bg-[var(--av-bg-base)] border border-[var(--av-border)] text-[var(--av-text-muted)] font-mono">{selectedWaveform.metadata.samplesPerAxis} samp</span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] bg-[var(--av-bg-base)] border border-[var(--av-border)] text-[var(--av-text-subtle)] font-mono">Axis:</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${selectedWaveform.metadata.axisMask & 0x01 ? 'bg-[var(--av-accent)]/10 border-[var(--av-accent)]/40 text-[var(--av-accent)]' : 'bg-[var(--av-bg-base)] border-[var(--av-border)] text-[var(--av-text-subtle)]'}`}>1 {selectedWaveform.metadata.axisMask & 0x01 ? '✓' : '✗'}</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${selectedWaveform.metadata.axisMask & 0x02 ? 'bg-[var(--av-accent)]/10 border-[var(--av-accent)]/40 text-[var(--av-accent)]' : 'bg-[var(--av-bg-base)] border-[var(--av-border)] text-[var(--av-text-subtle)]'}`}>2 {selectedWaveform.metadata.axisMask & 0x02 ? '✓' : '✗'}</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${selectedWaveform.metadata.axisMask & 0x04 ? 'bg-[var(--av-accent)]/10 border-[var(--av-accent)]/40 text-[var(--av-accent)]' : 'bg-[var(--av-bg-base)] border-[var(--av-border)] text-[var(--av-text-subtle)]'}`}>3 {selectedWaveform.metadata.axisMask & 0x04 ? '✓' : '✗'}</span>
                                 </div>
                             )}
                         </div>
 
-                        <div className="bg-[#252526] rounded border border-[#333] p-4">
-                            <h3 className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wider">Ingestion Map</h3>
+                        <div className="bg-[var(--av-bg-surface)] rounded border border-[var(--av-border)] p-4">
+                            <h3 className="text-xs font-semibold text-[var(--av-text-subtle)] mb-3 uppercase tracking-wider">Ingestion Map</h3>
                             <SegmentMap
                                 totalSegments={selectedWaveform.expected_segments || 0}
                                 receivedSegments={selectedWaveform.segments || []}
@@ -464,7 +464,7 @@ export default function WaveformsView() {
                         </div>
 
                         {/* View selector + chart */}
-                        <div className="bg-[#252526] rounded border border-[#333] p-4 flex-1 min-h-[460px] flex flex-col gap-3">
+                        <div className="bg-[var(--av-bg-surface)] rounded border border-[var(--av-border)] p-4 flex-1 min-h-[460px] flex flex-col gap-3">
                             {/* Selector bar */}
                             <div className="flex flex-wrap gap-1.5">
                                 {VIEW_MODES.map(vm => (
@@ -474,10 +474,10 @@ export default function WaveformsView() {
                                         disabled={vm.id !== 'time' && !spectraReady}
                                         className={`px-3 py-1 rounded text-xs font-medium transition-colors
                                             ${viewMode === vm.id
-                                                ? 'bg-blue-600 text-white'
+                                                ? 'bg-[var(--av-accent)] text-[var(--av-bg-base)]'
                                                 : vm.id !== 'time' && !spectraReady
-                                                    ? 'bg-[#1e1e1e] text-gray-600 cursor-not-allowed border border-[#333]'
-                                                    : 'bg-[#1e1e1e] text-gray-400 hover:bg-[#37373d] border border-[#3e3e42]'
+                                                    ? 'bg-[var(--av-bg-base)] text-[var(--av-text-subtle)] cursor-not-allowed border border-[var(--av-border-muted)]'
+                                                    : 'bg-[var(--av-bg-base)] text-[var(--av-text-muted)] hover:bg-[var(--av-bg-raised)] border border-[var(--av-border)]'
                                             }`}
                                     >
                                         {vm.label}
@@ -487,13 +487,13 @@ export default function WaveformsView() {
 
                             {/* Envelope filter panel — only shown in envelope mode */}
                             {viewMode === 'envelope' && (
-                                <div className="bg-[#1e1e1e] border border-[#3e3e42] rounded p-3 flex flex-col gap-2">
+                                <div className="bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded p-3 flex flex-col gap-2">
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <label className="text-[10px] text-gray-400 uppercase tracking-wider shrink-0">Bandpass Filter</label>
+                                        <label className="text-[10px] text-[var(--av-text-subtle)] uppercase tracking-wider shrink-0">Bandpass Filter</label>
                                         <select
                                             value={envelopePreset}
                                             onChange={e => handlePresetChange(e.target.value as EnvelopePreset)}
-                                            className="bg-[#252526] border border-[#3e3e42] text-gray-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                                            className="bg-[var(--av-bg-surface)] border border-[var(--av-border)] text-[var(--av-text-muted)] text-xs rounded px-2 py-1 focus:outline-none focus:border-[var(--av-accent-cyan)]"
                                         >
                                             {ENVELOPE_PRESETS.map(p => (
                                                 <option key={p.id} value={p.id}>{p.label}</option>
@@ -501,7 +501,7 @@ export default function WaveformsView() {
                                         </select>
                                         <button
                                             onClick={handleResetToDefault}
-                                            className="ml-auto text-[10px] text-gray-500 hover:text-gray-300 border border-[#3e3e42] hover:border-gray-500 rounded px-2 py-1 transition-colors"
+                                            className="ml-auto text-[10px] text-[var(--av-text-subtle)] hover:text-[var(--av-text-muted)] border border-[var(--av-border)] hover:border-[var(--av-text-subtle)] rounded px-2 py-1 transition-colors"
                                         >
                                             Reset to Default
                                         </button>
@@ -511,7 +511,7 @@ export default function WaveformsView() {
                                     {envelopePreset !== 'custom' && (() => {
                                         const desc = ENVELOPE_PRESETS.find(p => p.id === envelopePreset)?.description;
                                         return desc ? (
-                                            <p className="text-[10px] text-gray-500 italic">{desc}</p>
+                                            <p className="text-[10px] text-[var(--av-text-subtle)] italic">{desc}</p>
                                         ) : null;
                                     })()}
 
@@ -519,24 +519,24 @@ export default function WaveformsView() {
                                     {envelopePreset === 'custom' && (
                                         <div className="flex flex-wrap items-center gap-2 mt-1">
                                             <div className="flex items-center gap-1.5">
-                                                <label className="text-[10px] text-gray-400 shrink-0">HP (Hz)</label>
+                                                <label className="text-[10px] text-[var(--av-text-subtle)] shrink-0">HP (Hz)</label>
                                                 <input
                                                     type="number"
                                                     min={1}
                                                     value={customHpInput}
                                                     onChange={e => setCustomHpInput(e.target.value)}
-                                                    className="w-24 bg-[#252526] border border-[#3e3e42] text-gray-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                                                    className="w-24 bg-[var(--av-bg-surface)] border border-[var(--av-border)] text-[var(--av-text-muted)] text-xs rounded px-2 py-1 focus:outline-none focus:border-[var(--av-accent-cyan)]"
                                                     placeholder="500"
                                                 />
                                             </div>
                                             <div className="flex items-center gap-1.5">
-                                                <label className="text-[10px] text-gray-400 shrink-0">LP (Hz)</label>
+                                                <label className="text-[10px] text-[var(--av-text-subtle)] shrink-0">LP (Hz)</label>
                                                 <input
                                                     type="number"
                                                     min={1}
                                                     value={customLpInput}
                                                     onChange={e => setCustomLpInput(e.target.value)}
-                                                    className="w-24 bg-[#252526] border border-[#3e3e42] text-gray-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                                                    className="w-24 bg-[var(--av-bg-surface)] border border-[var(--av-border)] text-[var(--av-text-muted)] text-xs rounded px-2 py-1 focus:outline-none focus:border-[var(--av-accent-cyan)]"
                                                     placeholder="10000"
                                                 />
                                             </div>
@@ -547,7 +547,7 @@ export default function WaveformsView() {
                                                     const lp = parseFloat(customLpInput);
                                                     return !(isFinite(hp) && isFinite(lp) && hp > 0 && lp > hp);
                                                 })()}
-                                                className="px-3 py-1 rounded text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:bg-[#333] disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-colors"
+                                                className="px-3 py-1 rounded text-xs font-medium bg-[var(--av-accent)] hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed text-[var(--av-bg-base)] transition-opacity"
                                             >
                                                 Apply Filter
                                             </button>
@@ -565,7 +565,7 @@ export default function WaveformsView() {
                                         sampleRate={selectedWaveform.metadata.sampleRate}
                                     />
                                 ) : (
-                                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                                    <div className="flex-1 flex items-center justify-center text-[var(--av-text-subtle)] text-sm">
                                         {selectedWaveform.status === 'complete' ? 'Processing visualization...' : 'Waiting for completion to visualize waveform...'}
                                     </div>
                                 )
@@ -577,11 +577,11 @@ export default function WaveformsView() {
                                         xRangeHz={[envelopeHp, envelopeLp]}
                                     />
                                 ) : selectedWaveform.status === 'complete' ? (
-                                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                                    <div className="flex-1 flex items-center justify-center text-[var(--av-text-subtle)] text-sm">
                                         Computing envelope…
                                     </div>
                                 ) : (
-                                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                                    <div className="flex-1 flex items-center justify-center text-[var(--av-text-subtle)] text-sm">
                                         Envelope available after waveform completes.
                                     </div>
                                 )
@@ -592,11 +592,11 @@ export default function WaveformsView() {
                                         spectrumAxes={spectrumAxes}
                                     />
                                 ) : spectraReady ? (
-                                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                                    <div className="flex-1 flex items-center justify-center text-[var(--av-text-subtle)] text-sm">
                                         No data for this spectrum type.
                                     </div>
                                 ) : (
-                                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                                    <div className="flex-1 flex items-center justify-center text-[var(--av-text-subtle)] text-sm">
                                         {selectedWaveform.status === 'complete' ? 'Computing spectra...' : 'Spectra available after waveform completes.'}
                                     </div>
                                 )
@@ -604,7 +604,7 @@ export default function WaveformsView() {
                         </div>
                     </>
                 ) : (
-                    <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+                    <div className="h-full flex items-center justify-center text-[var(--av-text-subtle)] text-sm">
                         Select a device to view details
                     </div>
                 )}

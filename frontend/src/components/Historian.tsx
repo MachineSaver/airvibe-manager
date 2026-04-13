@@ -123,13 +123,13 @@ export default function Historian() {
   return (
     <div className="h-full overflow-auto p-4">
       {/* Search form */}
-      <form onSubmit={handleSubmit} className="bg-[#252526] rounded border border-[#333] p-4 mb-4">
-        <h2 className="text-xs font-semibold text-yellow-400 uppercase mb-3">Message History Search</h2>
+      <form onSubmit={handleSubmit} className="bg-[var(--av-bg-surface)] rounded border border-[var(--av-border)] p-4 mb-4">
+        <h2 className="text-xs font-semibold text-[var(--av-text-primary)] uppercase tracking-wider mb-3">Message History Search</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
 
           {/* DevEUI — dropdown of known devices or free-type */}
           <div>
-            <label className="block text-[10px] text-gray-500 mb-1">DevEUI</label>
+            <label className="block text-[10px] text-[var(--av-text-subtle)] mb-1">DevEUI</label>
             {apiDevEuis.length > 0 && !isCustomMode ? (
               <select
                 value={deviceEui}
@@ -141,7 +141,7 @@ export default function Historian() {
                     setDeviceEui(e.target.value);
                   }
                 }}
-                className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 outline-none font-mono"
+                className="w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] outline-none font-mono"
               >
                 <option value="">All devices</option>
                 {apiDevEuis.map(id => (
@@ -156,14 +156,14 @@ export default function Historian() {
                   value={deviceEui}
                   onChange={e => setDeviceEui(e.target.value)}
                   placeholder="e.g. 8C1F64…"
-                  className="flex-1 min-w-0 bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono"
+                  className="flex-1 min-w-0 bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none font-mono"
                 />
                 {apiDevEuis.length > 0 && (
                   <button
                     type="button"
                     onClick={() => { setIsCustomMode(false); setDeviceEui(''); }}
                     title="Back to list"
-                    className="px-2 py-1 text-[10px] bg-[#1e1e1e] border border-[#3e3e42] rounded text-gray-400 hover:text-gray-200 transition-colors"
+                    className="px-2 py-1 text-[10px] bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded text-[var(--av-text-subtle)] hover:text-[var(--av-text-primary)] transition-colors"
                   >
                     ↩
                   </button>
@@ -174,11 +174,11 @@ export default function Historian() {
 
           {/* Direction */}
           <div>
-            <label className="block text-[10px] text-gray-500 mb-1">Direction</label>
+            <label className="block text-[10px] text-[var(--av-text-subtle)] mb-1">Direction</label>
             <select
               value={direction}
               onChange={e => setDirection(e.target.value)}
-              className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 outline-none"
+              className="w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] outline-none"
             >
               <option value="all">All</option>
               <option value="uplink">Uplink</option>
@@ -188,27 +188,27 @@ export default function Historian() {
 
           {/* From — click anywhere to open picker */}
           <div>
-            <label className="block text-[10px] text-gray-500 mb-1">From</label>
+            <label className="block text-[10px] text-[var(--av-text-subtle)] mb-1">From</label>
             <input
               ref={fromRef}
               type="datetime-local"
               value={fromDate}
               onChange={e => setFromDate(e.target.value)}
               onClick={openPicker(fromRef)}
-              className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none cursor-pointer"
+              className="w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none cursor-pointer"
             />
           </div>
 
           {/* To — click anywhere to open picker */}
           <div>
-            <label className="block text-[10px] text-gray-500 mb-1">To</label>
+            <label className="block text-[10px] text-[var(--av-text-subtle)] mb-1">To</label>
             <input
               ref={toRef}
               type="datetime-local"
               value={toDate}
               onChange={e => setToDate(e.target.value)}
               onClick={openPicker(toRef)}
-              className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none cursor-pointer"
+              className="w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none cursor-pointer"
             />
           </div>
         </div>
@@ -216,7 +216,7 @@ export default function Historian() {
         <button
           type="submit"
           disabled={loading}
-          className="px-4 py-1.5 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-white text-xs font-medium rounded transition-colors"
+          className="px-4 py-1.5 bg-[var(--av-accent)] hover:opacity-90 disabled:opacity-40 text-[var(--av-bg-base)] text-xs font-semibold rounded transition-opacity"
         >
           {loading ? 'Searching…' : 'Search'}
         </button>
@@ -226,7 +226,7 @@ export default function Historian() {
       {searched && !loading && (
         <>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-[var(--av-text-subtle)]">
               {total === 0
                 ? 'No results'
                 : `${total} result${total !== 1 ? 's' : ''} · page ${currentPage} of ${totalPages}`}
@@ -236,14 +236,14 @@ export default function Historian() {
                 <button
                   onClick={() => search(Math.max(0, offset - limit))}
                   disabled={offset === 0}
-                  className="px-2 py-1 text-[10px] bg-[#252526] border border-[#333] rounded text-gray-400 hover:text-gray-200 disabled:opacity-40 transition-colors"
+                  className="px-2 py-1 text-[10px] bg-[var(--av-bg-surface)] border border-[var(--av-border)] rounded text-[var(--av-text-subtle)] hover:text-[var(--av-text-primary)] disabled:opacity-40 transition-colors"
                 >
                   ← Prev
                 </button>
                 <button
                   onClick={() => search(offset + limit)}
                   disabled={offset + limit >= total}
-                  className="px-2 py-1 text-[10px] bg-[#252526] border border-[#333] rounded text-gray-400 hover:text-gray-200 disabled:opacity-40 transition-colors"
+                  className="px-2 py-1 text-[10px] bg-[var(--av-bg-surface)] border border-[var(--av-border)] rounded text-[var(--av-text-subtle)] hover:text-[var(--av-text-primary)] disabled:opacity-40 transition-colors"
                 >
                   Next →
                 </button>
@@ -252,42 +252,42 @@ export default function Historian() {
           </div>
 
           {results.length > 0 && (
-            <div className="overflow-x-auto rounded border border-[#333]">
+            <div className="overflow-x-auto rounded border border-[var(--av-border)]">
               <table className="w-full text-xs border-collapse">
-                <thead className="bg-[#252526]">
-                  <tr className="text-gray-500 border-b border-[#333]">
-                    <th className="px-3 py-2 text-left whitespace-nowrap">Received At</th>
-                    <th className="px-3 py-2 text-left">DevEUI</th>
-                    <th className="px-3 py-2 text-left">Direction</th>
-                    <th className="px-3 py-2 text-left">Topic</th>
-                    <th className="px-3 py-2 text-left">Payload</th>
+                <thead className="bg-[var(--av-bg-surface)] sticky top-0">
+                  <tr className="text-[var(--av-text-subtle)] border-b border-[var(--av-border)]">
+                    <th className="px-3 py-2 text-left whitespace-nowrap font-medium">Received At</th>
+                    <th className="px-3 py-2 text-left font-medium">DevEUI</th>
+                    <th className="px-3 py-2 text-left font-medium">Direction</th>
+                    <th className="px-3 py-2 text-left font-medium">Topic</th>
+                    <th className="px-3 py-2 text-left font-medium">Payload</th>
                     <th className="px-2 py-2 w-10"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {results.map(msg => {
+                  {results.map((msg, idx) => {
                     const isExpanded = expandedIds.has(msg.id);
                     return (
                       <Fragment key={msg.id}>
-                        <tr className="border-b border-[#2a2a2a] hover:bg-[#252526] transition-colors">
-                          <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono">
+                        <tr className={`border-b border-[var(--av-border-muted)] hover:bg-[var(--av-bg-surface)] transition-colors ${idx % 2 === 1 ? 'bg-[var(--av-bg-surface)]/40' : ''}`}>
+                          <td className="px-3 py-2 text-[var(--av-text-subtle)] whitespace-nowrap font-mono text-[11px]">
                             {new Date(msg.received_at).toLocaleString()}
                           </td>
-                          <td className="px-3 py-2 font-mono text-gray-300 whitespace-nowrap">
-                            {msg.device_eui || <span className="text-gray-600">—</span>}
+                          <td className="px-3 py-2 font-mono text-[var(--av-accent-cyan)] text-[11px] whitespace-nowrap">
+                            {msg.device_eui || <span className="text-[var(--av-text-subtle)]">—</span>}
                           </td>
                           <td className="px-3 py-2">
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-mono ${
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-mono border ${
                               msg.direction === 'uplink'
-                                ? 'bg-teal-900/30 text-teal-400'
+                                ? 'bg-[var(--av-accent-cyan)]/10 border-[var(--av-accent-cyan)]/30 text-[var(--av-accent-cyan)]'
                                 : msg.direction === 'downlink'
-                                ? 'bg-purple-900/30 text-purple-400'
-                                : 'bg-[#2a2a2a] text-gray-500'
+                                ? 'bg-[var(--av-accent-purple)]/10 border-[var(--av-accent-purple)]/30 text-[var(--av-accent-purple)]'
+                                : 'bg-[var(--av-bg-raised)] border-[var(--av-border)] text-[var(--av-text-subtle)]'
                             }`}>
                               {msg.direction || '?'}
                             </span>
                           </td>
-                          <td className="px-3 py-2 font-mono text-gray-400 text-[10px] max-w-[200px] truncate" title={msg.topic}>
+                          <td className="px-3 py-2 font-mono text-[var(--av-text-subtle)] text-[10px] max-w-[200px] truncate" title={msg.topic}>
                             {msg.topic}
                           </td>
                           {/* Payload — chevron + truncated text */}
@@ -297,11 +297,11 @@ export default function Historian() {
                                 type="button"
                                 onClick={() => toggleExpanded(msg.id)}
                                 title={isExpanded ? 'Collapse' : 'Expand payload'}
-                                className="shrink-0 text-gray-500 hover:text-gray-300 transition-colors leading-none"
+                                className="shrink-0 text-[var(--av-text-subtle)] hover:text-[var(--av-text-muted)] transition-colors leading-none"
                               >
                                 {isExpanded ? '▼' : '▶'}
                               </button>
-                              <span className="truncate text-gray-500" title={payloadToString(msg.payload)}>
+                              <span className="truncate text-[var(--av-text-subtle)]" title={payloadToString(msg.payload)}>
                                 {truncate(msg.payload)}
                               </span>
                             </div>
@@ -312,10 +312,10 @@ export default function Historian() {
                               type="button"
                               onClick={() => copyPayload(msg)}
                               title="Copy payload JSON"
-                              className="p-1 hover:bg-[#3e3e42] rounded text-gray-400 hover:text-blue-400 transition-colors"
+                              className="p-1 hover:bg-[var(--av-bg-raised)] rounded text-[var(--av-text-subtle)] hover:text-[var(--av-accent-cyan)] transition-colors"
                             >
                               {copiedId === msg.id ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--av-accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
                               ) : (
@@ -328,9 +328,9 @@ export default function Historian() {
                         </tr>
                         {/* Expanded payload row */}
                         {isExpanded && (
-                          <tr className="border-b border-[#333] bg-[#1a1a1a]">
+                          <tr className="border-b border-[var(--av-border)] bg-[var(--av-bg-base)]">
                             <td colSpan={6} className="px-4 py-3">
-                              <pre className="font-mono text-[11px] text-green-300/80 whitespace-pre-wrap break-all leading-relaxed">
+                              <pre className="font-mono text-[11px] text-[var(--av-accent)]/80 whitespace-pre-wrap break-all leading-relaxed">
                                 {payloadPretty(msg.payload)}
                               </pre>
                             </td>
@@ -347,7 +347,7 @@ export default function Historian() {
       )}
 
       {loading && (
-        <div className="text-gray-500 text-center mt-8 text-sm">Searching…</div>
+        <div className="text-[var(--av-text-subtle)] text-center mt-8 text-sm">Searching…</div>
       )}
     </div>
   );

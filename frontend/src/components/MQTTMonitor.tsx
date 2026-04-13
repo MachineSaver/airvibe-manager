@@ -97,22 +97,22 @@ export default function MQTTMonitor({ messages, socket }: MQTTMonitorProps) {
     <div className="overflow-auto p-4 space-y-2">
       {/* Stats Banner */}
       {stats && (
-        <div className="flex flex-wrap gap-4 p-3 bg-[#252526] rounded border border-[#333] text-xs">
+        <div className="flex flex-wrap gap-4 p-3 bg-[var(--av-bg-surface)] rounded border border-[var(--av-border)] text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="text-gray-500">Devices</span>
-            <span className="font-mono text-blue-400 font-bold">{stats.total_devices}</span>
+            <span className="text-[var(--av-text-subtle)]">Devices</span>
+            <span className="font-mono text-[var(--av-accent-cyan)] font-bold">{stats.total_devices}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-gray-500">Messages</span>
-            <span className="font-mono text-green-400 font-bold">{stats.total_messages}</span>
+            <span className="text-[var(--av-text-subtle)]">Messages</span>
+            <span className="font-mono text-[var(--av-accent)] font-bold">{stats.total_messages}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-gray-500">Last Hour</span>
-            <span className="font-mono text-yellow-400 font-bold">{stats.messages_last_hour}</span>
+            <span className="text-[var(--av-text-subtle)]">Last Hour</span>
+            <span className="font-mono text-[var(--av-accent-amber)] font-bold">{stats.messages_last_hour}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-gray-500">Waveforms</span>
-            <span className="font-mono text-purple-400 font-bold">{stats.total_waveforms}</span>
+            <span className="text-[var(--av-text-subtle)]">Waveforms</span>
+            <span className="font-mono text-[var(--av-accent-purple)] font-bold">{stats.total_waveforms}</span>
           </div>
         </div>
       )}
@@ -121,7 +121,7 @@ export default function MQTTMonitor({ messages, socket }: MQTTMonitorProps) {
       <DownlinkBuilder socket={socket} messages={messages} />
 
       {/* Stream Controls */}
-      <div className="p-3 bg-[#252526] rounded border border-[#333] flex flex-wrap items-center gap-3">
+      <div className="p-3 bg-[var(--av-bg-surface)] rounded border border-[var(--av-border)] flex flex-wrap items-center gap-3">
         {knownDevEuis.size > 0 && !isCustomMode ? (
           <select
             value={filterDevEui}
@@ -134,7 +134,7 @@ export default function MQTTMonitor({ messages, socket }: MQTTMonitorProps) {
                 setFilterDevEui(val);
               }
             }}
-            className="bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none w-48"
+            className="bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none w-48"
           >
             <option value="">-- All DevEUIs --</option>
             {Array.from(knownDevEuis).map(id => (
@@ -149,13 +149,13 @@ export default function MQTTMonitor({ messages, socket }: MQTTMonitorProps) {
               value={filterDevEui}
               onChange={e => setFilterDevEui(e.target.value)}
               placeholder="Filter by DevEUI…"
-              className="bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none w-48"
+              className="bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none w-48"
               autoFocus={isCustomMode}
             />
             {knownDevEuis.size > 0 && (
               <button
                 onClick={() => { setIsCustomMode(false); setFilterDevEui(''); }}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[10px] text-blue-400 hover:text-blue-300"
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[10px] text-[var(--av-accent-cyan)] hover:text-[var(--av-text-primary)]"
               >
                 List
               </button>
@@ -165,7 +165,7 @@ export default function MQTTMonitor({ messages, socket }: MQTTMonitorProps) {
         <select
           value={filterDirection}
           onChange={e => setFilterDirection(e.target.value as 'all' | 'uplink' | 'downlink')}
-          className="bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 outline-none"
+          className="bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] outline-none"
         >
           <option value="all">All</option>
           <option value="uplink">Uplink</option>
@@ -174,13 +174,13 @@ export default function MQTTMonitor({ messages, socket }: MQTTMonitorProps) {
         <div className="flex gap-2 ml-auto">
           <button
             onClick={() => setCollapseKey(k => k + 1)}
-            className="px-2 py-1 text-[10px] bg-[#1e1e1e] border border-[#3e3e42] rounded text-gray-400 hover:text-gray-200 transition-colors"
+            className="px-2 py-1 text-[10px] bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded text-[var(--av-text-subtle)] hover:text-[var(--av-text-primary)] transition-colors"
           >
             Collapse All
           </button>
           <button
             onClick={() => setExpandKey(k => k + 1)}
-            className="px-2 py-1 text-[10px] bg-[#1e1e1e] border border-[#3e3e42] rounded text-gray-400 hover:text-gray-200 transition-colors"
+            className="px-2 py-1 text-[10px] bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded text-[var(--av-text-subtle)] hover:text-[var(--av-text-primary)] transition-colors"
           >
             Expand All
           </button>
@@ -190,7 +190,7 @@ export default function MQTTMonitor({ messages, socket }: MQTTMonitorProps) {
       {/* Message Stream */}
       <div ref={scrollRef}>
         {filtered.length === 0 && (
-          <div className="text-gray-500 text-center mt-10 text-sm">
+          <div className="text-[var(--av-text-subtle)] text-center mt-10 text-sm">
             {messages.length === 0 ? 'No messages received yet.' : 'No messages match the current filter.'}
           </div>
         )}

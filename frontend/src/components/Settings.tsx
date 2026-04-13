@@ -24,11 +24,11 @@ function SettingSelect<T extends string>({
 }) {
     return (
         <div className="flex flex-col gap-1">
-            <label className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</label>
+            <label className="text-[10px] text-[var(--av-text-subtle)] uppercase tracking-wider">{label}</label>
             <select
                 value={value}
                 onChange={e => onChange(e.target.value as T)}
-                className="bg-[#1e1e1e] border border-[#3e3e42] text-gray-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-blue-500 transition-colors hover:border-[#555]"
+                className="bg-[var(--av-bg-base)] border border-[var(--av-border)] text-[var(--av-text-primary)] text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--av-accent-cyan)] transition-colors hover:border-[var(--av-text-subtle)]"
             >
                 {options.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -50,7 +50,7 @@ function FreqInput({
 }) {
     return (
         <div className="flex flex-col gap-1 min-w-[80px]">
-            <label className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</label>
+            <label className="text-[10px] text-[var(--av-text-subtle)] uppercase tracking-wider">{label}</label>
             <div className="flex items-center gap-1">
                 <input
                     type="number"
@@ -60,9 +60,9 @@ function FreqInput({
                         const n = parseFloat(e.target.value);
                         if (isFinite(n) && n >= 0) onChange(n);
                     }}
-                    className="w-full bg-[#1e1e1e] border border-[#3e3e42] text-gray-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-blue-500 transition-colors hover:border-[#555]"
+                    className="w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] text-[var(--av-text-primary)] text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-[var(--av-accent-cyan)] transition-colors hover:border-[var(--av-text-subtle)]"
                 />
-                <span className="text-[10px] text-gray-500 shrink-0">Hz</span>
+                <span className="text-[10px] text-[var(--av-text-subtle)] shrink-0">Hz</span>
             </div>
         </div>
     );
@@ -71,7 +71,7 @@ function FreqInput({
 // ── Section heading ───────────────────────────────────────────────────────────
 function SectionTitle({ children }: { children: React.ReactNode }) {
     return (
-        <h3 className="text-xs font-semibold text-gray-200 uppercase tracking-wider mb-3 mt-1">
+        <h3 className="text-xs font-semibold text-[var(--av-text-primary)] uppercase tracking-wider mb-3 mt-1">
             {children}
         </h3>
     );
@@ -79,13 +79,13 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 function SubTitle({ children }: { children: React.ReactNode }) {
     return (
-        <p className="text-[11px] font-medium text-blue-400 mb-2">{children}</p>
+        <p className="text-[11px] font-medium text-[var(--av-accent-cyan)] mb-2">{children}</p>
     );
 }
 
 function Card({ children }: { children: React.ReactNode }) {
     return (
-        <div className="bg-[#252526] border border-[#333] rounded p-4 flex flex-col gap-4">
+        <div className="bg-[var(--av-bg-surface)] border border-[var(--av-border)] rounded p-4 flex flex-col gap-4">
             {children}
         </div>
     );
@@ -120,15 +120,15 @@ export default function Settings() {
     ];
 
     return (
-        <div className="flex flex-col h-full bg-[#1e1e1e] text-gray-300 overflow-y-auto p-6">
+        <div className="flex flex-col h-full bg-[var(--av-bg-base)] text-[var(--av-text-muted)] overflow-y-auto p-6">
             <div className="max-w-2xl w-full mx-auto flex flex-col gap-6">
 
                 {/* Header */}
                 <div className="flex items-center justify-between">
-                    <h2 className="text-base font-semibold text-white">Display Settings</h2>
+                    <h2 className="text-base font-semibold text-[var(--av-text-primary)]">Display Settings</h2>
                     <button
                         onClick={resetSettings}
-                        className="text-xs text-gray-500 hover:text-gray-300 border border-[#3e3e42] hover:border-gray-500 rounded px-3 py-1 transition-colors"
+                        className="text-xs text-[var(--av-text-subtle)] hover:text-[var(--av-text-muted)] border border-[var(--av-border)] hover:border-[var(--av-text-subtle)] rounded px-3 py-1 transition-colors"
                     >
                         Reset to Defaults
                     </button>
@@ -255,27 +255,27 @@ export default function Settings() {
                 </div>
 
                 {/* Current values preview */}
-                <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded p-3">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Active Configuration</p>
+                <div className="bg-[var(--av-bg-surface)] border border-[var(--av-border)] rounded p-3">
+                    <p className="text-[10px] text-[var(--av-text-subtle)] uppercase tracking-wider mb-2">Active Configuration</p>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[10px] font-mono">
-                        <span className="text-gray-500">Accel/Envelope unit</span>
-                        <span className="text-gray-300">{settings.accelUnit} ({settings.accelNorm})</span>
-                        <span className="text-gray-500">Velocity unit</span>
-                        <span className="text-gray-300">{settings.velocityUnit} ({settings.velocityNorm})</span>
-                        <span className="text-gray-500">Frequency axis</span>
-                        <span className="text-gray-300">{settings.freqUnit}</span>
-                        <span className="text-gray-500">Velocity range</span>
-                        <span className="text-gray-300">{settings.velocityFreqMin} – {settings.velocityFreqMax} Hz</span>
-                        <span className="text-gray-500">Accel range</span>
-                        <span className="text-gray-300">{settings.accelFreqMin} – {settings.accelFreqMax} Hz</span>
-                        <span className="text-gray-500">Envelope range</span>
-                        <span className="text-gray-300">{settings.envelopeFreqMin} – {settings.envelopeFreqMax} Hz</span>
+                        <span className="text-[var(--av-text-subtle)]">Accel/Envelope unit</span>
+                        <span className="text-[var(--av-accent-cyan)]">{settings.accelUnit} ({settings.accelNorm})</span>
+                        <span className="text-[var(--av-text-subtle)]">Velocity unit</span>
+                        <span className="text-[var(--av-accent-cyan)]">{settings.velocityUnit} ({settings.velocityNorm})</span>
+                        <span className="text-[var(--av-text-subtle)]">Frequency axis</span>
+                        <span className="text-[var(--av-accent-cyan)]">{settings.freqUnit}</span>
+                        <span className="text-[var(--av-text-subtle)]">Velocity range</span>
+                        <span className="text-[var(--av-accent-cyan)]">{settings.velocityFreqMin} – {settings.velocityFreqMax} Hz</span>
+                        <span className="text-[var(--av-text-subtle)]">Accel range</span>
+                        <span className="text-[var(--av-accent-cyan)]">{settings.accelFreqMin} – {settings.accelFreqMax} Hz</span>
+                        <span className="text-[var(--av-text-subtle)]">Envelope range</span>
+                        <span className="text-[var(--av-accent-cyan)]">{settings.envelopeFreqMin} – {settings.envelopeFreqMax} Hz</span>
                     </div>
-                    <p className="text-[9px] text-gray-600 mt-2">Settings are saved automatically in your browser.</p>
+                    <p className="text-[9px] text-[var(--av-text-subtle)] mt-2">Settings are saved automatically in your browser.</p>
                 </div>
 
                 {/* Default values reference */}
-                <div className="text-[10px] text-gray-600 pb-4">
+                <div className="text-[10px] text-[var(--av-text-subtle)] pb-4">
                     Defaults: {DEFAULT_SETTINGS.accelUnit} peak · {DEFAULT_SETTINGS.velocityUnit} peak · {DEFAULT_SETTINGS.freqUnit} ·
                     Vel {DEFAULT_SETTINGS.velocityFreqMin}–{DEFAULT_SETTINGS.velocityFreqMax} Hz ·
                     Accel {DEFAULT_SETTINGS.accelFreqMin}–{DEFAULT_SETTINGS.accelFreqMax} Hz ·

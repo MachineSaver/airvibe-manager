@@ -232,24 +232,24 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
     <div className="space-y-2">
 
       {/* Broker Connection */}
-      <div className="bg-[#252526] rounded border border-[#333]">
+      <div className="bg-[var(--av-bg-surface)] rounded border border-[var(--av-border)]">
         <button
           onClick={() => toggle('broker')}
           className="w-full flex items-center justify-between px-4 py-3 text-left"
         >
           <span className="text-xs font-semibold text-orange-500 uppercase">Broker Connection</span>
-          <span className="text-gray-500 text-xs">{collapsed.broker ? '▶' : '▼'}</span>
+          <span className="text-[var(--av-text-subtle)] text-xs">{collapsed.broker ? '▶' : '▼'}</span>
         </button>
         {!collapsed.broker && (
           <div className="px-4 pb-4">
             <div className="grid grid-cols-3 gap-4">
               <div className="col-span-2">
-                <label className="block text-[10px] text-gray-500 mb-1">HOST</label>
-                <input type="text" readOnly value={host} className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300" suppressHydrationWarning />
+                <label className="block text-[10px] text-[var(--av-text-subtle)] mb-1">HOST</label>
+                <input type="text" readOnly value={host} className="w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)]" suppressHydrationWarning />
               </div>
               <div>
-                <label className="block text-[10px] text-gray-500 mb-1">PORT</label>
-                <input type="text" readOnly value="8883" className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300" />
+                <label className="block text-[10px] text-[var(--av-text-subtle)] mb-1">PORT</label>
+                <input type="text" readOnly value="8883" className="w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)]" />
               </div>
             </div>
           </div>
@@ -257,28 +257,28 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
       </div>
 
       {/* Downlink Builder */}
-      <div className="bg-[#252526] rounded border border-[#333]">
+      <div className="bg-[var(--av-bg-surface)] rounded border border-[var(--av-border)]">
         <button
           onClick={() => toggle('message')}
           className="w-full flex items-center justify-between px-4 py-3 text-left"
         >
           <span className="text-xs font-semibold text-orange-500 uppercase">Downlink Builder</span>
-          <span className="text-gray-500 text-xs">{collapsed.message ? '▶' : '▼'}</span>
+          <span className="text-[var(--av-text-subtle)] text-xs">{collapsed.message ? '▶' : '▼'}</span>
         </button>
         {!collapsed.message && (
           <div className="px-4 pb-4">
             <div className="mb-4">
-              <label className="block text-[10px] text-gray-500 mb-1">TOPIC</label>
+              <label className="block text-[10px] text-[var(--av-text-subtle)] mb-1">TOPIC</label>
               <input
                 type="text"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                className="w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none"
               />
             </div>
 
             <div className="mb-4">
-              <label className="block text-[10px] text-gray-500 mb-1">DevEUI</label>
+              <label className="block text-[10px] text-[var(--av-text-subtle)] mb-1">DevEUI</label>
               {knownDevEuis.size > 0 && !isCustomMode ? (
                 <select
                   value={devEui}
@@ -291,7 +291,7 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
                       setDevEui(val);
                     }
                   }}
-                  className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                  className="w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none"
                 >
                   <option value="">-- Select DevEUI --</option>
                   {Array.from(knownDevEuis).map(id => (
@@ -306,13 +306,13 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
                     value={devEui}
                     onChange={(e) => setDevEui(e.target.value)}
                     placeholder="Enter DevEUI..."
-                    className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                    className="w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none"
                     autoFocus={isCustomMode}
                   />
                   {knownDevEuis.size > 0 && (
                     <button
                       onClick={() => setIsCustomMode(false)}
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[10px] text-blue-400 hover:text-blue-300"
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[10px] text-[var(--av-accent-cyan)] hover:text-[var(--av-text-primary)]"
                     >
                       List
                     </button>
@@ -322,11 +322,11 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
             </div>
 
             <div className="mb-4">
-              <label className="block text-[10px] text-gray-500 mb-1">COMMAND PRESET</label>
+              <label className="block text-[10px] text-[var(--av-text-subtle)] mb-1">COMMAND PRESET</label>
               <select
                 value={selectedPresetName}
                 onChange={(e) => setSelectedPresetName(e.target.value)}
-                className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                className="w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none"
               >
                 <option value="">-- Custom Command --</option>
                 {COMMAND_PRESETS.map(p => (
@@ -334,31 +334,31 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
                 ))}
               </select>
               {selectedPreset?.notes && (
-                <p className="text-[10px] text-gray-400 mt-1 italic">{selectedPreset.notes}</p>
+                <p className="text-[10px] text-[var(--av-text-subtle)] mt-1 italic">{selectedPreset.notes}</p>
               )}
             </div>
 
             {selectedPreset?.type === 'codec' && (
-              <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42]">
-                <label className="block text-[10px] text-blue-400 mb-1 uppercase">Codec Input (JSON)</label>
+              <div className="mb-4 p-3 bg-[var(--av-bg-base)] rounded border border-[var(--av-border)]">
+                <label className="block text-[10px] text-[var(--av-accent-cyan)] mb-1 uppercase">Codec Input (JSON)</label>
                 <textarea
                   value={codecJsonText}
                   onChange={(e) => setCodecJsonText(e.target.value)}
                   spellCheck={false}
                   rows={Math.min(20, Math.max(4, codecJsonText.split('\n').length + 1))}
-                  className="w-full bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono resize-y"
+                  className="w-full bg-[var(--av-bg-surface)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none font-mono resize-y"
                 />
                 {codecResult && codecResult.errors.length > 0 && (
                   <div className="mt-1 space-y-0.5">
                     {codecResult.errors.map((err, i) => (
-                      <p key={i} className="text-[9px] text-red-500">{err}</p>
+                      <p key={i} className="text-[9px] text-[var(--av-accent-red)]">{err}</p>
                     ))}
                   </div>
                 )}
                 {codecResult && codecResult.warnings.length > 0 && (
                   <div className="mt-1 space-y-0.5">
                     {codecResult.warnings.map((warn, i) => (
-                      <p key={i} className="text-[9px] text-yellow-500">{warn}</p>
+                      <p key={i} className="text-[9px] text-[var(--av-accent-amber)]">{warn}</p>
                     ))}
                   </div>
                 )}
@@ -366,46 +366,46 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
             )}
 
             {selectedPreset?.type === 'waveform_ack' && (
-              <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42]">
-                <label className="block text-[10px] text-blue-400 mb-1">Waveform TXID (Hex)</label>
+              <div className="mb-4 p-3 bg-[var(--av-bg-base)] rounded border border-[var(--av-border)]">
+                <label className="block text-[10px] text-[var(--av-accent-cyan)] mb-1">Waveform TXID (Hex)</label>
                 <input
                   type="text"
                   value={waveformTxId}
                   onChange={(e) => setWaveformTxId(e.target.value)}
                   placeholder="FF"
                   maxLength={2}
-                  className="w-20 bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono"
+                  className="w-20 bg-[var(--av-bg-surface)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none font-mono"
                 />
               </div>
             )}
 
             {selectedPreset?.type === 'missed_segments' && (
-              <div className="mb-4 p-3 bg-[#1e1e1e] rounded border border-[#3e3e42] space-y-3">
+              <div className="mb-4 p-3 bg-[var(--av-bg-base)] rounded border border-[var(--av-border)] space-y-3">
                 <div className="flex justify-end">
-                  <div className="bg-[#252526] p-1 rounded border border-[#3e3e42] flex text-[10px]">
+                  <div className="bg-[var(--av-bg-surface)] p-1 rounded border border-[var(--av-border)] flex text-[10px]">
                     <button
                       onClick={() => setInputFormat('hex')}
-                      className={`px-3 py-1 rounded transition-colors ${inputFormat === 'hex' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                      className={`px-3 py-1 rounded transition-colors ${inputFormat === 'hex' ? 'bg-[var(--av-accent-cyan)] text-[var(--av-bg-base)]' : 'text-[var(--av-text-subtle)] hover:text-[var(--av-text-muted)]'}`}
                     >Hex</button>
                     <button
                       onClick={() => setInputFormat('decimal')}
-                      className={`px-3 py-1 rounded transition-colors ${inputFormat === 'decimal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                      className={`px-3 py-1 rounded transition-colors ${inputFormat === 'decimal' ? 'bg-[var(--av-accent-cyan)] text-[var(--av-bg-base)]' : 'text-[var(--av-text-subtle)] hover:text-[var(--av-text-muted)]'}`}
                     >Decimal</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-blue-400 mb-1">Size of Values</label>
+                  <label className="block text-[10px] text-[var(--av-accent-cyan)] mb-1">Size of Values</label>
                   <select
                     value={missedSegSize}
                     onChange={(e) => setMissedSegSize(e.target.value as '00' | '01')}
-                    className="w-full bg-[#252526] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none"
+                    className="w-full bg-[var(--av-bg-surface)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none"
                   >
                     <option value="00">1 Byte per Value (Indices &lt; 256)</option>
                     <option value="01">2 Bytes per Value (Indices &gt; 255)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-blue-400 mb-1">
+                  <label className="block text-[10px] text-[var(--av-accent-cyan)] mb-1">
                     Missed Segment Indices ({inputFormat === 'hex' ? 'Hex' : 'Decimal'}, comma separated)
                   </label>
                   <input
@@ -413,65 +413,65 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
                     value={missedSegIndices}
                     onChange={(e) => setMissedSegIndices(e.target.value)}
                     placeholder={inputFormat === 'hex' ? (missedSegSize === '00' ? "01, 4C, FF" : "0105, 0A01") : "1, 76, 255"}
-                    className={`w-full bg-[#252526] border rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono ${missedSegError ? 'border-red-500' : 'border-[#3e3e42]'}`}
+                    className={`w-full bg-[var(--av-bg-surface)] border rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none font-mono ${missedSegError ? 'border-[var(--av-accent-red)]' : 'border-[var(--av-border)]'}`}
                   />
-                  {missedSegError && <p className="text-[9px] text-red-500 mt-1">{missedSegError}</p>}
-                  <p className="text-[9px] text-gray-500 mt-1">Number of values will be calculated automatically.</p>
+                  {missedSegError && <p className="text-[9px] text-[var(--av-accent-red)] mt-1">{missedSegError}</p>}
+                  <p className="text-[9px] text-[var(--av-text-subtle)] mt-1">Number of values will be calculated automatically.</p>
                 </div>
               </div>
             )}
 
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div className="col-span-2">
-                <label className="block text-[10px] text-gray-500 mb-1">PAYLOAD (HEX)</label>
+                <label className="block text-[10px] text-[var(--av-text-subtle)] mb-1">PAYLOAD (HEX)</label>
                 <input
                   type="text"
                   value={currentPayloadHex}
                   onChange={(e) => !selectedPreset && setCustomPayload(e.target.value)}
                   readOnly={!!selectedPreset}
                   placeholder="0002"
-                  className={`w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none font-mono ${selectedPreset ? 'opacity-75 cursor-not-allowed' : ''}`}
+                  className={`w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none font-mono ${selectedPreset ? 'opacity-75 cursor-not-allowed' : ''}`}
                 />
               </div>
               <div>
-                <label className="block text-[10px] text-gray-500 mb-1">FPort</label>
+                <label className="block text-[10px] text-[var(--av-text-subtle)] mb-1">FPort</label>
                 <input
                   type="text"
                   value={currentFPort}
                   onChange={(e) => !selectedPreset && setCustomFPort(e.target.value)}
                   readOnly={!!selectedPreset}
-                  className={`w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none ${selectedPreset ? 'opacity-75 cursor-not-allowed' : ''}`}
+                  className={`w-full bg-[var(--av-bg-base)] border border-[var(--av-border)] rounded px-2 py-1 text-xs text-[var(--av-text-muted)] focus:border-[var(--av-accent-cyan)] outline-none ${selectedPreset ? 'opacity-75 cursor-not-allowed' : ''}`}
                 />
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-[#3e3e42]">
-              <h3 className="text-[10px] text-gray-500 mb-2 uppercase">Options</h3>
+            <div className="mt-4 pt-3 border-t border-[var(--av-border)]">
+              <h3 className="text-[10px] text-[var(--av-text-subtle)] mb-2 uppercase">Options</h3>
               <div className="flex gap-6">
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={isConfirmed}
                     onChange={(e) => setIsConfirmed(e.target.checked)}
-                    className="h-3 w-3 accent-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded"
+                    className="h-3 w-3 accent-[var(--av-accent-cyan)] bg-[var(--av-bg-base)] rounded"
                   />
-                  <span className="text-[10px] text-gray-300">Confirmed Downlink</span>
+                  <span className="text-[10px] text-[var(--av-text-muted)]">Confirmed Downlink</span>
                 </label>
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={flushQueue}
                     onChange={(e) => setFlushQueue(e.target.checked)}
-                    className="h-3 w-3 accent-blue-600 bg-[#1e1e1e] border-[#3e3e42] rounded"
+                    className="h-3 w-3 accent-[var(--av-accent-cyan)] bg-[var(--av-bg-base)] rounded"
                   />
-                  <span className="text-[10px] text-gray-300">Flush Downlink Queue</span>
+                  <span className="text-[10px] text-[var(--av-text-muted)]">Flush Downlink Queue</span>
                 </label>
               </div>
             </div>
 
             <button
               onClick={publishMessage}
-              className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded transition-colors font-medium text-sm"
+              className="mt-4 w-full bg-[var(--av-accent)] hover:opacity-90 text-[var(--av-bg-base)] py-2 rounded transition-opacity font-medium text-sm"
             >
               Publish Downlink
             </button>
@@ -480,7 +480,7 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
       </div>
 
       {/* JSON Preview */}
-      <div className="bg-[#252526] rounded border border-[#333]">
+      <div className="bg-[var(--av-bg-surface)] rounded border border-[var(--av-border)]">
         <div className="flex items-center justify-between px-4 py-3">
           <button
             onClick={() => toggle('preview')}
@@ -491,19 +491,19 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
           <div className="flex items-center gap-2">
             <button
               onClick={() => copyToClipboard(getJsonPayload(), 'json')}
-              className="p-1 hover:bg-[#3e3e42] rounded text-gray-400 hover:text-blue-400 transition-colors"
+              className="p-1 hover:bg-[var(--av-bg-raised)] rounded text-[var(--av-text-subtle)] hover:text-[var(--av-accent-cyan)] transition-colors"
               title={copiedJson ? 'Copied!' : 'Copy JSON'}
             >
               {copiedJson ? <CheckIcon /> : <CopyIcon />}
             </button>
-            <button onClick={() => toggle('preview')} className="text-gray-500 text-xs leading-none">
+            <button onClick={() => toggle('preview')} className="text-[var(--av-text-subtle)] text-xs leading-none">
               {collapsed.preview ? '▶' : '▼'}
             </button>
           </div>
         </div>
         {!collapsed.preview && (
           <div className="px-4 pb-4">
-            <pre className="bg-[#1e1e1e] p-2 rounded border border-[#3e3e42] text-[10px] text-green-400 font-mono overflow-x-auto">
+            <pre className="bg-[var(--av-bg-base)] p-2 rounded border border-[var(--av-border)] text-[10px] text-[var(--av-accent)] font-mono overflow-x-auto">
               {mounted ? getJsonPayload() : ''}
             </pre>
           </div>
@@ -511,7 +511,7 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
       </div>
 
       {/* Command Preview */}
-      <div className="bg-[#252526] rounded border border-[#333]">
+      <div className="bg-[var(--av-bg-surface)] rounded border border-[var(--av-border)]">
         <div className="flex items-center justify-between px-4 py-3">
           <button
             onClick={() => toggle('command')}
@@ -525,19 +525,19 @@ export default function DownlinkBuilder({ socket, messages }: DownlinkBuilderPro
                 const cmd = `mosquitto_pub -h ${host} -p 8883 -t "${topic.replace('[DevEUI]', devEui || '8C1F64...')}" -m '${getJsonPayload()}'`;
                 copyToClipboard(cmd, 'cmd');
               }}
-              className="p-1 hover:bg-[#3e3e42] rounded text-gray-400 hover:text-blue-400 transition-colors"
+              className="p-1 hover:bg-[var(--av-bg-raised)] rounded text-[var(--av-text-subtle)] hover:text-[var(--av-accent-cyan)] transition-colors"
               title={copiedCmd ? 'Copied!' : 'Copy Command'}
             >
               {copiedCmd ? <CheckIcon /> : <CopyIcon />}
             </button>
-            <button onClick={() => toggle('command')} className="text-gray-500 text-xs leading-none">
+            <button onClick={() => toggle('command')} className="text-[var(--av-text-subtle)] text-xs leading-none">
               {collapsed.command ? '▶' : '▼'}
             </button>
           </div>
         </div>
         {!collapsed.command && (
           <div className="px-4 pb-4">
-            <div className="bg-[#1e1e1e] p-2 rounded border border-[#3e3e42] text-[10px] text-gray-400 font-mono break-all">
+            <div className="bg-[var(--av-bg-base)] p-2 rounded border border-[var(--av-border)] text-[10px] text-[var(--av-text-muted)] font-mono break-all">
               {mounted ? `mosquitto_pub -h ${host} -p 8883 -t "${topic.replace('[DevEUI]', devEui || '8C1F64...')}" -m '${getJsonPayload()}'` : ''}
             </div>
           </div>
