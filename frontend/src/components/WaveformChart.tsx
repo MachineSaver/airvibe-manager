@@ -246,10 +246,7 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
                 hovertemplate: `%{y:.4g} ${accelUnit}<extra>Axis ${ax.axisNum}</extra>`,
             }));
             const yLbl  = `Acceleration (${accelUnit}${accelNorm === 'rms' ? ' RMS' : ' peak'})`;
-            const lay   = baseLayout(xAxisLbl, yLbl, xRange);
-            const { shapes, annotations } = rollOffMarker(freqUnit);
-            lay.shapes      = shapes;
-            lay.annotations = annotations;
+            const lay   = { ...baseLayout(xAxisLbl, yLbl, xRange), ...rollOffMarker(freqUnit) };
             if (freqUnit === 'Hz + CPM') addCpmAxis(lay, xRange);
             return { traces, layout: lay };
         }
@@ -267,10 +264,7 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
                 hovertemplate: `%{y:.4g} ${velocityUnit}<extra>Axis ${ax.axisNum}</extra>`,
             }));
             const yLbl  = `Velocity (${velocityUnit}${velocityNorm === 'rms' ? ' RMS' : ' peak'})`;
-            const lay   = baseLayout(xAxisLbl, yLbl, xRange);
-            const { shapes, annotations } = rollOffMarker(freqUnit);
-            lay.shapes      = shapes;
-            lay.annotations = annotations;
+            const lay   = { ...baseLayout(xAxisLbl, yLbl, xRange), ...rollOffMarker(freqUnit) };
             if (freqUnit === 'Hz + CPM') addCpmAxis(lay, xRange);
             return { traces, layout: lay };
         }
@@ -287,10 +281,7 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
                 line: { color: AXIS_COLORS[i % 3], width: 1 },
                 hovertemplate: `%{y:.4g} ${accelUnit}²/Hz<extra>Axis ${ax.axisNum}</extra>`,
             }));
-            const lay   = baseLayout(xAxisLbl, `PSD (${accelUnit}²/Hz)`, xRange);
-            const { shapes, annotations } = rollOffMarker(freqUnit);
-            lay.shapes      = shapes;
-            lay.annotations = annotations;
+            const lay   = { ...baseLayout(xAxisLbl, `PSD (${accelUnit}²/Hz)`, xRange), ...rollOffMarker(freqUnit) };
             if (freqUnit === 'Hz + CPM') addCpmAxis(lay, xRange);
             return { traces, layout: lay };
         }
@@ -311,10 +302,7 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
                 hovertemplate: `%{y:.4g} ${accelUnit}<extra>Axis ${ax.axisNum}</extra>`,
             }));
             const yLbl  = `Envelope (${accelUnit}${accelNorm === 'rms' ? ' RMS' : ' peak'})`;
-            const lay   = baseLayout(xAxisLbl, yLbl, xRange);
-            const { shapes, annotations } = rollOffMarker(freqUnit);
-            lay.shapes      = shapes;
-            lay.annotations = annotations;
+            const lay   = { ...baseLayout(xAxisLbl, yLbl, xRange), ...rollOffMarker(freqUnit) };
             if (freqUnit === 'Hz + CPM') addCpmAxis(lay, xRange);
             return { traces, layout: lay };
         }
