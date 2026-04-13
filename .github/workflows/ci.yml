@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, ui-redesign ]
   pull_request:
     branches: [ main ]
 
@@ -47,13 +47,20 @@ jobs:
       run: |
         echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
         echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+        # Use 'latest' for main, sanitized branch name for everything else
+        BRANCH="${GITHUB_REF_NAME}"
+        if [ "$BRANCH" = "main" ]; then
+          echo "IMAGE_TAG=latest" >> $GITHUB_ENV
+        else
+          echo "IMAGE_TAG=${BRANCH//\//-}" >> $GITHUB_ENV
+        fi
 
     - name: Build and push backend
       uses: docker/build-push-action@v6
       with:
         context: ./backend
         push: ${{ github.event_name == 'push' }}
-        tags: ghcr.io/machinesaver/airvibe-manager-backend:latest
+        tags: ghcr.io/machinesaver/airvibe-manager-backend:${{ env.IMAGE_TAG }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
@@ -62,7 +69,7 @@ jobs:
       with:
         context: ./frontend
         push: ${{ github.event_name == 'push' }}
-        tags: ghcr.io/machinesaver/airvibe-manager-frontend:latest
+        tags: ghcr.io/machinesaver/airvibe-manager-frontend:${{ env.IMAGE_TAG }}
         build-args: |
           NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL || 'https://localhost' }}
           NEXT_PUBLIC_BUILD_HASH=${{ env.SHORT_SHA }}

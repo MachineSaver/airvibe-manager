@@ -129,7 +129,7 @@ services:
   # ---------------------------------------------------------------------------
 
   backend:
-    image: ghcr.io/machinesaver/airvibe-manager-backend:latest
+    image: ghcr.io/machinesaver/airvibe-manager-backend:${IMAGE_TAG:-latest}
     build: ./backend
     container_name: airvibe-manager-backend
     ports:
@@ -188,7 +188,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ghcr.io/machinesaver/airvibe-manager-frontend:latest
+    image: ghcr.io/machinesaver/airvibe-manager-frontend:${IMAGE_TAG:-latest}
     build:
       context: ./frontend
       args:
