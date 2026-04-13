@@ -130,9 +130,30 @@ function AppContent() {
         </div>
 
         {/* Build Info Footer */}
-        <div className="h-7 flex items-center justify-center border-t border-[var(--av-border)] bg-[var(--av-bg-surface)] shrink-0">
-          <span className="text-[11px] text-[var(--av-text-subtle)] font-mono tracking-wide">
-            build {process.env.NEXT_PUBLIC_BUILD_HASH} &bull; {process.env.NEXT_PUBLIC_BUILD_DATE} UTC
+        <div className="h-7 flex items-center justify-center gap-3 border-t border-[var(--av-border)] bg-[var(--av-bg-surface)] shrink-0 px-4">
+          {/* Branch */}
+          <span className="flex items-center gap-1 text-[11px] text-[var(--av-text-subtle)] font-mono">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M5.5 3.5a2 2 0 1 0-1 1.732V6.5a2.5 2.5 0 0 0 2.5 2.5h3a.5.5 0 0 1 .5.5v.268a2 2 0 1 0 1 0V9.5a1.5 1.5 0 0 0-1.5-1.5h-3A1.5 1.5 0 0 1 5.5 6.5V5.232A2 2 0 0 0 5.5 3.5zM4 3.5a1 1 0 1 1 2 0 1 1 0 0 1-2 0zm7.5 8a1 1 0 1 1 2 0 1 1 0 0 1-2 0z"/>
+            </svg>
+            {process.env.NEXT_PUBLIC_BUILD_BRANCH ?? 'unknown'}
+          </span>
+          <span className="text-[var(--av-border)] select-none">|</span>
+          {/* Commit hash */}
+          <span className="flex items-center gap-1 text-[11px] text-[var(--av-text-subtle)] font-mono">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M11.134 1.535C9.722 2.562 8.16 4.057 6.889 5.985c-.28.415-.524.84-.745 1.467-.172.498-.256.933-.256 1.548v.5a.5.5 0 0 1-1 0V9c0-.725.105-1.26.321-1.878.24-.694.516-1.17.832-1.637C7.16 3.443 8.796 1.877 10.366.535a.5.5 0 1 1 .768.999zM3.5 3.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-3 2a3 3 0 1 1 6 0 3 3 0 0 1-6 0zm10 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-3 2a3 3 0 1 1 6 0 3 3 0 0 1-6 0z"/>
+            </svg>
+            {process.env.NEXT_PUBLIC_BUILD_HASH ?? 'unknown'}
+          </span>
+          <span className="text-[var(--av-border)] select-none">|</span>
+          {/* Build time */}
+          <span className="flex items-center gap-1 text-[11px] text-[var(--av-text-subtle)] font-mono">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z"/>
+              <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z"/>
+            </svg>
+            {process.env.NEXT_PUBLIC_BUILD_DATE ?? 'unknown'} UTC
           </span>
         </div>
       </div>

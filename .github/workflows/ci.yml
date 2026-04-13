@@ -74,5 +74,6 @@ jobs:
           NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL || 'https://localhost' }}
           NEXT_PUBLIC_BUILD_HASH=${{ env.SHORT_SHA }}
           NEXT_PUBLIC_BUILD_DATE=${{ env.BUILD_DATE }}
+          NEXT_PUBLIC_BUILD_BRANCH=${{ github.ref_name }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
