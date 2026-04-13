@@ -233,12 +233,12 @@ What it does:
 These values are baked into the frontend bundle and displayed in the footer of the UI:
 
 ```
-build a1b2c3d • 2026-02-23T19:30:00Z
+⎇ main  |  ◎ a1b2c3d  |  ⏱ 2026-02-23T19:30:00Z UTC
 ```
 
-This makes it easy to confirm which version and build is running during troubleshooting without needing SSH access to the server.
+This makes it easy to confirm which branch, commit, and build time is running during troubleshooting without needing SSH access to the server.
 
-**Important:** If you run `docker compose up -d --build` directly (without `./build.sh`), the footer will show `build unknown • unknown`. This applies to all full-stack rebuilds including initial deployment, mode switches, and updates after `git pull`.
+**Important:** If you run `docker compose up -d --build` directly (without `./build.sh`), the footer will show `unknown` for all three fields. This applies to all full-stack rebuilds including initial deployment, mode switches, and updates after `git pull`.
 
 Backend-only rebuilds (e.g. `docker compose up -d --build backend`) do not require `./build.sh` since the build info is only baked into the frontend.
 
@@ -746,6 +746,48 @@ docker compose pull
 ```
 
 ChirpStack runs database migrations automatically on startup. The `chirpstack-db-init` sidecar ensures the ChirpStack database exists before migrations run.
+
+---
+
+## Deploying a Non-Main Branch
+
+GitHub Actions builds and pushes a tagged image for every branch listed in `.github/workflows/ci.yml`. The image tag matches the branch name (e.g. branch `ui-redesign` → image tag `:ui-redesign`). The `main` branch always produces `:latest`.
+
+### Switch to a branch and deploy its image
+
+```bash
+cd /root/airvibe-manager
+git fetch origin
+git checkout ui-redesign
+IMAGE_TAG=ui-redesign ./deploy.sh
+```
+
+`deploy.sh` exports `IMAGE_TAG`, passes it to `docker compose`, and pulls the matching image from ghcr.io.
+
+### Roll back to production (`main`)
+
+```bash
+git checkout main
+./deploy.sh        # IMAGE_TAG defaults to :latest
+```
+
+### Check the CI build completed first
+
+Branch images are only available after the GitHub Actions run for that push succeeds. Check status at:
+
+```
+https://github.com/MachineSaver/airvibe-manager/actions
+```
+
+### UI footer
+
+The footer of the UI displays the branch, commit hash, and build timestamp baked in at CI build time:
+
+```
+⎇ ui-redesign  |  ◎ fc52117  |  ⏱ 2026-04-13T18:02:02Z UTC
+```
+
+This confirms exactly which branch and commit is running without needing SSH access.
 
 ---
 
