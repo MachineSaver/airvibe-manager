@@ -85,7 +85,7 @@ function initAckWaitMs(attemptNumber) {
 // finish processing the last data block before checking receipt.
 // On no-response, retries up to FUOTA_VERIFY_MAX_RETRIES times (total), dividing
 // FUOTA_VERIFY_TIMEOUT_MS evenly across attempts.
-const FUOTA_VERIFY_MAX_RETRIES  = parseInt(process.env.FUOTA_VERIFY_MAX_RETRIES)  || 10;
+const FUOTA_VERIFY_MAX_RETRIES  = parseInt(process.env.FUOTA_VERIFY_MAX_RETRIES)  || 100;
 const FUOTA_VERIFY_PRE_DELAY_MS    = parseInt(process.env.FUOTA_VERIFY_PRE_DELAY_MS)    || 30000;  // 30 s
 // After all blocks are confirmed (empty 0x11), the device writes to flash and
 // then reboots before sending 0x12.  EU868 TPM flash takes ~2-3 min, but the
@@ -108,6 +108,7 @@ const FIRMWARE_STORE_TTL_MS = 3600000;
 // confirmed 0x0200 config requests, waiting CONFIG_POLL_WAIT_MS between each attempt.
 // If the device responds at any point the poll exits early; after CONFIG_POLL_MAX attempts
 // FUOTA proceeds regardless so the user is never permanently blocked.
+const FUOTA_MQTT_WAIT_MS  = parseInt(process.env.FUOTA_MQTT_WAIT_MS)  || 5 * 60 * 1000;       // 5 min
 const CONFIG_FRESH_MS    = parseInt(process.env.FUOTA_CONFIG_FRESH_MS)    || 6 * 60 * 60 * 1000; // 6h
 const CONFIG_POLL_WAIT_MS = parseInt(process.env.FUOTA_CONFIG_POLL_WAIT_MS) || 5 * 60 * 1000;     // 5 min
 const CONFIG_POLL_MAX    = 3;
@@ -1205,8 +1206,7 @@ class FUOTAManager {
         const mqttClient = require('../mqttClient');
         if (mqttClient.isConnected()) return;
 
-        const maxWaitMs = parseInt(process.env.FUOTA_MQTT_WAIT_MS) || 5 * 60 * 1000;
-        const deadline = Date.now() + maxWaitMs;
+        const deadline = Date.now() + FUOTA_MQTT_WAIT_MS;
 
         log.warn(`FUOTAManager: ${devEui} MQTT broker disconnected — pausing block send`);
         auditLogger.log('fuota_manager', 'mqtt_disconnect_pause', devEui, {});
@@ -1220,7 +1220,7 @@ class FUOTAManager {
             }
         }
 
-        throw new Error(`MQTT broker unreachable for ${maxWaitMs / 60000} min — session failed`);
+        throw new Error(`MQTT broker unreachable for ${FUOTA_MQTT_WAIT_MS / 60000} min — session failed`);
     }
 
     /** Convert a Set of block numbers to sorted [lo, hi] range pairs. */

@@ -57,27 +57,33 @@ class SpectrumProcessor {
                 { samples: axis3, active: isAxis3, axisNum: 3 },
             ].filter(a => a.active);
 
-            // Validate sample counts before doing any computation.
-            for (const { samples, axisNum } of axesData) {
+            // Validate sample counts — filter out bad axes rather than aborting all.
+            const validAxesData = axesData.filter(({ samples, axisNum }) => {
                 if (samples.length < MIN_SAMPLES) {
                     log.warn(
                         { waveformId, axisNum, count: samples.length },
-                        'SpectrumProcessor: too few samples, skipping',
+                        'SpectrumProcessor: too few samples, skipping axis',
                     );
-                    return;
+                    return false;
                 }
                 if (samples.length !== samplesPerAxis) {
                     log.warn(
                         { waveformId, axisNum, actual: samples.length, expected: samplesPerAxis },
-                        'SpectrumProcessor: sample count mismatch, skipping',
+                        'SpectrumProcessor: sample count mismatch, skipping axis',
                     );
-                    return;
+                    return false;
                 }
+                return true;
+            });
+
+            if (validAxesData.length === 0) {
+                log.warn({ waveformId }, 'SpectrumProcessor: no valid axes, skipping');
+                return;
             }
 
             // Compute all spectra (CPU work before touching the DB).
             const rows = [];
-            for (const { samples, axisNum } of axesData) {
+            for (const { samples, axisNum } of validAxesData) {
                 const specs = [
                     { type: 'acceleration', result: computeAccelerationSpectrum(samples, sampleRate) },
                     { type: 'velocity',     result: computeVelocitySpectrum(samples, sampleRate) },

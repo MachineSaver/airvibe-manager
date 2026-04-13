@@ -212,10 +212,6 @@ class ThingParkClient {
 
     /**
      * Switch device to Class C profile before starting FUOTA.
-     * Returns { deviceRef, originalProfileId } on success, null on failure/unconfigured.
-     */
-    /**
-     * Switch device to Class C profile before starting FUOTA.
      * @param {string} devEui
      * @param {string} [classCProfileOverride]  Per-device profile derived from ISM band.
      *   Overrides THINGPARK_CLASS_C_PROFILE env var when provided.  Falls back to env var
