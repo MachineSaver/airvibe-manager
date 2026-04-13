@@ -32,7 +32,7 @@ export const DEFAULT_SETTINGS: ChartSettings = {
     velocityFreqMin:  2,
     velocityFreqMax:  1000,
     accelFreqMin:     2,
-    accelFreqMax:     10000,
+    accelFreqMax:     6500,
     envelopeFreqMin:  2,
     envelopeFreqMax:  1500,
 };

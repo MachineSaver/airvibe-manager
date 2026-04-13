@@ -126,6 +126,36 @@ function addCpmAxis(layout: any, hzRange: [number, number]) {
     };
 }
 
+const ROLLOFF_HZ = 6500;
+const ROLLOFF_COLOR = '#f59e0b';
+
+// Returns Plotly shapes + annotations marking the sensor's flat-response limit.
+// xHz is converted to the active frequency unit before use.
+function rollOffMarker(freqUnit: string): { shapes: object[]; annotations: object[] } {
+    const x = freqUnit === 'CPM' ? ROLLOFF_HZ * 60 : ROLLOFF_HZ;
+    const xLabel = freqUnit === 'CPM' ? '390k CPM' : '6.5 kHz';
+    return {
+        shapes: [{
+            type: 'line',
+            x0: x, x1: x,
+            y0: 0, y1: 1,
+            yref: 'paper',
+            line: { color: ROLLOFF_COLOR, width: 1, dash: 'dot' },
+        }],
+        annotations: [{
+            x,
+            y: 0.97,
+            xref: 'x',
+            yref: 'paper',
+            text: `${xLabel} sensor limit`,
+            showarrow: false,
+            font: { size: 9, color: ROLLOFF_COLOR },
+            xanchor: 'left',
+            yanchor: 'top',
+        }],
+    };
+}
+
 const PLOT_CONFIG = {
     displayModeBar: true,
     modeBarButtonsToRemove: ['sendDataToCloud', 'lasso2d', 'select2d', 'autoScale2d'],
@@ -215,8 +245,11 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
                 line: { color: AXIS_COLORS[i % 3], width: 1 },
                 hovertemplate: `%{y:.4g} ${accelUnit}<extra>Axis ${ax.axisNum}</extra>`,
             }));
-            const yLbl = `Acceleration (${accelUnit}${accelNorm === 'rms' ? ' RMS' : ' peak'})`;
-            const lay  = baseLayout(xAxisLbl, yLbl, xRange);
+            const yLbl  = `Acceleration (${accelUnit}${accelNorm === 'rms' ? ' RMS' : ' peak'})`;
+            const lay   = baseLayout(xAxisLbl, yLbl, xRange);
+            const { shapes, annotations } = rollOffMarker(freqUnit);
+            lay.shapes      = shapes;
+            lay.annotations = annotations;
             if (freqUnit === 'Hz + CPM') addCpmAxis(lay, xRange);
             return { traces, layout: lay };
         }
@@ -233,8 +266,11 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
                 line: { color: AXIS_COLORS[i % 3], width: 1 },
                 hovertemplate: `%{y:.4g} ${velocityUnit}<extra>Axis ${ax.axisNum}</extra>`,
             }));
-            const yLbl = `Velocity (${velocityUnit}${velocityNorm === 'rms' ? ' RMS' : ' peak'})`;
-            const lay  = baseLayout(xAxisLbl, yLbl, xRange);
+            const yLbl  = `Velocity (${velocityUnit}${velocityNorm === 'rms' ? ' RMS' : ' peak'})`;
+            const lay   = baseLayout(xAxisLbl, yLbl, xRange);
+            const { shapes, annotations } = rollOffMarker(freqUnit);
+            lay.shapes      = shapes;
+            lay.annotations = annotations;
             if (freqUnit === 'Hz + CPM') addCpmAxis(lay, xRange);
             return { traces, layout: lay };
         }
@@ -251,7 +287,10 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
                 line: { color: AXIS_COLORS[i % 3], width: 1 },
                 hovertemplate: `%{y:.4g} ${accelUnit}²/Hz<extra>Axis ${ax.axisNum}</extra>`,
             }));
-            const lay = baseLayout(xAxisLbl, `PSD (${accelUnit}²/Hz)`, xRange);
+            const lay   = baseLayout(xAxisLbl, `PSD (${accelUnit}²/Hz)`, xRange);
+            const { shapes, annotations } = rollOffMarker(freqUnit);
+            lay.shapes      = shapes;
+            lay.annotations = annotations;
             if (freqUnit === 'Hz + CPM') addCpmAxis(lay, xRange);
             return { traces, layout: lay };
         }
@@ -271,8 +310,11 @@ const WaveformChart: React.FC<WaveformChartProps> = ({
                 line: { color: AXIS_COLORS[i % 3], width: 1 },
                 hovertemplate: `%{y:.4g} ${accelUnit}<extra>Axis ${ax.axisNum}</extra>`,
             }));
-            const yLbl = `Envelope (${accelUnit}${accelNorm === 'rms' ? ' RMS' : ' peak'})`;
-            const lay  = baseLayout(xAxisLbl, yLbl, xRange);
+            const yLbl  = `Envelope (${accelUnit}${accelNorm === 'rms' ? ' RMS' : ' peak'})`;
+            const lay   = baseLayout(xAxisLbl, yLbl, xRange);
+            const { shapes, annotations } = rollOffMarker(freqUnit);
+            lay.shapes      = shapes;
+            lay.annotations = annotations;
             if (freqUnit === 'Hz + CPM') addCpmAxis(lay, xRange);
             return { traces, layout: lay };
         }

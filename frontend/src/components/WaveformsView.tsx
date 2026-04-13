@@ -79,9 +79,9 @@ interface EnvelopePresetDef {
 const ENVELOPE_PRESETS: EnvelopePresetDef[] = [
     {
         id: 'default',
-        label: 'Default (500 Hz – 10 kHz)',
-        hp: 500, lp: 10000,
-        description: 'Standard Motors & Pumps.',
+        label: 'Default (500 Hz – 6.5 kHz)',
+        hp: 500, lp: 6500,
+        description: 'Standard Motors & Pumps. Stays within the sensor\'s calibrated flat-response band.',
     },
     {
         id: 'low-speed',
@@ -91,14 +91,14 @@ const ENVELOPE_PRESETS: EnvelopePresetDef[] = [
     },
     {
         id: 'high-speed',
-        label: 'High Speed (5 kHz – 20 kHz)',
-        hp: 5000, lp: 20000,
-        description: 'Early Warning. Compressors, high-speed spindles, or isolating bearing faults in noisy gearboxes.',
+        label: 'High Speed (2 kHz – 6.5 kHz)',
+        hp: 2000, lp: 6500,
+        description: 'Early Warning. Compressors, high-speed spindles, or isolating bearing faults in noisy gearboxes. Upper limit matches the sensor\'s calibrated flat-response band.',
     },
     {
         id: 'custom',
         label: 'Custom',
-        hp: 500, lp: 10000,
+        hp: 500, lp: 6500,
         description: null,
     },
 ];
@@ -117,9 +117,9 @@ export default function WaveformsView() {
     // Envelope filter state
     const [envelopePreset, setEnvelopePreset] = useState<EnvelopePreset>('default');
     const [envelopeHp, setEnvelopeHp] = useState(500);
-    const [envelopeLp, setEnvelopeLp] = useState(10000);
+    const [envelopeLp, setEnvelopeLp] = useState(6500);
     const [customHpInput, setCustomHpInput] = useState('500');
-    const [customLpInput, setCustomLpInput] = useState('10000');
+    const [customLpInput, setCustomLpInput] = useState('6500');
     const [envelopeAxes, setEnvelopeAxes] = useState<SpectrumAxisData[]>([]);
 
     const fetchDevices = useCallback(async () => {
@@ -291,9 +291,9 @@ export default function WaveformsView() {
     const handleResetToDefault = () => {
         setEnvelopePreset('default');
         setEnvelopeHp(500);
-        setEnvelopeLp(10000);
+        setEnvelopeLp(6500);
         setCustomHpInput('500');
-        setCustomLpInput('10000');
+        setCustomLpInput('6500');
     };
 
     // Build per-axis spectrum data for the current view mode
